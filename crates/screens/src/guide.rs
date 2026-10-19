@@ -12,16 +12,17 @@
 //! |---|---|---|
 //! | Up / Down | channel, wrapping | group (the guide follows; History does not filter) |
 //! | CH+ / CH- | a page of channels | a page of groups |
-//! | Right | next programme | back to the grid |
-//! | Left | previous programme; from live the groups panel; the past only on catch-up channels | [`Navigate::MainMenu`] |
-//! | long Left | from the future to live, else one programme into the archive | top of the list |
-//! | OK | preview, then play full screen | back to the grid; on History [`Navigate::History`] |
+//! | Right | next programme (repeats) | back to the grid |
+//! | Left | previous programme on every channel, back to [`TvData::past_days`] (repeats) | [`Navigate::MainMenu`] |
+//! | long Left | - | top of the list |
+//! | OK | preview, then play full screen; a past programme only from the archive | back to the grid; on History [`Navigate::History`] |
 //! | long OK | [`Navigate::ContextMenu`] | [`Navigate::GroupMenu`] |
 //! | Back | leave Manage favorites, else back to live, else the groups panel | back to the grid |
 //! | long Back | [`Navigate::Close`] with what played when the guide opened | same |
 //!
-//! In Manage favorites mode ([`ScreenMessage::ManageFavorites`]) every row shows a star and OK
-//! toggles it.
+//! The groups panel covers the left of the guide without moving it; the preview keeps its
+//! rectangle (and keeps playing) under the panel. In Manage favorites mode
+//! ([`ScreenMessage::ManageFavorites`]) every row shows a star and OK toggles it.
 //!
 //! [`Command`]: crate::data::Command
 
@@ -37,10 +38,12 @@ mod tests;
 use tv_machine::machine::Measure;
 use tv_ui::Painter;
 
+use tv_platform::i18n::msg;
+
 use crate::data::{self, Group, Logos, Navigate, Output, Screen, ScreenMessage, TvData};
 use crate::input::{Hold, Key, Press};
 use crate::time;
-use grid::{Grid, Mode, Step};
+use grid::{Grid, Mode};
 use groups::Groups;
 use paint::Paint;
 
@@ -54,7 +57,7 @@ pub struct GuideScreen {
     /// The group the guide opened on, which is the one the player zapped through then: long
     /// Back gives it back.
     zap: Group,
-    /// Focus is in the groups panel (and the guide is pushed right).
+    /// Focus is in the groups panel (drawn over the left of the guide).
     panel: bool,
     paint: Paint,
     /// [`Grid::clock_face`] when the state last changed: a tick that moves neither the now-line
@@ -97,6 +100,12 @@ impl GuideScreen {
                     self.open_panel();
                 }
             }
+            (Key::Ok, false) if !managing && self.grid.out_of_archive() => {
+                return Output {
+                    toast: Some(msg::epg_catchup_unavailable().to_owned()),
+                    ..Output::default()
+                };
+            }
             (Key::Ok, false) => {
                 let (command, close) = self.grid.ok(data, &self.group);
                 let out = Output {
@@ -113,17 +122,8 @@ impl GuideScreen {
                     });
                 }
             }
-            (Key::Right, _) if !managing => {
-                self.grid.right(data);
-            }
-            (Key::Left, false) if !managing => {
-                if self.grid.left(data) == Step::Edge {
-                    self.open_panel();
-                }
-            }
-            (Key::Left, true) if !managing => {
-                self.grid.long_left(data);
-            }
+            (Key::Right, _) if !managing => self.grid.right(data),
+            (Key::Left, _) if !managing => self.grid.left(data),
             _ => {}
         }
         Output::default()
@@ -197,7 +197,7 @@ impl Screen for GuideScreen {
     fn hold(&self, key: Key) -> Hold {
         match key {
             Key::Up | Key::Down | Key::ChannelUp | Key::ChannelDown => Hold::Repeat,
-            Key::Right if !self.panel => Hold::Repeat,
+            Key::Left | Key::Right if !self.panel => Hold::Repeat,
             Key::Left | Key::Ok | Key::Back => Hold::Long,
             _ => Hold::Once,
         }
@@ -258,8 +258,7 @@ impl Screen for GuideScreen {
     }
 
     fn video_rect(&self) -> Option<data::Rect> {
-        let shift = if self.panel { geom::GROUPS_W } else { 0.0 };
-        Some(geom::preview_rect(shift))
+        Some(geom::preview_rect())
     }
 
     fn refresh(&mut self, data: &dyn TvData) {

@@ -82,7 +82,7 @@ pub const CATCHUP: (f32, f32) = (493.0, 28.0);
 pub const HALF_HOUR_W: f32 = guide::HOUR_W * 0.5;
 pub const PX_PER_SEC: f32 = HALF_HOUR_W / HALF_HOUR as f32;
 
-/// The groups panel slides in from the left and pushes the guide right by its width.
+/// The groups panel covers the left of the guide, which stays where it is.
 pub const GROUPS_W: f32 = 615.0;
 pub const GROUP_PILL_X: f32 = 144.0;
 pub const GROUP_PILL_W: f32 = 440.0;
@@ -169,11 +169,11 @@ pub const fn rows_clip() -> Rect {
     Rect::new(0.0, GRID_Y, SCREEN_W, SCREEN_H - GRID_Y)
 }
 
-/// The preview rectangle on the 1920x1080 plane, pushed right by `shift` while the groups panel
-/// is open.
-pub fn preview_rect(shift: f32) -> crate::data::Rect {
+/// The preview rectangle on the 1920x1080 plane. The groups panel covers it rather than moving
+/// it: moving the video window costs the TV a visible re-layout.
+pub fn preview_rect() -> crate::data::Rect {
     crate::data::Rect {
-        x: (PREVIEW.x + shift).round() as i32,
+        x: PREVIEW.x as i32,
         y: PREVIEW.y as i32,
         w: PREVIEW.w as i32,
         h: PREVIEW.h as i32,
@@ -203,12 +203,11 @@ mod tests {
 
     #[test]
     fn preview_is_a_third_of_the_width_and_sixteen_by_nine() {
-        let r = preview_rect(0.0);
+        let r = preview_rect();
         assert_eq!(r.w * 3, 1920);
         assert_eq!(r.w * 9, r.h * 16);
         assert!(r.x + r.w < DETAILS_X as i32);
         assert!(r.y + r.h < RULER_Y as i32);
-        assert_eq!(preview_rect(GROUPS_W).x, r.x + GROUPS_W as i32);
     }
 
     #[test]

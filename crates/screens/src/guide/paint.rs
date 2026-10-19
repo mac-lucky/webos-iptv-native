@@ -158,11 +158,10 @@ impl Paint {
     }
 
     pub fn draw(&self, p: Painter, grid: &Grid, groups: &Groups, panel: bool, logos: &dyn Logos) {
-        let shift = if panel { geom::GROUPS_W } else { 0.0 };
-        let g = p.translate(shift, 0.0);
-        ground(p, shift);
-        draw::paint(&self.details, g, logos);
-        draw::paint(&self.ruler, g, logos);
+        // The panel hides the preview with the rest of the left side; the video plays on.
+        ground(p, !panel);
+        draw::paint(&self.details, p, logos);
+        draw::paint(&self.ruler, p, logos);
         let clip = geom::rows_clip();
         if grid.channels.is_empty() {
             Label::new(
@@ -170,19 +169,19 @@ impl Paint {
                 size::LABEL,
                 theme::TEXT_MUTED,
             )
-            .draw(g, Rect::new(geom::GRID_X, geom::ROWS_Y, 0.0, geom::ROW_H));
+            .draw(p, Rect::new(geom::GRID_X, geom::ROWS_Y, 0.0, geom::ROW_H));
         }
         let shown = grid.shown.as_ref().map(Shown::channel);
-        g.clip(clip);
+        p.clip(clip);
         for (row, slot) in grid.rows.iter().zip(&self.rows) {
             let band = geom::row_rect(row.index, self.scroll.pos);
             if band.y >= clip.y + clip.h || band.y + band.h <= clip.y {
                 continue;
             }
-            draw_row(g, grid, row, slot, band, shown == Some(slot.key), logos);
+            draw_row(p, grid, row, slot, band, shown == Some(slot.key), logos);
         }
-        g.clip_clear();
-        draw_now_line(g, grid);
+        p.clip_clear();
+        draw_now_line(p, grid);
         if panel {
             self.draw_groups(p, groups);
         }
@@ -470,9 +469,6 @@ fn draw_row(
     // Programme cells.
     for cell in &slot.cells {
         let r = geom::cell_rect(band, &cell.geom);
-        if r.x + p.dx() >= geom::SCREEN_W {
-            break; // pushed off screen by the groups panel
-        }
         let focused = !managing
             && focused_row
             && match (&grid.focus, cell.start) {
@@ -532,15 +528,14 @@ fn draw_now_line(p: Painter, grid: &Grid) {
     );
 }
 
-/// The app ground around the preview, which stays a hole for the video plane.
-fn ground(p: Painter, shift: f32) {
-    let v = Rect::new(
-        geom::PREVIEW.x + shift,
-        geom::PREVIEW.y,
-        geom::PREVIEW.w,
-        geom::PREVIEW.h,
-    );
+/// The app ground, with the preview left as a hole for the video plane when `hole`.
+fn ground(p: Painter, hole: bool) {
     let (w, h) = (geom::SCREEN_W, geom::SCREEN_H);
+    if !hole {
+        p.rrect(Rect::new(0.0, 0.0, w, h), 0.0, 0.0, theme::BG);
+        return;
+    }
+    let v = geom::PREVIEW;
     for r in [
         Rect::new(0.0, 0.0, w, v.y),
         Rect::new(0.0, v.y + v.h, w, h - v.y - v.h),

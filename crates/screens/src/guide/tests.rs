@@ -83,7 +83,7 @@ fn key(data: &FakeData, i: usize) -> ChannelKey {
 fn opened(data: &mut FakeData, playing: usize) -> GuideScreen {
     data.playback.channel = Some(key(data, playing));
     let s = GuideScreen::new(data, Group::All);
-    assert_eq!(s.video_rect(), Some(geom::preview_rect(0.0)));
+    assert_eq!(s.video_rect(), Some(geom::preview_rect()));
     s
 }
 
@@ -215,111 +215,157 @@ fn right_walks_the_future_and_pages_the_window() {
 }
 
 #[test]
-fn long_left_from_the_future_returns_to_live() {
+fn left_steps_back_through_live_into_the_past() {
     let mut data = data(6);
     let mut s = opened(&mut data, 1);
-    for _ in 0..8 {
-        press(&mut s, &data, Key::Right);
-    }
-    assert!(!on_air(&focus(&s)));
-    long(&mut s, &data, Key::Left);
-    assert!(on_air(&focus(&s)));
+    let live = focus(&s);
+    press(&mut s, &data, Key::Right);
+    press(&mut s, &data, Key::Right);
+    press(&mut s, &data, Key::Left);
+    press(&mut s, &data, Key::Left);
+    assert_eq!(focus(&s), live);
     assert_eq!(s.grid.anchor, Anchor::Live);
-    assert_eq!(s.grid.window, clock::floor_half_hour(NOW, OFFSET));
+    let out = press(&mut s, &data, Key::Left);
+    assert!(!s.panel, "Left never opens the groups panel");
+    assert!(quiet(&out) && out.redraw);
+    let p = focus(&s);
+    assert_eq!(p.stop, live.start, "the programme before the live one");
+    assert_eq!(s.grid.anchor, Anchor::At(p.start));
+    assert!(s.grid.window <= p.start);
 }
 
+/// Held, Left repeats like Right (the grid scrolls); in the groups panel it keeps its long press.
 #[test]
-fn left_steps_back_through_the_future_then_opens_the_groups() {
+fn held_left_repeats_in_the_grid() {
     let mut data = data(6);
     let mut s = opened(&mut data, 0);
-    press(&mut s, &data, Key::Right);
-    press(&mut s, &data, Key::Right);
-    press(&mut s, &data, Key::Left);
-    press(&mut s, &data, Key::Left);
-    assert!(on_air(&focus(&s)));
-    assert!(!s.panel);
-    let out = press(&mut s, &data, Key::Left);
-    assert!(s.panel, "Left from live opens the groups panel");
-    assert!(out.commands.is_empty() && out.redraw);
+    assert_eq!(s.hold(Key::Left), Hold::Repeat);
+    assert_eq!(s.hold(Key::Right), Hold::Repeat);
+    let live = focus(&s);
+    Screen::key(&mut s, Key::Left, Press::Repeat, &data, 0);
+    assert_eq!(focus(&s).stop, live.start);
+    press(&mut s, &data, Key::Back);
+    press(&mut s, &data, Key::Back);
+    assert!(s.panel);
+    assert_eq!(s.hold(Key::Left), Hold::Long);
 }
 
 #[test]
-fn the_video_sits_in_the_preview_and_moves_with_the_groups_panel() {
+fn the_video_stays_in_the_preview_under_the_groups_panel() {
     let mut data = data(9);
     let mut s = opened(&mut data, 0);
     press(&mut s, &data, Key::Back);
     assert!(s.panel);
-    assert_eq!(s.video_rect(), Some(geom::preview_rect(geom::GROUPS_W)));
-    // Moving through the groups keeps it there; back in the grid it returns.
+    assert_eq!(s.video_rect(), Some(geom::preview_rect()));
+    // Moving through the groups and back to the grid never moves it.
     press(&mut s, &data, Key::Down);
     press(&mut s, &data, Key::Down);
     assert_eq!(s.group, Group::Playlist("News".into()));
-    assert_eq!(s.video_rect(), Some(geom::preview_rect(geom::GROUPS_W)));
+    assert_eq!(s.video_rect(), Some(geom::preview_rect()));
     press(&mut s, &data, Key::Right);
     assert!(!s.panel);
-    assert_eq!(s.video_rect(), Some(geom::preview_rect(0.0)));
+    assert_eq!(s.video_rect(), Some(geom::preview_rect()));
     // The preview plays without moving it; full screen is the guide closing.
     press(&mut s, &data, Key::Down);
     let out = press(&mut s, &data, Key::Ok);
     assert_eq!(out.commands.len(), 1);
     assert!(out.navigate.is_empty());
-    assert_eq!(s.video_rect(), Some(geom::preview_rect(0.0)));
+    assert_eq!(s.video_rect(), Some(geom::preview_rect()));
     assert_eq!(press(&mut s, &data, Key::Ok).navigate, [Navigate::Close]);
 }
 
+/// A channel without catch-up shows its past like any other: details on focus, but OK only says
+/// there is no archive.
 #[test]
-fn the_past_needs_catch_up() {
+fn the_past_shows_everywhere_and_plays_only_from_the_archive() {
     let mut data = data(6);
     // Every third channel has no catch-up.
     assert!(!data.channels[2].catchup.available());
     let mut s = opened(&mut data, 2);
     let live = focus(&s);
-    long(&mut s, &data, Key::Left);
-    assert_eq!(focus(&s), live, "no archive: long Left stays");
     press(&mut s, &data, Key::Left);
-    assert!(s.panel, "and Left opens the groups");
+    let p = focus(&s);
+    assert_eq!(p.stop, live.start);
+    assert!(!s.panel);
+    assert!(p.description.is_some(), "the details are read");
+    let out = press(&mut s, &data, Key::Ok);
+    assert!(quiet(&out), "nothing plays");
+    assert_eq!(out.toast.as_deref(), Some(msg::epg_catchup_unavailable()));
+    assert_eq!(focus(&s), p);
 }
 
+/// Left walks back to the start of the day `past_days` before today, on a catch-up channel past
+/// its archive too; OK plays only what the archive still reaches.
 #[test]
-fn long_left_enters_the_archive_and_left_walks_it_to_its_limit() {
+fn left_walks_back_to_the_past_days_limit() {
     let mut data = data(6);
+    data.past_days = 1;
     data.channels[0].catchup.days = 1;
+    let limit = time::day_start(NOW, OFFSET) - DAY;
     let mut s = opened(&mut data, 0);
-    let live = focus(&s);
-    long(&mut s, &data, Key::Left);
-    let p = focus(&s);
-    assert_eq!(p.stop, live.start, "one programme back");
-    assert!(p.stop <= NOW);
-    assert_eq!(s.grid.anchor, Anchor::At(p.start));
-    assert!(s.grid.window <= p.start);
     let mut steps = 0;
     loop {
         let before = focus(&s);
-        press(&mut s, &data, Key::Left);
+        let out = press(&mut s, &data, Key::Left);
+        assert!(quiet(&out) && !s.panel);
         if focus(&s) == before {
             break;
         }
         steps += 1;
-        assert!(!s.panel);
-        assert!(focus(&s).start >= NOW - DAY, "inside the archive");
-        assert!(steps < 100);
+        assert!(focus(&s).stop > limit, "inside the past days");
+        assert!(steps < 200);
     }
     let first = focus(&s);
-    assert!(first.start >= NOW - DAY && first.start - 90 * MINUTE < NOW - DAY);
-    // Right walks forward again and reaches live.
+    assert!(
+        first.start <= limit,
+        "{first:?} is the last one reaching {limit}"
+    );
+    assert!(first.start < NOW - DAY, "past the one-day archive");
+    let out = press(&mut s, &data, Key::Ok);
+    assert!(out.commands.is_empty() && out.toast.is_some());
+    // Right walks forward into the archive, where OK plays, and on to live.
+    while focus(&s).start < NOW - DAY + HALF_HOUR {
+        press(&mut s, &data, Key::Right);
+    }
+    let out = press(&mut s, &data, Key::Ok);
+    assert!(matches!(
+        &out.commands[..],
+        [Command::Play {
+            stream: Stream::Catchup { .. },
+            ..
+        }]
+    ));
     while !on_air(&focus(&s)) {
         press(&mut s, &data, Key::Right);
     }
     assert_eq!(s.grid.anchor, Anchor::Live);
 }
 
-/// Browsing the archive, a row whose programme at that time is still on air keeps walking
-/// back instead of opening the groups.
+/// The archive's edge moves with the clock: the programme the preview already plays from it
+/// still goes full screen after it slipped out.
+#[test]
+fn ok_on_the_previewed_programme_survives_the_archive_edge() {
+    let mut data = data(6);
+    data.channels[0].catchup.days = 1;
+    let mut s = opened(&mut data, 0);
+    press(&mut s, &data, Key::Left);
+    let p = focus(&s);
+    let out = press(&mut s, &data, Key::Ok);
+    assert_eq!(out.commands.len(), 1, "previewed from the archive");
+    data.playback.catchup = Some(p.clone());
+    data.now = p.start + DAY + HALF_HOUR;
+    tick(&mut s, &data);
+    let out = press(&mut s, &data, Key::Ok);
+    assert!(out.toast.is_none() && out.commands.is_empty());
+    assert_eq!(out.navigate, [Navigate::Close]);
+}
+
+/// Browsing the past, a row whose programme at that time is still on air keeps walking back.
 #[test]
 fn left_in_the_archive_passes_a_long_running_programme() {
     let mut data = data(6);
     let mut s = opened(&mut data, 0);
-    long(&mut s, &data, Key::Left);
+    press(&mut s, &data, Key::Left);
     let anchor = focus(&s).start;
     for _ in 0..3 {
         press(&mut s, &data, Key::Down);
@@ -362,7 +408,7 @@ fn ok_on_the_playing_channel_plays_at_once() {
 fn ok_on_an_archived_programme_plays_catch_up() {
     let mut data = data(6);
     let mut s = opened(&mut data, 0);
-    long(&mut s, &data, Key::Left);
+    press(&mut s, &data, Key::Left);
     let p = focus(&s);
     assert!(p.description.is_some(), "every field of the programme");
     let out = press(&mut s, &data, Key::Ok);
@@ -404,7 +450,7 @@ fn long_ok_asks_for_the_channel_menu() {
             programme: Some(focus(&s)),
         }]
     );
-    long(&mut s, &data, Key::Left);
+    press(&mut s, &data, Key::Left);
     let out = long(&mut s, &data, Key::Ok);
     assert_eq!(
         out.navigate,
@@ -421,7 +467,8 @@ fn long_ok_asks_for_the_channel_menu() {
 fn back_returns_to_live_before_opening_the_groups() {
     let mut data = data(6);
     let mut s = opened(&mut data, 0);
-    long(&mut s, &data, Key::Left);
+    press(&mut s, &data, Key::Down);
+    press(&mut s, &data, Key::Left);
     press(&mut s, &data, Key::Back);
     assert!(!s.panel);
     assert!(on_air(&focus(&s)));
@@ -429,8 +476,15 @@ fn back_returns_to_live_before_opening_the_groups() {
     press(&mut s, &data, Key::Back);
     assert!(!s.panel);
     assert_eq!(s.grid.anchor, Anchor::Live);
+    let (row, live) = (s.grid.cursor.index, focus(&s));
     press(&mut s, &data, Key::Back);
     assert!(s.panel);
+    // Back in the panel: the grid as it was.
+    press(&mut s, &data, Key::Back);
+    assert!(!s.panel);
+    assert_eq!(s.grid.cursor.index, row);
+    assert_eq!(focus(&s), live);
+    assert_eq!(s.grid.anchor, Anchor::Live);
 }
 
 #[test]
@@ -588,8 +642,8 @@ fn a_row_without_guide_data_is_one_cut_cell() {
     assert!(quiet(&press(&mut s, &data, Key::Right)));
     let out = press(&mut s, &data, Key::Ok);
     assert_eq!(out.commands, [play(Stream::Live(key(&data, 1)))]);
-    press(&mut s, &data, Key::Left);
-    assert!(s.panel);
+    assert!(quiet(&press(&mut s, &data, Key::Left)));
+    assert!(!s.panel);
 }
 
 #[test]
@@ -749,7 +803,7 @@ fn wakes_follow_what_moves_on_screen() {
     // Back in the archive on an earlier day nothing follows the clock.
     data.now = NOW;
     let mut s = opened(&mut data, 0);
-    long(&mut s, &data, Key::Left);
+    press(&mut s, &data, Key::Left);
     for _ in 0..40 {
         if time::local_day(s.grid.window, OFFSET) != time::local_day(NOW, OFFSET) {
             break;
@@ -853,7 +907,7 @@ fn every_state_draws() {
     let mut data = guide_data(30, &[3], Rc::default());
     let mut s = opened(&mut data, 0);
     draw(&mut s);
-    long(&mut s, &data, Key::Left);
+    press(&mut s, &data, Key::Left);
     s.update(1.0 / 60.0);
     draw(&mut s);
     for _ in 0..4 {

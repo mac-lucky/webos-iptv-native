@@ -509,6 +509,10 @@ impl TvData for StoreData {
         utc_offset_at(self.now())
     }
 
+    fn past_days(&self) -> u32 {
+        self.settings.number(keys::EPG_PAST_DAYS)
+    }
+
     fn channels(&self, group: &Group) -> Channels {
         self.list(group)
     }
@@ -568,8 +572,8 @@ impl TvData for StoreData {
 
     /// On the search worker ([`search`]), with `epg.past_days` bounding the archive too.
     fn search(&self, query: &str) -> Option<SearchResult> {
-        let past_days = self.settings.number(keys::EPG_PAST_DAYS);
-        self.search.ask(query, self.now(), past_days, &self.storage)
+        self.search
+            .ask(query, self.now(), self.past_days(), &self.storage)
     }
 }
 

@@ -12,7 +12,7 @@ use super::clock;
 use super::geom;
 use crate::data::{Command, GridProgramme, Group, Playback, Stream, TvData};
 use crate::lists::Cursor;
-use crate::time::{DAY, MINUTE};
+use crate::time::{self, DAY, MINUTE};
 
 /// Rows read beyond each edge of the visible ones, so a scroll animation has rows to show.
 const SPARE_ROWS: usize = 2;
@@ -60,16 +60,6 @@ pub enum Mode {
     Browse,
     /// OK stars and unstars channels; Back leaves the mode.
     ManageFavorites,
-}
-
-/// The result of a horizontal move.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Step {
-    Moved,
-    /// Nothing to move to.
-    Stay,
-    /// Left from the live programme: the groups panel takes over.
-    Edge,
 }
 
 /// A channel's programmes in the window: one of the rows around the scroll position.
@@ -426,82 +416,44 @@ impl Grid {
     }
 
     /// Right: the next programme.
-    pub fn right(&mut self, data: &dyn TvData) -> Step {
+    pub fn right(&mut self, data: &dyn TvData) {
         let from = match &self.focus {
             Some(p) => p.stop,
             None => self.anchor_time(),
         };
-        match self.next_after(data, from) {
-            Some(p) => {
-                self.focus_on(data, p);
-                Step::Moved
-            }
-            None => Step::Stay,
+        if let Some(p) = self.next_after(data, from) {
+            self.focus_on(data, p);
         }
     }
 
-    /// Left: back through the future to live; from live the groups panel; through the past
-    /// only on a catch-up channel and only as far as its archive reaches.
-    pub fn left(&mut self, data: &dyn TvData) -> Step {
-        if self.channel().is_none() {
-            return Step::Edge;
-        }
-        let now = self.now;
+    /// Left: the previous programme on every channel, catch-up or not, back to the start of the
+    /// day [`TvData::past_days`] before today; from the future with nothing before it, live.
+    pub fn left(&mut self, data: &dyn TvData) {
         let reference = match &self.focus {
-            Some(p) if p.is_on_air(now) && self.at_live() => return Step::Edge,
             Some(p) => p.start,
-            None if self.anchor_time() > now => self.anchor_time(),
-            None if self.at_live() => return Step::Edge,
-            None => return Step::Stay,
+            None => self.anchor_time(),
         };
+        let limit = time::day_start(self.now, self.offset) - i64::from(data.past_days()) * DAY;
         match self.prev_before(data, reference) {
-            Some(prev) if prev.stop > now || self.in_archive(&prev) => {
-                self.focus_on(data, prev);
-                Step::Moved
-            }
-            _ => self.left_into_gap(data, reference),
+            Some(prev) if prev.stop > limit => self.focus_on(data, prev),
+            _ if reference > self.now => self.go_live(data),
+            _ => {}
         }
     }
 
-    /// Left found nothing it may focus: from the future that is live, at live the groups
-    /// panel; in the past it stays.
-    fn left_into_gap(&mut self, data: &dyn TvData, reference: Timestamp) -> Step {
-        if self.at_live() {
-            Step::Edge
-        } else if reference > self.now {
-            self.go_live(data);
-            Step::Moved
-        } else {
-            Step::Stay
-        }
-    }
-
-    /// Long Left jumps back: from the future to live, from live (or the past) one programme
-    /// into the archive.
-    pub fn long_left(&mut self, data: &dyn TvData) -> Step {
-        if self.channel().is_none() {
-            return Step::Stay;
-        }
-        let now = self.now;
-        let reference = match &self.focus {
-            Some(p) if p.start > now => {
-                self.go_live(data);
-                return Step::Moved;
-            }
-            Some(p) => p.start,
-            None if self.anchor_time() > now => {
-                self.go_live(data);
-                return Step::Moved;
-            }
-            None => now,
+    /// The focused programme has ended and the channel's archive does not reach it: it shows
+    /// its details but does not play. The archive's edge moves with the clock, so one the
+    /// preview already plays from it still counts as playable.
+    pub fn out_of_archive(&self) -> bool {
+        let (Some(p), Some(c)) = (&self.focus, self.channel()) else {
+            return false;
         };
-        match self.prev_before(data, reference) {
-            Some(prev) if self.in_archive(&prev) => {
-                self.focus_on(data, prev);
-                Step::Moved
-            }
-            _ => Step::Stay,
-        }
+        let previewed = self.shown
+            == Some(Shown::Catchup {
+                channel: c.key,
+                start: p.start,
+            });
+        p.stop <= self.now && !previewed && !self.in_archive(p)
     }
 
     /// OK: the first press previews the focused channel (or archived programme) in the

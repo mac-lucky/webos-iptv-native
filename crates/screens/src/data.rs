@@ -131,6 +131,12 @@ pub trait TvData {
         0
     }
 
+    /// How many days before today the guide reaches back (the `epg.past_days` setting, whose
+    /// default this is).
+    fn past_days(&self) -> u32 {
+        7
+    }
+
     /// The channel with `key`, wherever it is listed.
     fn channel(&self, key: ChannelKey) -> Option<Rc<Channel>> {
         self.channels(&Group::All)
@@ -503,6 +509,8 @@ pub mod fake {
         pub playback: Playback,
         /// [`TvData::utc_offset_secs`].
         pub utc_offset: i32,
+        /// [`TvData::past_days`].
+        pub past_days: u32,
         /// Replaces the generated guide.
         pub schedule: Option<Schedule>,
     }
@@ -548,6 +556,7 @@ pub mod fake {
                 history: vec![],
                 playback: Playback::default(),
                 utc_offset: 0,
+                past_days: 7,
                 schedule: None,
             }
         }
@@ -652,6 +661,10 @@ pub mod fake {
 
         fn utc_offset_secs(&self) -> i32 {
             self.utc_offset
+        }
+
+        fn past_days(&self) -> u32 {
+            self.past_days
         }
     }
 
