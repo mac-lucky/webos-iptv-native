@@ -10,7 +10,7 @@ use crate::{fetch, run, untar, Result, TARGET};
 
 /// The pinned release. The toolchain fixes the ABI the binary is built against (glibc,
 /// libstdc++), so moving it is a port, not a routine bump.
-const RELEASE: &str = "webos-d7ed7ee.6";
+pub const RELEASE: &str = "webos-d7ed7ee.6";
 const SDK_DIR: &str = "arm-webos-linux-gnueabi_sdk-buildroot";
 /// Host builds published for the release: (rust os, rust arch, asset suffix, sha256).
 #[rustfmt::skip]

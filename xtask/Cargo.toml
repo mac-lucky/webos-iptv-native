@@ -12,4 +12,5 @@ workspace = true
 [dependencies]
 tv_base = { path = "../crates/base" }
 flate2 = "1.1.10"
+serde_json = "1"
 tar = "0.4.46"

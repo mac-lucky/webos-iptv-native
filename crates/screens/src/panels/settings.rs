@@ -742,7 +742,7 @@ pub const SOURCE_URL: &str = env!("CARGO_PKG_REPOSITORY");
 /// The About page: version, licences, the FFmpeg notice and the source offer.
 pub fn about_text(version: &str) -> Vec<String> {
     vec![
-        format!("webos-iptv-rs {version}"),
+        format!("webos-iptv-native {version}"),
         msg::about_copyright().to_owned(),
         msg::about_licence().to_owned(),
         msg::about_derived().to_owned(),

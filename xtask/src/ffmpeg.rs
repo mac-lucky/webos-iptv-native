@@ -17,6 +17,7 @@ use std::process::Command;
 use crate::ipk::read;
 use crate::{elf, fetch, ndk, root, run, target_dir, untar, Result};
 
+/// THIRD-PARTY-NOTICES.md names this version too; move both together.
 const VERSION: &str = "9.0.2";
 const URL: &str = "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz";
 const SHA256: &str = "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e";
@@ -57,9 +58,26 @@ const CONFIGURE: &[&str] = &[
     "--enable-decoder=mp2,mp3,aac,aac_latm,ac3,eac3,dvbsub",
 ];
 
+/// The TV build's cross-compile flags that name no path on this machine (`cross_args` adds the
+/// NDK's).
+const CROSS: &[&str] = &[
+    "--enable-cross-compile",
+    "--target-os=linux",
+    "--arch=arm",
+    "--cpu=cortex-a9",
+    "--host-cc=cc",
+    // glibc 2.12's assert.h predates C11 static_assert.
+    "--extra-cflags=-Dstatic_assert=_Static_assert",
+    // Same polyfill exclusion and build id as the app's link (.cargo/config.toml).
+    "--extra-ldflags=-tno-glibc-polyfill -Wl,--build-id=sha1",
+];
+
 /// The prefix the libraries are configured for. A stand-in, so no build path is recorded in them;
 /// `make install` is redirected with DESTDIR.
 const PREFIX: &str = "/wi";
+
+/// Written into the staged `lib` by `cross`: the source and flags those libraries came from.
+const STAMP: &str = ".built-from";
 
 fn dir() -> PathBuf {
     target_dir().join("ffmpeg")
@@ -74,10 +92,17 @@ pub fn build(args: &[String]) -> Result {
     }
 }
 
-/// The unpacked, verified source tree.
-fn source() -> Result<PathBuf> {
+/// The verified upstream tarball, downloaded on first use. It is also the corresponding source a
+/// release attaches for the libraries it ships.
+pub fn source_tarball() -> Result<PathBuf> {
     let tarball = dir().join(format!("ffmpeg-{VERSION}.tar.xz"));
     fetch(URL, SHA256, &tarball)?;
+    Ok(tarball)
+}
+
+/// The unpacked, verified source tree.
+fn source() -> Result<PathBuf> {
+    let tarball = source_tarball()?;
     let src = dir().join("src");
     let source = src.join(format!("ffmpeg-{VERSION}"));
     if !source.join("configure").is_file() {
@@ -86,19 +111,41 @@ fn source() -> Result<PathBuf> {
     Ok(source)
 }
 
-/// Configure (again only when its arguments change) and make out of tree in `build`, then install
-/// into `install`; returns the installed `lib` directory.
-fn compile(build: &Path, install: &Path, mut args: Vec<String>) -> Result<PathBuf> {
+/// Every configure argument of the TV build with the NDK at `sdk`. The notice passes `<ndk>`.
+fn cross_args(sdk: &Path) -> Vec<String> {
+    let mut args = vec![
+        format!("--prefix={PREFIX}"),
+        format!(
+            "--cross-prefix={}",
+            sdk.join("bin").join(ndk::PREFIX).display()
+        ),
+        format!("--cc={}", ndk::cc(sdk).display()),
+        format!("--sysroot={}", ndk::sysroot(sdk).display()),
+    ];
+    args.extend(CROSS.iter().chain(CONFIGURE).map(|s| s.to_string()));
+    args
+}
+
+/// The contents of `lib/.built-from` for a TV build with the NDK at `sdk`.
+fn built_from(sdk: &Path) -> String {
+    format!(
+        "ffmpeg {VERSION}\nsha256 {SHA256}\n{}\n",
+        cross_args(sdk).join("\n")
+    )
+}
+
+/// Configure (again only when the version or the arguments change) and make out of tree in
+/// `build`, then install into `install`; returns the installed `lib` directory.
+fn compile(build: &Path, install: &Path, args: &[String]) -> Result<PathBuf> {
     let source = source()?;
     fs::create_dir_all(build).map_err(|e| format!("{}: {e}", build.display()))?;
-    args.insert(0, format!("--prefix={PREFIX}"));
-    args.extend(CONFIGURE.iter().map(|s| s.to_string()));
     let stamp = build.join(".configure-args");
-    if fs::read_to_string(&stamp).ok().as_deref() != Some(args.join("\n").as_str()) {
+    let configured = format!("{VERSION}\n{}", args.join("\n"));
+    if fs::read_to_string(&stamp).ok() != Some(configured.clone()) {
         run(Command::new(source.join("configure"))
-            .args(&args)
+            .args(args)
             .current_dir(build))?;
-        fs::write(&stamp, args.join("\n")).map_err(|e| format!("{}: {e}", stamp.display()))?;
+        fs::write(&stamp, configured).map_err(|e| format!("{}: {e}", stamp.display()))?;
     }
     let jobs = std::thread::available_parallelism().map_or(4, |n| n.get());
     run(Command::new("make")
@@ -120,23 +167,7 @@ fn cross() -> Result {
     let installed = compile(
         &dir().join("build"),
         &dir().join("install"),
-        vec![
-            "--enable-cross-compile".into(),
-            "--target-os=linux".into(),
-            "--arch=arm".into(),
-            "--cpu=cortex-a9".into(),
-            format!(
-                "--cross-prefix={}",
-                sdk.join("bin").join(ndk::PREFIX).display()
-            ),
-            format!("--cc={}", ndk::cc(&sdk).display()),
-            format!("--sysroot={}", ndk::sysroot(&sdk).display()),
-            "--host-cc=cc".into(),
-            // glibc 2.12's assert.h predates C11 static_assert.
-            "--extra-cflags=-Dstatic_assert=_Static_assert".into(),
-            // Same polyfill exclusion and build id as the app's link (.cargo/config.toml).
-            "--extra-ldflags=-tno-glibc-polyfill -Wl,--build-id=sha1".into(),
-        ],
+        &cross_args(&sdk),
     )?;
 
     // Each real library (not the install's symlinks) is staged stripped, under its SONAME, which
@@ -160,6 +191,9 @@ fn cross() -> Result {
         ndk::strip(&sdk, &path, &staged)?;
         elf::check_glibc(&staged)?;
     }
+    // Written last, so a staging that failed halfway is never taken for a finished one.
+    let stamp = lib.join(STAMP);
+    fs::write(&stamp, built_from(&sdk)).map_err(|e| format!("{}: {e}", stamp.display()))?;
     eprintln!("ffmpeg {VERSION}: libraries in {}", lib.display());
     Ok(())
 }
@@ -179,10 +213,13 @@ fn host() -> Result {
                 .into(),
         );
     }
+    let args: Vec<String> = std::iter::once(format!("--prefix={PREFIX}"))
+        .chain(CONFIGURE.iter().map(|s| s.to_string()))
+        .collect();
     let installed = compile(
         &dir().join("host-build"),
         &dir().join("host-install"),
-        Vec::new(),
+        &args,
     )?;
     // The major-named symlinks (`libavcodec-wi.63.dylib`, two dots) are the install names.
     let mut names = Vec::new();
@@ -223,6 +260,39 @@ fn host() -> Result {
     Ok(())
 }
 
+/// Fails unless `cargo xtask ffmpeg` has staged every library the app opens, built from the pinned
+/// source with the current flags. A dev package may go without FFmpeg (`payload`); a release
+/// never does.
+pub fn require() -> Result {
+    let lib = dir().join("lib");
+    if fs::read_to_string(lib.join(STAMP)).ok() != Some(built_from(&ndk::sdk_dir()?)) {
+        return Err(format!(
+            "no FFmpeg {VERSION} built with the current flags in {} (run `cargo xtask ffmpeg`): \
+             a release always ships FFmpeg",
+            lib.display()
+        ));
+    }
+    let names: Vec<String> = fs::read_dir(&lib)
+        .map(|entries| {
+            entries
+                .filter_map(|e| Some(e.ok()?.file_name().to_string_lossy().into_owned()))
+                .collect()
+        })
+        .unwrap_or_default();
+    for stem in ["libavutil", "libavcodec", "libavformat", "libswresample"] {
+        if !names
+            .iter()
+            .any(|n| n.starts_with(&format!("{stem}-wi.so.")))
+        {
+            return Err(format!(
+                "no {stem} in {} (run `cargo xtask ffmpeg` first): a release always ships FFmpeg",
+                lib.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// The package's FFmpeg files: each library under its SONAME at the app root, the LGPL text and
 /// the record of what was built from where (the source offer). Empty, with a note, before
 /// `cargo xtask ffmpeg`.
@@ -243,7 +313,9 @@ pub fn payload() -> Result<Vec<(String, Vec<u8>)>> {
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
-        files.push((name, read(&path)?));
+        if name != STAMP {
+            files.push((name, read(&path)?));
+        }
     }
     files.push((
         "licenses/LGPL-2.1.txt".into(),
@@ -253,12 +325,45 @@ pub fn payload() -> Result<Vec<(String, Vec<u8>)>> {
     Ok(files)
 }
 
-/// What the About screen shows for FFmpeg: licence, unmodified source and how it was configured.
+/// `licenses/ffmpeg.txt`: copyright, licence, the unmodified source and the whole configure line,
+/// with `<ndk>` where this machine's toolchain path was.
 fn notice() -> String {
+    let configure: Vec<String> = cross_args(Path::new("<ndk>"))
+        .into_iter()
+        .map(|a| if a.contains(' ') { format!("'{a}'") } else { a })
+        .collect();
     format!(
-        "FFmpeg {VERSION}, licensed under the GNU LGPL version 2.1 or later (LGPL-2.1.txt).\n\
-         Built unmodified from {URL}\n(sha256 {SHA256}),\n\
-         cross-compiled for armv7 (cortex-a9) with the webosbrew native toolchain, configured with:\n  {}\n",
-        CONFIGURE.join(" ")
+        "FFmpeg {VERSION}, Copyright (C) 2000-2026 the FFmpeg developers, licensed under the GNU LGPL\n\
+         version 2.1 or later (licenses/LGPL-2.1.txt).\n\
+         Built unmodified from {URL}\n(sha256 {SHA256}, attached to every release as ffmpeg-{VERSION}.tar.xz),\n\
+         cross-compiled for armv7 (cortex-a9) with the webosbrew native toolchain {} installed at\n\
+         <ndk>, configured with:\n  ./configure {}\n",
+        ndk::RELEASE,
+        configure.join(" ")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn third_party_notices_name_the_pinned_version() {
+        let notices =
+            String::from_utf8(read(&root().join("THIRD-PARTY-NOTICES.md")).unwrap()).unwrap();
+        assert!(notices.contains(&format!("FFmpeg {VERSION}")));
+        assert!(notices.contains(&format!("ffmpeg-{VERSION}.tar.xz")));
+    }
+
+    #[test]
+    fn notice_gives_the_whole_configure_line_without_local_paths() {
+        let text = notice();
+        assert!(text.contains(" --prefix=/wi --cross-prefix=<ndk>/bin/arm-webos-linux-gnueabi- "));
+        assert!(text.contains(" --sysroot=<ndk>/arm-webos-linux-gnueabi/sysroot "));
+        assert!(text.contains(" '--extra-ldflags=-tno-glibc-polyfill -Wl,--build-id=sha1' "));
+        assert!(text.ends_with(&format!(" {}\n", CONFIGURE[CONFIGURE.len() - 1])));
+        let home = std::env::var("HOME").unwrap_or_default();
+        assert!(home.is_empty() || !text.contains(&home));
+        assert!(text.is_ascii());
+    }
 }

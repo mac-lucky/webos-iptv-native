@@ -1,7 +1,7 @@
 {
-  "about.copyright": "Copyright (C) 2026 autorzy webos-iptv-rs.",
+  "about.copyright": "Copyright (C) 2026 autorzy webos-iptv-native.",
   "about.derived": "Jest to zmodyfikowana wersja StremioNative i PlxNative, obu na licencji GPL-3.0-or-later.",
-  "about.ffmpeg": "FFmpeg (https://ffmpeg.org), LGPL-2.1-or-later: biblioteki współdzielone, wymienialne. Jego źródła i flagi kompilacji: {url}.",
+  "about.ffmpeg": "FFmpeg (https://ffmpeg.org), Copyright (C) 2000-2026 twórcy FFmpeg, LGPL-2.1-or-later (licenses/LGPL-2.1.txt w katalogu aplikacji): biblioteki współdzielone, wymienialne. Jego źródła i flagi kompilacji: {url}.",
   "about.fonts": "Czcionki: Inter, SIL Open Font License 1.1.",
   "about.licence": "Ten program jest wolnym oprogramowaniem: możesz go rozpowszechniać i/lub modyfikować na warunkach Powszechnej Licencji Publicznej GNU opublikowanej przez Free Software Foundation, w wersji 3 tej Licencji lub (według twojego wyboru) dowolnej późniejszej. Jest dostarczany BEZ JAKIEJKOLWIEK GWARANCJI.",
   "about.source": "Kod źródłowy: pełne źródła tej wersji są dostępne pod adresem {url}. Licencje wszystkich dołączonych komponentów wymienia tam plik THIRD-PARTY-NOTICES.md."

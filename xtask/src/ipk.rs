@@ -15,14 +15,20 @@ use crate::{ndk, root, sha256_file, target_dir, Opts, Result, BIN};
 
 /// Any fixed time works; 2010-01-01 is inside what old opkg builds accept.
 const EPOCH: u64 = 1_262_304_000;
-/// Files the app reads from its install directory: (source under the repo, path in the app dir).
+/// Files installed in the app directory: (source under the repo, path in the app dir). The notices
+/// keep their repository paths, so every path THIRD-PARTY-NOTICES.md and NOTICE cite resolves.
 const PAYLOAD: &[(&str, &str)] = &[
     ("pkg/icon.png", "icon.png"),
+    ("pkg/largeIcon.png", "largeIcon.png"),
     ("pkg/appfont.ttf", "appfont.ttf"),
     ("pkg/appfont-bold.ttf", "appfont-bold.ttf"),
     ("pkg/OFL.txt", "OFL.txt"),
     ("pkg/le-roots.pem", "le-roots.pem"),
     ("LICENSE", "LICENSE"),
+    ("NOTICE", "NOTICE"),
+    ("THIRD-PARTY-NOTICES.md", "THIRD-PARTY-NOTICES.md"),
+    ("licenses/MIT.txt", "licenses/MIT.txt"),
+    ("licenses/Apache-2.0.txt", "licenses/Apache-2.0.txt"),
 ];
 
 /// Archive path -> (contents, executable).
@@ -47,6 +53,14 @@ pub fn package(opts: &Opts) -> Result {
     for (src, name) in PAYLOAD {
         data.insert(format!("{dir}/{name}"), (read(&root().join(src))?, false));
     }
+    // Also kept beside the ipk, where `release` takes it from.
+    let crates = crate::licenses::rust_crates(&bin)?;
+    let crates_txt = out_dir.join("rust-crates.txt");
+    fs::write(&crates_txt, &crates).map_err(|e| format!("{}: {e}", crates_txt.display()))?;
+    data.insert(
+        format!("{dir}/licenses/rust-crates.txt"),
+        (crates.into_bytes(), false),
+    );
     for (name, bytes) in crate::ffmpeg::payload()? {
         data.insert(format!("{dir}/{name}"), (bytes, false));
     }
@@ -219,7 +233,7 @@ impl App {
 
 /// The string value of `"key": "value"` in one of our own flat JSON files. Values with escapes are
 /// refused rather than half-parsed.
-fn json_str(text: &str, key: &str) -> Result<String> {
+pub(crate) fn json_str(text: &str, key: &str) -> Result<String> {
     let missing = || format!("no string \"{key}\" in JSON");
     let rest = text
         .split_once(&format!("\"{key}\":"))

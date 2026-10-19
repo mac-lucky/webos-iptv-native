@@ -1593,6 +1593,7 @@ name = "xtask"
 version = "0.0.0"
 dependencies = [
  "flate2",
+ "serde_json",
  "tar",
  "tv_base",
 ]

@@ -8,15 +8,17 @@ mod backup;
 mod elf;
 mod ffmpeg;
 mod ipk;
+mod licenses;
 mod ndk;
 mod provision;
+mod release;
 mod replay;
 mod verify;
 
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
 
 use tv_base::sha256::Sha256;
 
@@ -26,6 +28,9 @@ const USAGE: &str = "usage: cargo xtask <command>
   build [--release]             cross-build the TV binary, then check its glibc symbol versions
   package [--release] [--flavor stable|debug|beta]
                                 build, then write target/ipk/<id>_<version>_arm.ipk
+  release                       package stable with --release (FFmpeg required), then write
+                                target/release-assets/: the ipk, its Homebrew Channel manifest,
+                                the FFmpeg source, the crate licences and SHA256SUMS
   ffmpeg [--host]               cross-build the bundled LGPL FFmpeg into target/ffmpeg/lib
                                 (--host: the same build for this Mac, staged into pkg/)
   verify [<ipk>]                webosbrew-ipk-verify in Docker for webOS 6+ (default: stable ipk)
@@ -63,6 +68,10 @@ fn dispatch(args: &[String]) -> Result {
         Some("setup") => ndk::setup(),
         Some("build") => build(&Opts::parse(rest)?).map(drop),
         Some("package") => ipk::package(&Opts::parse(rest)?),
+        Some("release") => match rest {
+            [] => release::release(),
+            _ => Err("release takes no arguments".into()),
+        },
         Some("ffmpeg") => ffmpeg::build(rest),
         Some("glibc") => match rest {
             [elf] => elf::check_glibc(Path::new(elf)),
@@ -97,6 +106,8 @@ fn dispatch(args: &[String]) -> Result {
 pub struct Opts {
     pub release: bool,
     pub flavor: String,
+    /// Build only from Cargo.lock as committed (`release` sets it; there is no flag).
+    pub locked: bool,
 }
 
 impl Opts {
@@ -104,6 +115,7 @@ impl Opts {
         let mut opts = Opts {
             release: false,
             flavor: "stable".into(),
+            locked: false,
         };
         let mut it = args.iter();
         while let Some(a) = it.next() {
@@ -146,6 +158,7 @@ pub fn build(opts: &Opts) -> Result<PathBuf> {
             BIN,
         ])
         .args(["--target", TARGET, "--profile", opts.profile()])
+        .args(opts.locked.then_some("--locked"))
         .args(["--config", &remap_paths()]))?;
     let bin = target_dir().join(TARGET).join(opts.profile()).join(BIN);
     elf::check_glibc(&bin)?;
@@ -211,17 +224,37 @@ pub fn target_dir() -> PathBuf {
 
 /// Run a command to completion, failing on a non-zero exit.
 pub fn run(cmd: &mut Command) -> Result {
-    let shown = format!("{} {}", cmd.get_program().to_string_lossy(), {
-        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy()).collect();
-        args.join(" ")
-    });
-    eprintln!("+ {shown}");
+    let shown = shown(cmd);
     let status = cmd.status().map_err(|e| format!("{shown}: {e}"))?;
     if status.success() {
         Ok(())
     } else {
         Err(format!("{shown}: {status}"))
     }
+}
+
+/// `run`, returning the command's stdout; its stderr still goes to ours.
+pub fn output(cmd: &mut Command) -> Result<Vec<u8>> {
+    let shown = shown(cmd);
+    let out = cmd
+        .stderr(Stdio::inherit())
+        .output()
+        .map_err(|e| format!("{shown}: {e}"))?;
+    if out.status.success() {
+        Ok(out.stdout)
+    } else {
+        Err(format!("{shown}: {}", out.status))
+    }
+}
+
+/// Echo a command line before it runs; the returned copy labels its errors.
+fn shown(cmd: &Command) -> String {
+    let shown = format!("{} {}", cmd.get_program().to_string_lossy(), {
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy()).collect();
+        args.join(" ")
+    });
+    eprintln!("+ {shown}");
+    shown
 }
 
 pub fn sha256_file(path: &Path) -> Result<String> {

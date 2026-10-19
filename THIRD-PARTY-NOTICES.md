@@ -1,5 +1,8 @@
 # Third-party notices
 
+Paths are relative to the repository. The package installs this file, `NOTICE`, `LICENSE` and
+`licenses/` at the same paths in the app directory, and the files under `pkg/` at its top level.
+
 ## Code this project is derived from
 
 | Component | Source | Licence |
@@ -33,5 +36,14 @@ the boot shim in `crates/app`, and the SVG rasterizer is now resvg (`crates/gfx/
 
 ## Libraries shipped in the package
 
-The bundled FFmpeg build (LGPL-2.1-or-later, `licenses/LGPL-2.1.txt`) and the full list of Rust
-crate licences are added here when packaging lands.
+- **FFmpeg 9.0.2** (libavutil, libavcodec, libavformat, libswresample), Copyright (C) 2000-2026
+  the FFmpeg developers, LGPL-2.1-or-later (`licenses/LGPL-2.1.txt`), built without any GPL or
+  nonfree component from the unmodified upstream source. That source is attached to every release
+  as `ffmpeg-9.0.2.tar.xz`, and the complete configure line is in `licenses/ffmpeg.txt` inside the
+  package.
+- **Rust code**: the Rust standard library (MIT OR Apache-2.0, with Unicode-3.0 tables in `core`
+  and Apache-2.0 WITH LLVM-exception compiler-rt code in `compiler_builtins`) and every
+  third-party crate linked into the executable, each with its version, licence and repository,
+  followed by the full licence texts, are in `licenses/rust-crates.txt` inside the package and
+  attached to every release as `rust-crates.txt`. `cargo xtask package` generates it from the
+  toolchain and `Cargo.lock`.
