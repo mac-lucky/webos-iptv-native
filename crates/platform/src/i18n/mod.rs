@@ -13,7 +13,7 @@ pub enum Preference {
     En,
     Pl,
 }
-/// Every language the app ships, `System` excluded — the grid a text-fit test sums over.
+/// Every language the app ships, `System` excluded - the grid a text-fit test sums over.
 #[cfg(any(test, feature = "test-support"))]
 pub const SHIPPED: [Preference; 2] = [Preference::En, Preference::Pl];
 impl<'de> Deserialize<'de> for Preference {
@@ -212,7 +212,7 @@ pub fn normalize(s: &str) -> Option<String> {
     (l.id.language.as_str() != "und").then(|| l.to_string())
 }
 /// `webOS 4.10.2`, or the UI language's "webOS unknown" read-out when the firmware file could not
-/// be read — the release is the one field a stranger's report needs, and "unknown" is the honest
+/// be read - the release is the one field a stranger's report needs, and "unknown" is the honest
 /// reading of an empty one rather than a plausible default. Shared by the support lines of the
 /// failure read-out and of the sign-in report.
 pub fn webos_release_line(info: &crate::tv::device::Info) -> String {
@@ -258,7 +258,7 @@ thread_local! {
 
 /// Resolve every catalog accessor on THIS test thread in the expanded pseudo-locale until the
 /// guard drops. Tests run in parallel, so the process-wide [`current`] must stay English for every
-/// other test; a thread-local override is what lets one test draw a whole screen in `[!! … !!]`.
+/// other test; a thread-local override is what lets one test draw a whole screen in `[!! ... !!]`.
 #[cfg(any(test, feature = "test-support"))]
 pub fn pseudo_on_this_thread_for_test() -> ThreadLocaleGuard {
     static PSEUDO: OnceLock<LocaleContext> = OnceLock::new();
@@ -267,7 +267,7 @@ pub fn pseudo_on_this_thread_for_test() -> ThreadLocaleGuard {
 }
 
 /// Resolve every catalog accessor on THIS test thread in one shipped UI language until the guard
-/// drops — the pseudo-locale's thread-local door, for tests that measure real translations.
+/// drops - the pseudo-locale's thread-local door, for tests that measure real translations.
 #[cfg(any(test, feature = "test-support"))]
 pub fn language_on_this_thread_for_test(preference: Preference) -> ThreadLocaleGuard {
     static EN: OnceLock<LocaleContext> = OnceLock::new();

@@ -1,13 +1,13 @@
-//! Rust replacement for src/img.c — image decode + GL upload, same C ABI (img.h).
+//! Rust replacement for src/img.c - image decode + GL upload, same C ABI (img.h).
 //! Runs on the poster worker threads (decode) + the GL/main thread (upload).
 //!
-//! **What the panic guard actually covers.** The `catch_unwind` below turns a decoder *panic* — a
+//! **What the panic guard actually covers.** The `catch_unwind` below turns a decoder *panic* - a
 //! bounds or arithmetic failure inside the pure-Rust JPEG/PNG decoders on a truncated or malformed
-//! file — into a NULL return, so a bad poster is a missing tile instead of a dead app, and so no
+//! file - into a NULL return, so a bad poster is a missing tile instead of a dead app, and so no
 //! unwind reaches the C caller. It does **not** make decoding "never crash the app", which is what
 //! this doc used to claim flatly: Rust's allocation-failure path is `handle_alloc_error`, which
 //! **aborts** the process. An abort unwinds nothing, so it sails straight past every `catch_unwind`
-//! in the tree — and an unbounded decode on a device whose manifest declares `requiredMemory: 160`
+//! in the tree - and an unbounded decode on a device whose manifest declares `requiredMemory: 160`
 //! is exactly how you reach one. Bounding the allocation is therefore a separate, explicit job that
 //! the guard cannot do for us; see [`decode_limits`].
 use std::os::raw::{c_int, c_uchar, c_uint, c_void};
@@ -22,7 +22,7 @@ extern "C" {
 use tv_base::eventlog::log;
 
 /// The decode budget, sized for THIS device. `image`'s defaults are not one: `max_image_width` and
-/// `max_image_height` default to `None` — no dimension cap at all — and `max_alloc` to **512 MiB**,
+/// `max_image_height` default to `None` - no dimension cap at all - and `max_alloc` to **512 MiB**,
 /// which a 32-bit ARM TV declaring `requiredMemory: 160` in `pkg/appinfo.json` cannot honour and
 /// would abort trying to (see the module doc on why the `catch_unwind` cannot save us there).
 ///
@@ -37,19 +37,19 @@ use tv_base::eventlog::log;
 /// | `appkit/info_panel.rs` episode still | 480×270 |
 /// | `ui/widgets.rs` catalog poster | 250×375 |
 ///
-/// — plus the plex.tv sign-in QR PNG, a few hundred pixels square. 1920×1080 is thus the largest
+/// - plus the plex.tv sign-in QR PNG, a few hundred pixels square. 1920×1080 is thus the largest
 /// thing we ever ASK for, but the cap cannot be set there: `minSize=1` means *cover*, not *fit*, so
 /// the server scales until the box is filled and an extreme source aspect comes back longer on its
 /// long edge (a 2.4:1 backdrop into a 16:9 box → ~2592×1080; a 2:3 poster into it → 1920×2880).
 /// **4096 on each axis** is over twice the requested box, so no legitimate cover-scaled result can
 /// trip it, while the classic decompression bomb (a PNG header declaring 64000×64000) is rejected
-/// from its HEADER — before a single pixel buffer is allocated, which is the whole point of a
+/// from its HEADER - before a single pixel buffer is allocated, which is the whole point of a
 /// strict dimension limit over a byte budget alone.
 ///
 /// **32 MiB** is the byte budget and the tighter of the two gates (4096² would need ~50 MiB even at
 /// 3 bytes/px, so a bomb that squeaks under the dimension caps still dies here). It sits against a
 /// largest-legitimate decode of ~21 MiB (1920×2880 RGBA, the cover-scaled poster case) and ~6 MiB
-/// for the common 1920×1080 RGB JPEG. Note it bounds the DECODER's allocations only — the
+/// for the common 1920×1080 RGB JPEG. Note it bounds the DECODER's allocations only - the
 /// `to_rgba8()` conversion and the `malloc`'d copy handed back to the caller are ours and sit
 /// outside it, which is a second reason to keep this well under the device's headroom, not at it.
 fn decode_limits() -> image::Limits {
@@ -69,7 +69,7 @@ fn decode_limits() -> image::Limits {
 }
 
 /// Decode compressed bytes into an OWNED RGBA buffer under the same limits, panic guard and
-/// failure lines as [`img_decode_rgba`] — for a worker that composes pixels itself (the collection
+/// failure lines as [`img_decode_rgba`] - for a worker that composes pixels itself (the collection
 /// fan baker) rather than handing a `malloc`'d buffer across the store.
 pub fn img_decode_owned(data: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     if data.is_empty() {
@@ -77,7 +77,7 @@ pub fn img_decode_owned(data: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     }
     let len = data.len();
     // decode inside catch_unwind so a decoder panic can't unwind into C. `ImageReader` rather than
-    // the `load_from_memory` one-liner purely so the limits above can be attached — that helper
+    // the `load_from_memory` one-liner purely so the limits above can be attached - that helper
     // hard-codes `Limits::default()` internally, with no way to pass any.
     //
     // The failure now carries its REASON, which it did not have to before: with limits in force,
@@ -106,7 +106,7 @@ pub fn img_decode_owned(data: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     }
 }
 
-/// The first six bytes as hex, for a failure line only — never built on the success path.
+/// The first six bytes as hex, for a failure line only - never built on the success path.
 fn magic(data: &[u8]) -> String {
     data.iter().take(6).map(|b| format!("{b:02x}")).collect()
 }
@@ -118,7 +118,7 @@ fn magic(data: &[u8]) -> String {
 /// The exit that is not the decoder's: the picture decoded, and it is the copy out into the
 /// `malloc`'d buffer the caller owns that came back null. The SIZE is the field worth having.
 /// `decode_limits` names this very allocation as one of the two that sit OUTSIDE the budget it
-/// sets, and puts the largest legitimate decode at ~21 MiB (1920×2880 RGBA) — on a set whose
+/// sets, and puts the largest legitimate decode at ~21 MiB (1920×2880 RGBA) - on a set whose
 /// `pkg/appinfo.json` declares `requiredMemory: 160`. So the byte count answers the first question
 /// a reader has: one outsized request, or a heap already full. Same `img:` prefix as the decoder's
 /// two failures, so one `img:` grep finds this line and those.
@@ -131,10 +131,10 @@ pub fn img_malloc_copy(rgba: &[u8], detail: impl FnOnce() -> String) -> *mut c_u
     if px.is_null() {
         // MARKER FIRST, and it takes no allocation: `log` borrows a `&str`, so a literal reaches
         // the file with nothing asked of the heap. The detailed line below goes through `format!`,
-        // which allocates — from the same heap that just refused `n` bytes. For the common failure
+        // which allocates - from the same heap that just refused `n` bytes. For the common failure
         // (one outsized request against a heap with room for small ones) that is fine and the
-        // second line lands. For the failure a reader most wants explained — a heap actually
-        // exhausted — Rust's allocation-error handler ABORTS, so the detailed line would take the
+        // second line lands. For the failure a reader most wants explained - a heap actually
+        // exhausted - Rust's allocation-error handler ABORTS, so the detailed line would take the
         // process down in place of the diagnosis it was added to give. Ordered this way, the marker
         // survives either outcome, and a marker with no detail after it IS the second diagnosis.
         log("img: malloc-none");

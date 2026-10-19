@@ -8,7 +8,7 @@ varying vec2 v_uv;
 #ifdef WI_DITHER_NC
 // The dither tile's coordinate (`shaders/dither.glsl`, cost rule 4): target px / NOISE_DIM, linear
 // in position, so interpolated exactly and never computed per fragment. Only the programs whose
-// vertex source is built with `gfx::glsl_vs_dithered!` carry it — `fs_field.frag`, here.
+// vertex source is built with `gfx::glsl_vs_dithered!` carry it - `fs_field.frag`, here.
 varying highp vec2 v_dither_nc;
 #endif
 void main(){

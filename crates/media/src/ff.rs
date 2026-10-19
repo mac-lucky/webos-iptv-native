@@ -1,7 +1,7 @@
 //! FFmpeg FFI (libavformat / libavcodec / libavutil). The TV ships FFmpeg n3.3
 //! (SONAMEs libavformat.so.57 / libavcodec.so.57 / libavutil.so.55 = 57.71.100 /
 //! 57.89.100 / 55.58.100); we link stub `.so`s carrying those SONAMEs and the device
-//! loads the real libraries at runtime — the same stub trick as SDL/GLES/Starfish.
+//! loads the real libraries at runtime - the same stub trick as SDL/GLES/Starfish.
 //!
 //! This module is THE media demuxer: robust MKV/MP4/TS demux, HTTP input, and
 //! index-based seeking (av_seek_frame). Design record: docs/ffmpeg-demuxer-plan.md.
@@ -27,13 +27,13 @@ use std::sync::Once;
 static FEED_AUDIO: AtomicBool = AtomicBool::new(true);
 /// Does the FFmpeg on this device have the ABI these offsets were written for? Set once by
 /// [`boot`]; read by [`demux`]. Starts FALSE so the gate is closed until boot has actually looked
-/// — a demux that somehow ran first should refuse, not assume.
+/// - a demux that somehow ran first should refuse, not assume.
 static ABI_OK: AtomicBool = AtomicBool::new(false);
 /// Did this demux session hand a single video AU to a lane? Cleared by `demux` on entry.
 ///
 /// The tail uses it to tell "ended cleanly" from "ended having produced nothing", which EOF alone
-/// cannot express — and which is the difference between a real end-of-file and the player sitting
-/// on "Buffering…" forever with no error.
+/// cannot express - and which is the difference between a real end-of-file and the player sitting
+/// on "Buffering..." forever with no error.
 static PUSHED_ANY: AtomicBool = AtomicBool::new(false);
 /// Did libswscale load? It is the one FFmpeg library that is NOT required: `RELEASE=1` leaves it
 /// out of the package because only the dev capture stream's RGBA->YUV conversion uses it. `venc`
@@ -73,8 +73,8 @@ pub enum AVStream {}
 // `ci/ffabi-assert.c` holds every number here against the very headers the shipped libraries
 // were built from.
 //
-// That is the point of bundling. An offset that is merely *probably* right — derived from a
-// version string plus an upstream tarball — becomes one the compiler checked.
+// That is the point of bundling. An offset that is merely *probably* right - derived from a
+// version string plus an upstream tarball - becomes one the compiler checked.
 //
 // `ci/ffabi-check.sh dump` re-derives all of them if the bundled version ever changes.
 //
@@ -84,10 +84,10 @@ pub enum AVStream {}
 // Every difference below is a pointer that got wider or an int64 that moved to keep its
 // alignment; nothing here is a version difference, which is exactly why the old runtime
 // major-selected table does not come back. `ci/ffabi-assert.c` holds both, `#if`-ed the same way,
-// against each build's own headers — so a wrong number is a compile error on the platform it is
+// against each build's own headers - so a wrong number is a compile error on the platform it is
 // wrong for, and `ci/ffabi-check.sh dump --host` prints the 64-bit half (`--arm-eabi` the 32-bit one without an NDK).
 #[cfg(target_pointer_width = "32")]
-const OFF_STREAM_INDEX: usize = 4; // NB not 0 — FFmpeg 5.0 put `const AVClass *av_class` first
+const OFF_STREAM_INDEX: usize = 4; // NB not 0 - FFmpeg 5.0 put `const AVClass *av_class` first
 #[cfg(target_pointer_width = "32")]
 const OFF_STREAM_CODECPAR: usize = 12;
 #[cfg(target_pointer_width = "32")]
@@ -98,7 +98,7 @@ const OFF_STREAM_INDEX: usize = 8;
 const OFF_STREAM_CODECPAR: usize = 16;
 #[cfg(target_pointer_width = "64")]
 const OFF_STREAM_TIME_BASE: usize = 32;
-/// `AVStream.metadata` — the container's own per-track tags, which is where a track's NAME lives.
+/// `AVStream.metadata` - the container's own per-track tags, which is where a track's NAME lives.
 ///
 /// It is read for one reason and it is a data reason, not a rendering one: **a stream's track
 /// names exist only in the file.** An addon describes a stream, not its tracks, so the track menu
@@ -110,7 +110,7 @@ const OFF_STREAM_TIME_BASE: usize = 32;
 const OFF_STREAM_METADATA: usize = 72;
 #[cfg(target_pointer_width = "64")]
 const OFF_STREAM_METADATA: usize = 80;
-/// `AVStream.disposition` (`AV_DISPOSITION_*` flags), `avg_frame_rate` and `r_frame_rate` — read
+/// `AVStream.disposition` (`AV_DISPOSITION_*` flags), `avg_frame_rate` and `r_frame_rate` - read
 /// by the probe (ff_probe.rs) for the default audio track and the declared frame rate. Proven on
 /// both widths in `ci/ffabi-assert.c`; the ARM numbers are not the host ones less the pointer
 /// growth because the int64 `start_time` after `time_base` is 8-aligned on ARM EABI.
@@ -151,7 +151,7 @@ const OFF_STREAM_AVG_FRAME_RATE: usize = 88;
 const OFF_STREAM_R_FRAME_RATE: usize = 172;
 #[cfg(target_pointer_width = "64")]
 const OFF_STREAM_R_FRAME_RATE: usize = 204;
-/// `AVFormatContext.duration`, in AV_TIME_BASE units. By offset — see the struct's closing note.
+/// `AVFormatContext.duration`, in AV_TIME_BASE units. By offset - see the struct's closing note.
 #[cfg(target_pointer_width = "32")]
 const OFF_FMT_DURATION: usize = 64;
 #[cfg(target_pointer_width = "64")]
@@ -169,7 +169,7 @@ const OFF_FMT_CHAPTERS: usize = 44;
 const OFF_FMT_CHAPTERS: usize = 80;
 
 /// `AVChapter` (avformat.h): plain public fields, the same layout on both widths (`metadata` at
-/// +32, sizeof 40 — the trailing pointer is padded to the int64 alignment on ARM EABI).
+/// +32, sizeof 40 - the trailing pointer is padded to the int64 alignment on ARM EABI).
 /// `ci/ffabi-assert.c` pins every field.
 #[repr(C)]
 pub struct AVChapter {
@@ -217,7 +217,7 @@ unsafe fn read_chapters(fmt: *mut AVFormatContext) -> Vec<crate::player::Chapter
     out
 }
 
-/// `AVDictionaryEntry` — two `char *`. Modelled rather than opaque because the whole point of the
+/// `AVDictionaryEntry` - two `char *`. Modelled rather than opaque because the whole point of the
 /// call is to read both halves; `ci/ffabi-assert.c` holds the layout.
 #[repr(C)]
 pub struct AVDictionaryEntry {
@@ -264,20 +264,20 @@ pub struct AVPacket {
     pub pos: i64,                         // +56
     // The tail changed at FFmpeg 5.0: `convergence_duration` went with
     // FF_API_CONVERGENCE_DURATION, and these three arrived. sizeof 72 -> 80. The app never
-    // allocates an AVPacket (av_packet_alloc does), so only the offsets above matter — but the
+    // allocates an AVPacket (av_packet_alloc does), so only the offsets above matter - but the
     // size is asserted anyway, because a short model here would be a silent overread.
     pub opaque: *mut c_void,          // +64
     pub opaque_ref: *mut AVBufferRef, // +68
     pub time_base: AVRational,        // +72
 }
 
-/// `AVPacketSideData` — one entry of `AVCodecParameters::coded_side_data`. It was an opaque
+/// `AVPacketSideData` - one entry of `AVCodecParameters::coded_side_data`. It was an opaque
 /// `enum` here for as long as nothing read it; the Dolby Vision configuration record is the first
 /// thing that does.
 ///
 /// sizeof = 12 on 32-bit ARM, proven with `ci/ffabi-assert.c`. `size` is a `size_t`, so `usize`
 /// is the field's type on both the target and the host rather than a number that happens to match
-/// — the one place in this table where the Rust type carries the ABI instead of a comment.
+/// - the one place in this table where the Rust type carries the ABI instead of a comment.
 #[repr(C)]
 pub struct AVPacketSideData {
     pub data: *mut u8, // +0
@@ -286,16 +286,16 @@ pub struct AVPacketSideData {
 }
 
 /// `AVDOVIDecoderConfigurationRecord` (libavutil/dovi_meta.h), the payload of an
-/// `AV_PKT_DATA_DOVI_CONF` side-data entry — what the mp4 `dvcC`/`dvvC` box and the Matroska
+/// `AV_PKT_DATA_DOVI_CONF` side-data entry - what the mp4 `dvcC`/`dvvC` box and the Matroska
 /// `DolbyVisionConfiguration` block carry, handed over by BOTH bundled demuxers.
 ///
 /// **Nine plain `uint8_t`, so this is the rare zero-risk read in this file**: no integers wider
 /// than a byte, no pointers, nothing to align and nothing to pad, on any target. Field order and
 /// count verified against the vendored FFmpeg 9.0 header, and each offset proven for 32-bit ARM
-/// in `ci/ffabi-assert.c` — which is cheap insurance rather than doubt, since the assertions cost
+/// in `ci/ffabi-assert.c` - which is cheap insurance rather than doubt, since the assertions cost
 /// nothing and the struct is public ABI that could gain a field at any major.
 ///
-/// The upstream spelling is `AVDOVI…`, not `AVDovi…`, and the difference matters only to anyone
+/// The upstream spelling is `AVDOVI...`, not `AVDovi...`, and the difference matters only to anyone
 /// grepping the header for it.
 #[repr(C)]
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
@@ -340,7 +340,7 @@ pub struct AVCodecParameters {
     pub video_delay: c_int,                     // +104
     // FFmpeg 7 DELETED the deprecated `channel_layout`/`channels` pair that lived here and left
     // only this struct. `nb_channels` is the replacement for the `channels` int, and reading the
-    // old field is not a compile error on a hand-written model — it is a silent read of whatever
+    // old field is not a compile error on a hand-written model - it is a silent read of whatever
     // now occupies +104. Which is the argument for shipping a known FFmpeg in one sentence.
     pub ch_layout: AVChannelLayout, // +112
     pub sample_rate: c_int,         // +136
@@ -364,7 +364,7 @@ pub struct AVChannelLayout {
 }
 
 // The #[repr(C)] models above, held to the numbers `ci/ffabi-assert.c` proves against the bundled
-// headers. The C file proves FFmpeg's layout; these prove OURS is the same one — a model field of
+// headers. The C file proves FFmpeg's layout; these prove OURS is the same one - a model field of
 // the wrong type or in the wrong place is then a compile error on the width it is wrong for, not a
 // write into the next field. Only the fields the probe and the demuxer read are listed.
 const _: () = {
@@ -409,12 +409,12 @@ const _: () = {
     assert!(offset_of!(AVPacket, size) == 32);
 };
 
-// AVFormatContext truncated after `filename` — we only ever hold a library-returned pointer and
+// AVFormatContext truncated after `filename` - we only ever hold a library-returned pointer and
 // read leading fields. NEVER stack-allocate this.
 //
 // It STOPS at `filename` because that is where the two majors stop agreeing: FFmpeg 4.0 inserted
 // `char *url` at +1056, pushing start_time to +1064 and duration to +1072. Everything above is
-// identical on 3.3 and 4.x. `duration` — the only field past that point this app reads — is
+// identical on 3.3 and 4.x. `duration` - the only field past that point this app reads - is
 // reached through [`fmt_duration`] at the offset the runtime ABI table gives, rather than by
 // declaring it here at an offset that is right on exactly one of the two.
 #[repr(C)]
@@ -427,7 +427,7 @@ pub struct AVFormatContext {
     pub ctx_flags: c_int,            // +20
     pub nb_streams: c_uint,          // +24
     pub streams: *mut *mut AVStream, // +28
-                                     // STOPS HERE. Everything past `streams` shifts between majors — `duration` is at +48 on
+                                     // STOPS HERE. Everything past `streams` shifts between majors - `duration` is at +48 on
                                      // FFmpeg 6, +64 on 9, and +1064 on the n3.3 the televisions ship, because 5.0 deleted
                                      // `filename[1024]` and later releases kept rearranging what replaced it. It is the only field
                                      // beyond this point the app reads, so it is read at OFF_FMT_DURATION rather than declared at
@@ -435,7 +435,7 @@ pub struct AVFormatContext {
 }
 
 // AVBSFContext is NOT modelled. The app does its own AVCC->Annex-B conversion in Rust, so the
-// bitstream-filter API is never driven — only `av_bsf_get_by_name` survives, and only to log
+// bitstream-filter API is never driven - only `av_bsf_get_by_name` survives, and only to log
 // whether the filters exist. Keeping a #[repr(C)] mirror of a struct nothing reads meant
 // re-deriving its offsets at every FFmpeg bump to prove a fact that did not matter.
 
@@ -443,12 +443,12 @@ pub struct AVFormatContext {
 //
 // These were four `#[link]` directives, which put `libavformat.so.57` and its three siblings in
 // DT_NEEDED. That is fatal on any firmware that moved the major: webOS 5.3.1 ships 58/58/56/5,
-// 10.2.0 ships 59/59/57/6, 11.2.0 ships 60/60/58/7 — and a missing DT_NEEDED kills the process at
+// 10.2.0 ships 59/59/57/6, 11.2.0 ships 60/60/58/7 - and a missing DT_NEEDED kills the process at
 // exec(), before main, before this log file is even open. DT_NEEDED also cannot say "57 OR 58", so
 // one binary spanning both eras has to do the resolution itself.
 //
 // The candidate lists reach past the majors this table describes ON PURPOSE. Opening a
-// libavformat 59 does not make the offsets below correct — `boot()` still refuses it — but the
+// libavformat 59 does not make the offsets below correct - `boot()` still refuses it - but the
 // difference between refusing and never starting is the difference between a UI that browses your
 // library and says it cannot play, and a television where nothing happens at all.
 //
@@ -458,7 +458,7 @@ pub struct AVFormatContext {
 tv_base::dynlib! {
     avformat: [
         // The ELF the app SHIPS, and the Mach-O the desktop simulator builds beside it
-        // (`HOST=1 ci/build-ffmpeg.sh` — same version, same component list). A candidate
+        // (`HOST=1 ci/build-ffmpeg.sh` - same version, same component list). A candidate
         // LIST rather than a `cfg`: `dynlib!` already tries each name and reports the ones
         // it could not open, and only one of these two can ever exist in an app directory.
         "libavformat-wi.so.63",
@@ -467,7 +467,7 @@ tv_base::dynlib! {
     // Declared beside libavformat's other entry points because that is the library that DEFINES
     // it. Under `#[link]` the final link resolved every name against every library at once and
     // the grouping was cosmetic; `dlsym` searches one handle and its dependency chain, and
-    // libavutil does not depend on libavformat — so leaving this in the avutil block reported the
+    // libavutil does not depend on libavformat - so leaving this in the avutil block reported the
     // whole avutil table as Incomplete on every device, including working ones.
     fn avformat_version() -> c_uint;
     fn avformat_network_init() -> c_int;
@@ -515,7 +515,7 @@ tv_base::dynlib! {
 tv_base::dynlib! {
     avcodec: [
         // The ELF the app SHIPS, and the Mach-O the desktop simulator builds beside it
-        // (`HOST=1 ci/build-ffmpeg.sh` — same version, same component list). A candidate
+        // (`HOST=1 ci/build-ffmpeg.sh` - same version, same component list). A candidate
         // LIST rather than a `cfg`: `dynlib!` already tries each name and reports the ones
         // it could not open, and only one of these two can ever exist in an app directory.
         "libavcodec-wi.so.63",
@@ -542,12 +542,12 @@ tv_base::dynlib! {
     fn av_packet_rescale_ts(pkt: *mut AVPacket, tb_src: AVRational, tb_dst: AVRational);
 }}
 tv_base::dynlib! {
-    // avformat_version lives in libavformat, not libavutil — but it was declared here and the
+    // avformat_version lives in libavformat, not libavutil - but it was declared here and the
     // loader resolves by symbol, not by header, so it must move to the library that defines it or
     // the whole avutil table reports Incomplete on every device.
     avutil: [
         // The ELF the app SHIPS, and the Mach-O the desktop simulator builds beside it
-        // (`HOST=1 ci/build-ffmpeg.sh` — same version, same component list). A candidate
+        // (`HOST=1 ci/build-ffmpeg.sh` - same version, same component list). A candidate
         // LIST rather than a `cfg`: `dynlib!` already tries each name and reports the ones
         // it could not open, and only one of these two can ever exist in an app directory.
         "libavutil-wi.so.61",
@@ -567,7 +567,7 @@ tv_base::dynlib! {
     // An integer option by name (the HLS probe budget, `cap_hls_probe`).
     fn av_opt_set_int(obj: *mut c_void, name: *const c_char, val: i64, search_flags: c_int) -> c_int;
     // Container tags. Borrowed, never freed: the entry belongs to the dictionary, which belongs to
-    // the AVStream, which `avformat_close_input` frees — so every read must copy before the close.
+    // the AVStream, which `avformat_close_input` frees - so every read must copy before the close.
     fn av_dict_get(
         m: *const AVDictionary,
         key: *const c_char,
@@ -584,7 +584,7 @@ tv_base::dynlib! {
 tv_base::dynlib! {
     swscale: [
         // The ELF the app SHIPS, and the Mach-O the desktop simulator builds beside it
-        // (`HOST=1 ci/build-ffmpeg.sh` — same version, same component list). A candidate
+        // (`HOST=1 ci/build-ffmpeg.sh` - same version, same component list). A candidate
         // LIST rather than a `cfg`: `dynlib!` already tries each name and reports the ones
         // it could not open, and only one of these two can ever exist in an app directory.
         "libswscale-wi.so.10",
@@ -613,11 +613,11 @@ pub const AVMEDIA_TYPE_AUDIO: c_int = 1;
 // with the av1 parser absent the packets arrive raw. `av1_packet_to_tu` frames the OBUs itself.
 // Enabling the parser would pull in cbs_av1 for nothing.
 pub const AV_CODEC_ID_AAC: c_int = 0x15002;
-/// `AV_DISPOSITION_DEFAULT` — the muxer's default track. Asserted in ci/ffabi-assert.c.
+/// `AV_DISPOSITION_DEFAULT` - the muxer's default track. Asserted in ci/ffabi-assert.c.
 pub const AV_DISPOSITION_DEFAULT: c_int = 1;
 /// `AV_DISPOSITION_FORCED` - a track the muxer flags forced. Asserted in ci/ffabi-assert.c.
 pub const AV_DISPOSITION_FORCED: c_int = 1 << 6;
-/// `AV_PROFILE_EAC3_DDP_ATMOS` (libavcodec/defs.h) — what `codecpar.profile` reads for E-AC3 JOC.
+/// `AV_PROFILE_EAC3_DDP_ATMOS` (libavcodec/defs.h) - what `codecpar.profile` reads for E-AC3 JOC.
 pub const AV_PROFILE_EAC3_DDP_ATMOS: c_int = 30;
 pub const AV_CODEC_ID_H264: c_int = 27;
 // FF_API_XVMC and FF_API_VOXWARE both died before FFmpeg 6, which is why these differ from the
@@ -650,7 +650,7 @@ pub const NS_TB: AVRational = AVRational {
     num: 1,
     den: 1_000_000_000,
 };
-/// `AV_PKT_DATA_DOVI_CONF` — the side-data type tag whose payload is an
+/// `AV_PKT_DATA_DOVI_CONF` - the side-data type tag whose payload is an
 /// [`AVDOVIDecoderConfigurationRecord`]. 29 in FFmpeg 9.0; asserted in `ci/ffabi-assert.c`
 /// because `AVPacketSideDataType` is an ordinary sequential enum and every value in it shifts
 /// when a member is inserted above.
@@ -676,14 +676,14 @@ unsafe fn stream_time_base(s: *mut AVStream) -> AVRational {
 
 /// PURE: read an [`AVDOVIDecoderConfigurationRecord`] out of the raw side-data bytes.
 ///
-/// Split from the pointer walk in [`dovi_conf`] on purpose — this half is the only half worth
+/// Split from the pointer walk in [`dovi_conf`] on purpose - this half is the only half worth
 /// testing, and it is testable precisely because it never touches FFmpeg. (A test that had to
 /// enter the library would take `dlopen`'s `None` branch on Darwin and pass without executing
 /// anything, which is the failure shape `docs/agent-reference.md` warns about by name.)
 ///
 /// A SHORT buffer yields `None` rather than a partial record. FFmpeg allocates these with
 /// `av_dovi_alloc` and its own demuxers always write all nine bytes, so this cannot happen today
-/// — but the record is public ABI whose size "is not a part of the public ABI" by its own header's
+/// - but the record is public ABI whose size "is not a part of the public ABI" by its own header's
 /// admission, and reading nine bytes out of a seven-byte allocation is a heap overread that would
 /// report a plausible profile number rather than crash. A longer buffer is fine and expected: a
 /// future FFmpeg may append fields, and the nine we read keep their meaning.
@@ -755,12 +755,12 @@ unsafe fn container_hdr(cp: *const AVCodecParameters) -> crate::player::vp9_hdr:
     }
     h
 }
-/// The container's own name for this track — `title` (Matroska and most formats), else `name`
+/// The container's own name for this track - `title` (Matroska and most formats), else `name`
 /// (MP4's per-track `udta` name box, which is what FFmpeg's mov demuxer exposes it as).
 ///
 /// Deliberately NOT `handler_name`: MP4 sets it to a constant per media type (`"SubtitleHandler"`,
 /// `"SoundHandler"`), so it is the same string on every track and reading it would give the picker
-/// nine identical sub-lines instead of none — the failure it exists to fix, dressed as a fix.
+/// nine identical sub-lines instead of none - the failure it exists to fix, dressed as a fix.
 ///
 /// The returned `String` is a COPY. The entry points into the stream's dictionary, which
 /// `avformat_close_input` frees.
@@ -818,7 +818,7 @@ unsafe fn stream_index(s: *mut AVStream) -> c_int {
 
 /// The ffmpeg stream index of the first audio stream whose codec matches `want` (the Load
 /// payload's audio codec, e.g. "ac3"), or None. `av_find_best_stream` picks the "highest
-/// quality" audio (on an 8-track file it chose DTS over the AC3 default) — but the Load payload
+/// quality" audio (on an 8-track file it chose DTS over the AC3 default) - but the Load payload
 /// carries Media[0].audioCodec, so feeding a different-codec track leaves the audio ES
 /// unconfigured and, with audioSync, wedges the video (BufferFull forever). Matching the fed
 /// track to the payload codec avoids that.
@@ -863,29 +863,29 @@ unsafe fn nth_audio_stream(fmt: *mut AVFormatContext, n: i32) -> Option<c_int> {
 // mpeg1video (the TV build keeps this encoder) -> mpegts muxer -> custom AVIO
 // write callback -> the client socket, raw unframed TS (self-syncing 188B pkts).
 //
-// ABI strategy (workflow-verified 2026-07-24 against the DEVICE's own libs — the
+// ABI strategy (workflow-verified 2026-07-24 against the DEVICE's own libs - the
 // AVOption tables inside libavcodec.so.57.89.100 carry the true field offsets):
 // every numeric encoder knob goes through av_opt_set ("b"/"g"/"bf"/"maxrate"/
 // "bufsize"/"dct"/"time_base"), pix fmts come from av_get_pix_fmt() at runtime
-// (AV_PIX_FMT_RGBA is 28 in THIS build — an FF_API_XVMC alias shifts the enum;
+// (AV_PIX_FMT_RGBA is 28 in THIS build - an FF_API_XVMC alias shifts the enum;
 // never hardcode it), and only width/height/pix_fmt (AVCodecContext) and
 // data/linesize/width/height/format/pts (AVFrame) are raw offset pokes below.
 // After avcodec_open2, avcodec_parameters_from_context round-trips the values
-// through the already-modeled AVCodecParameters as a runtime ABI self-check —
+// through the already-modeled AVCodecParameters as a runtime ABI self-check -
 // a mismatch latches the whole mpeg path off instead of corrupting memory.
 // mpeg1video only accepts the fixed MPEG1 frame-rate table: time_base stays
 // {1,30} regardless of the actual (jittery, <=30fps) capture cadence; jsmpeg in
 // streaming mode ignores timestamps and decodes as data arrives.
 
 // AVCodecContext width/height/pix_fmt USED to be poked here at 124/128/144, under a note claiming
-// they had no AVOption. That was wrong — `video_size` (an IMAGE_SIZE option writing width AND
-// height) and `pixel_format` are both in libavcodec's own option table — and Venc::open sets them
+// they had no AVOption. That was wrong - `video_size` (an IMAGE_SIZE option writing width AND
+// height) and `pixel_format` are both in libavcodec's own option table - and Venc::open sets them
 // by name now, so the constants are gone with the last read of them. Which is the point: all three
 // move on webOS 5 (to 92/96/112), and a by-name setter does not care. `ci/ffabi-assert.c` still
 // asserts them per major, so if anyone ever needs to poke them again the proven numbers are there.
 // AVFrame (avutil 55, 32-bit ARM). pts sits at +104: a 4-byte pad at +100
 // 8-aligns the int64 on ARM EABI (the classic AVFrame-on-ARM quirk).
-const OFF_FRAME_DATA: usize = 0; // u8*[8] — the only one that does not move
+const OFF_FRAME_DATA: usize = 0; // u8*[8] - the only one that does not move
 #[cfg(target_pointer_width = "32")]
 const OFF_FRAME_LINESIZE: usize = 32; // c_int[8]
 #[cfg(target_pointer_width = "32")]
@@ -897,7 +897,7 @@ const OFF_FRAME_FORMAT: usize = 80;
 #[cfg(target_pointer_width = "32")]
 const OFF_FRAME_PTS: usize = 96;
 // 64-bit: `data` is eight POINTERS rather than eight 32-bit ones, so `linesize` doubles and
-// everything after it follows. `pts` needs no pad here — it is already 8-aligned — which is the
+// everything after it follows. `pts` needs no pad here - it is already 8-aligned - which is the
 // ARM EABI quirk described above seen from the side where it does not bite.
 #[cfg(target_pointer_width = "64")]
 const OFF_FRAME_LINESIZE: usize = 64;
@@ -962,11 +962,11 @@ pub struct Venc {
     pts: i64,
     pub w: c_int,
     pub h: c_int,
-    // RGBA -> YUV420P directly runs swscale's GENERAL scaler — scalar C on this ARM
+    // RGBA -> YUV420P directly runs swscale's GENERAL scaler - scalar C on this ARM
     // build, measured ~80ms/frame at 960x540. RGBA -> NV12 has a NEON unscaled
     // converter (rgbx_to_nv12_neon), so we go RGBA -NEON-> NV12 (Y lands straight in
     // the frame's Y plane, interleaved UV in this scratch) and deinterleave UV into
-    // the planar U/V planes ourselves (~260KB pass) — mpeg1video only eats yuv420p.
+    // the planar U/V planes ourselves (~260KB pass) - mpeg1video only eats yuv420p.
     nv12_uv: Vec<u8>,
     // rolling perf split, logged every ~5s: is the cost sws (colorspace) or the codec?
     t_sws_us: u64,
@@ -981,7 +981,7 @@ impl Venc {
     /// Bring up encoder + muxer for one client session. Any failure logs and
     /// returns None (capture latches the mpeg path off for that client).
     /// `w`/`h` follow whatever the shared GL capture chain is producing (960x540 or
-    /// 480x270) — the encoder is NOT pinned to one size. Cost scales with macroblock
+    /// 480x270) - the encoder is NOT pinned to one size. Cost scales with macroblock
     /// count and MPEG1 has no intra prediction, so a detailed screen at 960x540 can cost
     /// 50-110ms/frame on this CPU where 480x270 stays near 15-25ms; the caller rebuilds
     /// the session when the geometry changes.
@@ -1056,7 +1056,7 @@ impl Venc {
             };
             // width/height/pix_fmt BY NAME, not by poking OFF_CTX_*. `video_size` is an
             // IMAGE_SIZE option that writes width and height together, and both it and
-            // `pixel_format` live in libavcodec's own option table — confirmed against the
+            // `pixel_format` live in libavcodec's own option table - confirmed against the
             // device's binary AND present unchanged in 4.x, so unlike a byte offset these three
             // survive an FFmpeg major. The comment that used to justify the pokes claimed no
             // AVOption existed for them; it was simply wrong.
@@ -1079,7 +1079,7 @@ impl Venc {
             //
             // LIBRARY-ALLOCATED, never on the stack. `avcodec_parameters_from_context` begins by
             // memset-ing sizeof(AVCodecParameters) bytes, and that size is NOT stable across
-            // FFmpeg majors — 136 on the n3.3 the TVs shipped, 176 on the 6.1 this app now
+            // FFmpeg majors - 136 on the n3.3 the TVs shipped, 176 on the 6.1 this app now
             // bundles. A stack copy sized by our own model is therefore a stack smash the moment
             // the two disagree, and it would be one written by the very check meant to catch ABI
             // drift. Allocating through the library makes the size the library's problem forever;
@@ -1180,7 +1180,7 @@ impl Venc {
                 return None;
             }
             // write_header emits PAT/PMT (re-emitted every 40 TS pkts + each keyframe by
-            // default — do NOT set pat_period/sdt_period, that DISABLES the count-based
+            // default - do NOT set pat_period/sdt_period, that DISABLES the count-based
             // re-emit) and forces st->time_base to 1/90000; read it back for the rescale.
             // sink.fd is still -1 here: header bytes buffer in the 32KB AVIO buffer and
             // reach the socket with the first flushed frame.
@@ -1202,7 +1202,7 @@ impl Venc {
     }
 
     /// Encode one top-down RGBA frame and push the muxed TS to `fd`.
-    /// Returns false when the socket died (caller drops the client) — encoder
+    /// Returns false when the socket died (caller drops the client) - encoder
     /// errors also return false and the caller reinits on the next frame.
     /// `flip` = the capture buffer is bottom-up (the 2-pass 480x270 chain); sws_scale
     /// takes a NEGATIVE input stride for that, so there is no CPU flip pass.
@@ -1211,7 +1211,7 @@ impl Venc {
             debug_assert!(rgba.len() >= (self.w * self.h * 4) as usize);
             self.sink.fd = fd;
             self.sink.failed = false;
-            // the encoder keeps GOP reference frames refcounted on our frame's buffers —
+            // the encoder keeps GOP reference frames refcounted on our frame's buffers -
             // make_writable clones them out before we overwrite the pixels (skipping this
             // corrupts inter prediction, it does not crash).
             let t0 = std::time::Instant::now();
@@ -1334,7 +1334,7 @@ impl Drop for Venc {
 
 static REGISTER: Once = Once::new();
 /// One-time `avformat_network_init`. Was also the home of `av_register_all`, which FFmpeg 4.0
-/// made a no-op and 5.0 deleted — registration is automatic now, and the bundled build is 9.0.
+/// made a no-op and 5.0 deleted - registration is automatic now, and the bundled build is 9.0.
 fn ensure_registered() {
     REGISTER.call_once(|| unsafe {
         avformat_network_init();
@@ -1346,20 +1346,20 @@ fn ver(v: c_uint) -> String {
 }
 
 /// Resolve the four FFmpeg libraries by SONAME candidate list. `false` means this device has no
-/// FFmpeg we can use, and NOTHING in this module may be called — not even `avformat_version`.
+/// FFmpeg we can use, and NOTHING in this module may be called - not even `avformat_version`.
 ///
 /// Kept separate from the version check that follows it because the two failures are different
 /// facts about the television and deserve different log lines: "there is no libavformat here at
 /// all" versus "there is one and it is the wrong major".
 fn load_libraries() -> bool {
-    // The bundled FFmpeg lives beside the binary, which is on no library search path — so it is
+    // The bundled FFmpeg lives beside the binary, which is on no library search path - so it is
     // opened by ABSOLUTE PATH. That is not a convenience: webOS 11.2.0 ships FFmpeg 6 itself, and
     // a bare SONAME there could open the television's copy instead of ours.
     let dir = Some(tv_base::paths::app_dir());
 
     // DEPENDENCY ORDER, and it is load-bearing. libavformat NEEDs libavcodec NEEDs libavutil by
     // SONAME, and these libraries carry no rpath (FFmpeg's configure evals its flags, so
-    // -Wl,-rpath,$ORIGIN does not survive — see ci/build-ffmpeg.sh). Loading a dependency FIRST
+    // -Wl,-rpath,$ORIGIN does not survive - see ci/build-ffmpeg.sh). Loading a dependency FIRST
     // with RTLD_GLOBAL puts it in the global scope under its SONAME, so when the next library
     // names it the loader finds the one we just opened rather than searching the system paths and
     // finding the TV's. Open libavformat first and that guarantee is gone.
@@ -1392,7 +1392,7 @@ fn load_libraries() -> bool {
     // swscale is NOT required, and treating it as required broke the RELEASE build entirely:
     // `RELEASE=1` drops it from the package (only the dev capture stream's RGBA->YUV conversion
     // uses it), so an all-or-nothing loop over four libraries would have found three, reported
-    // failure, and refused to play anything — in the configuration users actually receive, and in
+    // failure, and refused to play anything - in the configuration users actually receive, and in
     // no configuration ever tested here.
     match swscale::load(dir) {
         tv_base::dynlib::Loaded::Ok(soname) => {
@@ -1414,7 +1414,7 @@ fn abi_ok() -> bool {
 }
 
 /// Did the CURRENT demux session hand over a single video AU? Distinguishes "the demuxer produced
-/// nothing" from "it produced AUs that never reached the decoder" — two stalls that present
+/// nothing" from "it produced AUs that never reached the decoder" - two stalls that present
 /// identically as a spinner. See [`PUSHED_ANY`].
 pub fn pushed_any() -> bool {
     PUSHED_ANY.load(std::sync::atomic::Ordering::Relaxed)
@@ -1444,7 +1444,7 @@ pub fn ready() -> bool {
 /// Boot smoke test + optional ABI probe. Called once at startup.
 pub fn boot() {
     // The https media transport's own table, resolved here so the `dlopen` and its log line land
-    // on the MAIN thread at start-up rather than inside a demux worker — and after `app.rs` has
+    // on the MAIN thread at start-up rather than inside a demux worker - and after `app.rs` has
     // run `net::global_init`, which is what makes `curl_global_init` main-thread-only as its doc
     // requires. Independent of FFmpeg: a set with no libcurl multi still demuxes local samples,
     // and a set with no FFmpeg still signs in.
@@ -1473,7 +1473,7 @@ pub fn boot() {
         // dereferences whatever it finds, on a device with no debugger.
         // The version we BUILT against, not a version we hope to find. These libraries ship
         // inside the package under a -wi SONAME, so a mismatch means the deployed payload is
-        // stale or someone put a different file there — not a firmware difference.
+        // stale or someone put a different file there - not a firmware difference.
         let bad = (fmt >> 16, cod >> 16, utl >> 16) != (63, 63, 61);
         ABI_OK.store(!bad, Ordering::Relaxed);
         if bad {
@@ -1498,7 +1498,7 @@ pub fn boot() {
     }
 }
 
-/// Open `url` via libavformat, find streams, and log codec_id/dims/time_base for each —
+/// Open `url` via libavformat, find streams, and log codec_id/dims/time_base for each -
 /// the on-device confirmation that the FFI struct layout is correct. Uses libavformat's
 /// own HTTP for the probe (the demuxer proper will use a custom AVIO over stream.rs), so that one
 /// request names libavformat (`Lavf/...`), not the installed `net::user_agent`: it is reachable only with
@@ -1563,7 +1563,7 @@ fn probe(url: &str) {
     }
 }
 
-// ==== the demuxer (Phases B–D) ===================================================
+// ==== the demuxer (Phases B - D) ===================================================
 
 // whence values for the AVIO seek callback
 const SEEK_SET: c_int = 0;
@@ -1578,21 +1578,21 @@ const AVSEEK_SIZE: c_int = 0x10000;
 /// through the socket, unless its open is redirected to https (`stream::redirect`), in which case
 /// the socket open hands over to curl. Never guessed per call.
 ///
-/// * [`Src::Socket`] is `stream.rs`'s raw TCP socket wrapping the ENGINE-owned `HttpStream` —
+/// * [`Src::Socket`] is `stream.rs`'s raw TCP socket wrapping the ENGINE-owned `HttpStream` -
 ///   cleartext, seeking by closing and re-opening with a byte `Range`.
 /// * [`Src::Curl`] is [`crate::curlio`], which the demux thread owns outright. `ff.rs` never
 ///   learns curl-multi mechanics: all it can ask is `read`/`seek`/`size`/`status`/`abort`,
 ///   deliberately the same five questions the socket answers.
 enum Src {
     Socket {
-        /// The Engine's stream — NOT owned here. `player::engine` allocates it, publishes it in
+        /// The Engine's stream - NOT owned here. `player::engine` allocates it, publishes it in
         /// `SHARED.hs_ptr`, `http_shutdown`s it at teardown and closes it after the join.
         hs: *mut HttpStream,
         host: CString,
         port: c_int,
         path: CString,
     },
-    /// Owned by this state, and so by the demux thread — which is why teardown reaches it through
+    /// Owned by this state, and so by the demux thread - which is why teardown reaches it through
     /// `curlio`'s registry instead of a pointer the engine holds. `curlio`'s module doc says why
     /// that is not the accident it looks like.
     Curl(Box<crate::curlio::CurlSource>),
@@ -1640,14 +1640,14 @@ impl AvioState {
     ///
     /// There are two abort signals in the media path and they arrive by different routes. The AU
     /// lane's flag (`aq_is_aborted`) is what these callbacks have always checked on entry, and it
-    /// is set by every stopper — teardown, and `start_bufferfeed`'s early return when the media
+    /// is set by every stopper - teardown, and `start_bufferfeed`'s early return when the media
     /// thread will not spawn. `curlio`'s wake pipe is what reaches a thread already BLOCKED inside
     /// `curl_multi_wait`, which the AU flag cannot do; teardown fires it separately.
     ///
     /// This is the join between them, in the one place both are visible: once the lane is aborted,
     /// the curl source is latched too, so it refuses on its own terms afterwards rather than
     /// depending on every future caller re-checking the lane. The socket source needs no
-    /// equivalent — closing it IS the latch, and the engine owns that.
+    /// equivalent - closing it IS the latch, and the engine owns that.
     fn latch_abort(&self) {
         if let Src::Curl(cs) = &self.src {
             cs.abort();
@@ -1764,7 +1764,7 @@ extern "C" fn read_cb(op: *mut c_void, dst: *mut u8, n: c_int) -> c_int {
         let mut heals: u8 = 0;
         loop {
             // interrupt: bail out of a blocked read on teardown (aborted) only. A seek does NOT
-            // interrupt the read — the demux thread services it itself between two av_read_frame
+            // interrupt the read - the demux thread services it itself between two av_read_frame
             // calls (see the read loop), so there is nothing to unblock and nothing to race.
             if crate::aq::aq_is_aborted(s.aq) {
                 s.latch_abort();
@@ -1779,7 +1779,7 @@ extern "C" fn read_cb(op: *mut c_void, dst: *mut u8, n: c_int) -> c_int {
             if park_read_fails_closed(s.bounce_remaining(), s.io_failed) {
                 return AVERROR_IO;
             }
-            // Both sources use the same three-way return — >0 bytes, 0 clean end, <0 error — so
+            // Both sources use the same three-way return - >0 bytes, 0 clean end, <0 error - so
             // the EOF decision below stays one branch rather than one per transport.
             let r = match &mut s.src {
                 // Parked at the end by `seek_cb`: the clean end, without asking a transport whose
@@ -1852,12 +1852,12 @@ extern "C" fn seek_cb(op: *mut c_void, offset: i64, whence: c_int) -> i64 {
         if whence == AVSEEK_SIZE {
             return s.size;
         }
-        // Teardown may have raced us here — the same race the reopen site in `demux` guards, and
+        // Teardown may have raced us here - the same race the reopen site in `demux` guards, and
         // this is the third way in. Teardown aborts the lanes, fires ONE `http_shutdown` at this
         // socket, then JOINS this thread from the main thread. Our AVIO is SEEKABLE, so
         // libavformat treats the broken read as recoverable and heals it by calling US (the
         // 5938b5f mechanism, spelled out in the read loop's note below). Without this check it
-        // gets a BRAND NEW connection the already-fired shutdown cannot touch — and because
+        // gets a BRAND NEW connection the already-fired shutdown cannot touch - and because
         // `read_cb` then reports EOF again, that recovery repeats: measured on the host at ONE
         // full `http_open` per hop, so the main thread's join is held for a whole reopen every
         // time round, not just once. `read_cb` has bailed on this flag since it was written; a
@@ -1881,8 +1881,8 @@ extern "C" fn seek_cb(op: *mut c_void, offset: i64, whence: c_int) -> i64 {
             return -1;
         }
         // **A seek to the end is a position, not a request.** libavformat restores an
-        // `avio_tell` taken at EOF this way — `mov_read_chapters` does it after reading a chapter
-        // track, and a moov-at-end MP4 leaves the AVIO at exactly the size — and the only answer
+        // `avio_tell` taken at EOF this way - `mov_read_chapters` does it after reading a chapter
+        // track, and a moov-at-end MP4 leaves the AVIO at exactly the size - and the only answer
         // a server can give `Range: bytes=<size>-` is 416. Reopening for it closed the live
         // stream and failed, while libavformat's buffer still held the chapter samples: the first
         // video sample just past them read a dead transport ("partial file"), and the player sat
@@ -2382,7 +2382,7 @@ fn vp9_packet_to_frame(pkt: &[u8], key: bool, out: &mut Vec<u8>) -> bool {
 
 /// Parse an avcC (H264) / hvcC (HEVC) extradata record into a ready-to-prepend Annex-B
 /// parameter-set blob (VPS/SPS/PPS with 4-byte start codes) + the NAL length-prefix size.
-/// (Ported from the retired mkv.rs demuxer) — the format the Starfish decoder wants.
+/// (Ported from the retired mkv.rs demuxer) - the format the Starfish decoder wants.
 unsafe fn parse_extradata(ed: *const u8, len: usize, is_hevc: bool) -> (Vec<u8>, usize) {
     let mut blob = Vec::new();
     // No avcC/hvcC record (MPEG-TS, raw H.264/HEVC): the packets carry start codes and their
@@ -2414,7 +2414,7 @@ unsafe fn parse_extradata(ed: *const u8, len: usize, is_hevc: bool) -> (Vec<u8>,
             }
             // array header: [completeness|reserved|NAL_type(&0x3f)] u16 count.
             // ONLY VPS(32)/SPS(33)/PPS(34) belong in the prepend blob; skip SEI(39/40) and
-            // anything else — a stray SEI here corrupts the parameter-set sequence.
+            // anything else - a stray SEI here corrupts the parameter-set sequence.
             let keep = matches!(e[p] & 0x3f, 32 | 33 | 34);
             let cnt = ((e[p + 1] as usize) << 8) | e[p + 2] as usize;
             p += 3;
@@ -2541,7 +2541,7 @@ fn strip_dv_nals(au: &mut Vec<u8>) -> usize {
 /// True if this HEVC NAL is an SEI (prefix=39 / suffix=40) carrying a user-data-registered
 /// ITU-T T.35 HDR10+ dynamic-metadata message (payloadType 4, country_code 0xB5, terminal
 /// provider 0x003C). webOS's HEVC decoder does NOT support per-frame HDR10+ metadata and
-/// stalls on it — Kodi strips it unconditionally ("webOS doesn't support HDR10+ and it can
+/// stalls on it - Kodi strips it unconditionally ("webOS doesn't support HDR10+ and it can
 /// cause issues"). `nal` is the NAL payload WITHOUT the start code (starts at the 2-byte
 /// NAL header). Static HDR10 mastering-display / CLL SEI (payloadType 137/144) is kept.
 fn is_hdr10plus_sei(nal: &[u8]) -> bool {
@@ -2574,7 +2574,7 @@ fn is_hdr10plus_sei(nal: &[u8]) -> bool {
 /// End offset of a NAL of length `nl` starting at `i`, or None if it is empty or would run
 /// past `size`. **The width is load-bearing**: `usize` is 32 bits on the TV, `nls` is up to 4,
 /// so a hostile/corrupt length up to `0xFFFF_FFFF` makes the natural `i + nl > size` guard WRAP
-/// to a small number, pass its own bounds check, and panic the demux thread inside the slice —
+/// to a small number, pass its own bounds check, and panic the demux thread inside the slice -
 /// killing the producer before it can EOF the queues, which hangs playback with no error path.
 /// Computing in `u64` makes the bound hold on every target. Never inline this back to `i + nl`.
 fn nal_end(i: usize, nl: usize, size: usize) -> Option<usize> {
@@ -2684,7 +2684,7 @@ unsafe fn packet_to_annexb(
 
 static DIAG_FIRST: AtomicBool = AtomicBool::new(true);
 
-/// Does this Annex-B access unit carry its own decoder setup — an H.264 SPS (NAL 7) or an HEVC
+/// Does this Annex-B access unit carry its own decoder setup - an H.264 SPS (NAL 7) or an HEVC
 /// VPS/SPS (NAL 32/33)? Live H.264 often opens each GOP with an I-slice behind its SPS/PPS and
 /// never sends an IDR picture, so such an AU is where a decoder can start.
 fn annexb_has_parameter_sets(au: &[u8], is_hevc: bool) -> bool {
@@ -2870,7 +2870,7 @@ fn adts_freq_index(rate: c_int) -> Option<u8> {
 /// present. HE-AAC is why this parses the ASC instead of trusting codecpar: the ASC's FIRST
 /// samplingFrequencyIndex is the AAC **core** rate (e.g. 24 kHz) while `codecpar.sample_rate`
 /// reports the SBR **output** rate (48 kHz). ADTS must carry the core rate (+ LC profile, SBR
-/// stays implicit) so the decoder up-samples through the SBR extension — a 48 kHz header makes
+/// stays implicit) so the decoder up-samples through the SBR extension - a 48 kHz header makes
 /// it decode each frame as 1024 plain-LC samples into a 2048-sample slot, an audible gap/crackle
 /// every frame (Maxton Hall, HE-AAC 5.1). Falls back to codecpar for ASC-less streams.
 unsafe fn adts_params(acp: *const AVCodecParameters) -> Option<(u8, u8)> {
@@ -2878,7 +2878,7 @@ unsafe fn adts_params(acp: *const AVCodecParameters) -> Option<(u8, u8)> {
         let ch = (*acp).ch_layout.nb_channels;
         if (1..=7).contains(&ch) { ch as u8 } else { 2 }
     };
-    // AudioSpecificConfig: aot(5) freqIdx(4) [+24-bit rate if idx==15] chanCfg(4) …
+    // AudioSpecificConfig: aot(5) freqIdx(4) [+24-bit rate if idx==15] chanCfg(4) ...
     let (ed, n) = ((*acp).extradata, (*acp).extradata_size);
     if !ed.is_null() && n >= 2 {
         let (b0, b1) = (*ed as u32, *ed.add(1) as u32);
@@ -2893,7 +2893,7 @@ unsafe fn adts_params(acp: *const AVCodecParameters) -> Option<(u8, u8)> {
             };
             return Some((freq_idx, ch));
         }
-        // escape-coded AOT / explicit 24-bit rate — exotic; fall through to codecpar
+        // escape-coded AOT / explicit 24-bit rate - exotic; fall through to codecpar
     }
     adts_freq_index((*acp).sample_rate).map(|fi| (fi, chan_fallback))
 }
@@ -2923,7 +2923,7 @@ enum MediaOpenFail {
 }
 
 /// Open `url` on the curl source at byte `at`, with the stream's `headers` on every request. The
-/// reservation publishes teardown's wake target BEFORE the abort check — the order `demux`'s own
+/// reservation publishes teardown's wake target BEFORE the abort check - the order `demux`'s own
 /// curl open keeps.
 fn open_curl_hop(
     url: &str,
@@ -3080,7 +3080,7 @@ fn plaintext_media_gate(_origin: &tv_net::net::origin::Origin, _path: &str, head
 }
 
 /// The progressive open of a header-less PLAINTEXT stream URL, redirects followed. A media URL
-/// commonly answers with a `302` to a presigned CDN URL — usually https, which lands on the curl
+/// commonly answers with a `302` to a presigned CDN URL - usually https, which lands on the curl
 /// source. Publishes the same two diagnostics the curl arm of `demux` does.
 fn open_plain_progressive(
     hs_p: *mut HttpStream,
@@ -3106,7 +3106,7 @@ fn open_plain_progressive(
 
 /// [`open_plain_progressive`] without the diagnostics: the open itself, for the demuxer and for
 /// the probe (`ff_probe.rs`), which must not write a playback's read-out before that playback
-/// exists. `hop` opens the curl source an https redirect lands on — the demuxer's registers as
+/// exists. `hop` opens the curl source an https redirect lands on - the demuxer's registers as
 /// teardown's wake target, the probe's stays private. `Ok` carries the source, its size and the
 /// HTTP status; `Err` the failure and the status worth publishing, if any.
 fn open_plain_following(
@@ -3173,7 +3173,7 @@ fn open_plain_following(
     }
 }
 
-/// Whether a demux exit that published no access unit is a playback failure — the ONE rule every
+/// Whether a demux exit that published no access unit is a playback failure - the ONE rule every
 /// demux exit reads. A demuxer that produced nothing and ended on its own
 /// failed; one whose lane teardown aborted was told to stop (a reload, a seek, BACK), whatever
 /// early exit that took, and must neither log a failure nor raise `demux_failed`.
@@ -3188,14 +3188,14 @@ pub const AVERROR_INVALIDDATA: c_int = -1_094_995_529;
 /// found no container (`INVALIDDATA`: a debrid host's first hop answered with an HTML error page)
 /// or ran out of bytes inside the header (`EOF`/`EIO`: a truncated first transfer). The same URL
 /// opened fine a moment later on the television, so the open is retried ONCE from the original
-/// URL — a fresh redirect chain, not the effective URL of the failed one — before it is refused.
+/// URL - a fresh redirect chain, not the effective URL of the failed one - before it is refused.
 fn open_failure_is_transient(r: c_int) -> bool {
     matches!(r, AVERROR_INVALIDDATA | AVERROR_EOF | AVERROR_IO)
 }
 
 /// The log line for an `avformat_open_input` that returned no context. Teardown aborts the lanes
 /// and `read_cb` answers the abort with EOF, so an open cut short that way returns whatever the
-/// truncated probe made of it (`AVERROR_INVALIDDATA` on a Matroska header) — a stop that must not
+/// truncated probe made of it (`AVERROR_INVALIDDATA` on a Matroska header) - a stop that must not
 /// read as the source failing to open. Issue #266's normalize run was misread exactly so.
 fn open_input_failure_note(r: c_int, lane_aborted: bool) -> String {
     if lane_aborted {
@@ -3540,7 +3540,7 @@ mod pre_audio_headroom_tests {
     }
 }
 
-/// The bookkeeping after one audio AU (stamped `pts`) reached the audio lane — the same for a
+/// The bookkeeping after one audio AU (stamped `pts`) reached the audio lane - the same for a
 /// demuxed packet and a decoded PCM batch: the pre-audio headroom's progress (and its release
 /// once the engine's lead-in is in), and the audio tail the seek logic reads.
 fn audio_pushed(headroom: &mut PreAudioHeadroom, aq_p: *mut AuQueue, pts: i64) {
@@ -3574,7 +3574,7 @@ fn audio_pushed(headroom: &mut PreAudioHeadroom, aq_p: *mut AuQueue, pts: i64) {
 /// through [`crate::curlio`], which applies those headers to every request it makes; a header-less
 /// `http` URL reads through the Engine's `stream.rs` socket. An origin is parsed from a URL and
 /// never rebuilt from an address, which is what keeps the hostname TLS validates against intact
-/// all the way down here (`net/origin.rs`). `hs` is passed on both paths — it is the Engine's, and
+/// all the way down here (`net/origin.rs`). `hs` is passed on both paths - it is the Engine's, and
 /// it stays unused (fd = -1, published as `SHARED.hs_ptr`) when the stream goes through curl.
 ///
 /// `acodec` is the audio codec the Load declared: the default audio track is the first one of that
@@ -3592,7 +3592,7 @@ pub fn demux(
     PUSHED_ANY.store(false, Ordering::Relaxed);
     PUBLISHES_REOPENS.with(|p| p.set(true));
     // Refuse rather than read a struct whose shape we do not know (see `boot`). EOF must still be
-    // set on both lanes or `pump` waits forever on a queue nothing will ever fill — the same
+    // set on both lanes or `pump` waits forever on a queue nothing will ever fill - the same
     // contract the panic barrier below exists to keep.
     if !ABI_OK.load(Ordering::Relaxed) {
         crate::player::log("demux: refusing — FFmpeg ABI on this device is not the one built for");
@@ -3603,7 +3603,7 @@ pub fn demux(
     DIAG_FIRST.store(true, Ordering::Relaxed);
     ensure_registered();
     let aq_p = aq.0; // VIDEO lane (also the AVIO abort ptr + EOF marker)
-    let aqa_p = aqa.0; // AUDIO lane (es=2) — always a distinct queue on the ff (two-lane) path
+    let aqa_p = aqa.0; // AUDIO lane (es=2) - always a distinct queue on the ff (two-lane) path
     let hs_p = hs.0;
     let (origin, path) = tv_net::net::origin::split(&url);
     let path = path.to_owned();
@@ -3616,22 +3616,22 @@ pub fn demux(
     let mut replay: Vec<u8> = Vec::new();
     let via_curl = origin.is_tls() || !headers.is_empty() || hls_url;
 
-    // PANIC BARRIER around the whole producer body. Not about the unwind itself — this thread is
+    // PANIC BARRIER around the whole producer body. Not about the unwind itself - this thread is
     // started by `task::spawn`, so std already catches a panic at the thread boundary and turns it
     // into the `Err` that `task::join` logs. The problem is what the unwind SKIPS: the two
     // `aq_set_eof` calls in the tail below. The consumer is a one-way FIFO with no other liveness
-    // signal — `aq_pop` reports EOF only from the `eof` flag the producer sets — so a producer that
+    // signal - `aq_pop` reports EOF only from the `eof` flag the producer sets - so a producer that
     // dies without setting it leaves `pump` feeding a queue that will never fill and never end:
     // no EOS is ever pushed (`engine.rs`'s EOS is keyed on the video lane's true EOF), no error is
     // ever surfaced, and the app sits on a frozen picture until BACK. That is strictly worse than
-    // the crash it came from — a rare panic became a common-looking hang with no log line pointing
+    // the crash it came from - a rare panic became a common-looking hang with no log line pointing
     // at it. So: catch it, name it in the event log, and then run the SAME teardown the normal exit
     // runs, so the pump terminates the way it does at end-of-stream.
     //
     // `AssertUnwindSafe` is honest here rather than a rubber stamp: the state the closure mutates
     // across the boundary is the two AU queues (their own pthread mutexes, and this is their only
     // producer, which is now dead) and `SHARED`'s atomics. What a panic DOES leak is the FFmpeg
-    // side — `AVFormatContext`/`AVIOContext`/`AVPacket` are freed at the end of the block, not by a
+    // side - `AVFormatContext`/`AVIOContext`/`AVPacket` are freed at the end of the block, not by a
     // `Drop`, so an unwind past them leaks them plus the socket buffer. That is deliberate: the
     // alternative is calling `avformat_close_input` on a context whose invariants a panicking
     // libavformat may have left broken, and a one-off leak on a path that is meant never to run is
@@ -3641,7 +3641,7 @@ pub fn demux(
         // to the EOF/cleanup tail after it. The only `continue`s are an HLS seek's reopen and the
         // single retry of an open that failed transiently (`open_retried`). It used to be a real loop that reopened the whole
         // AVFormatContext on a fresh URL, which is how a direct-play seek was supposed to reach its
-        // target — but the reopen could never be triggered (see the seek note in the read loop), and
+        // target - but the reopen could never be triggered (see the seek note in the read loop), and
         // the remaining callers replace the engine outright instead: a reload-mode seek and an
         // audio-track switch each `reload_at`, which spawns a new demux thread. So the reopen had no
         // live writer and no live caller.
@@ -3823,7 +3823,7 @@ pub fn demux(
                 }
                 // The container's own track names, published before anything else can fail: the track
                 // menu is the only reader and it wants them whether or not this part turns out to have
-                // a video stream. See `stream_name` for why they are read at all — they are the ONLY
+                // a video stream. See `stream_name` for why they are read at all - they are the ONLY
                 // place a track's identity exists.
                 {
                     let names = track_names(fmt);
@@ -3859,7 +3859,7 @@ pub fn demux(
                     })
                 } else {
                     // default: feed the track matching the Load payload's codec (Media[0].audioCodec),
-                    // NOT av_find_best_stream — a codec mismatch stalls the audio ES and wedges video.
+                    // NOT av_find_best_stream - a codec mismatch stalls the audio ES and wedges video.
                     audio_stream_matching(fmt, &acodec).unwrap_or_else(|| {
                         av_find_best_stream(
                             fmt,
@@ -3873,7 +3873,7 @@ pub fn demux(
                 };
                 if vi < 0 {
                     // "No video stream" alone reads as a demuxer fault. When audio IS present the
-                    // demuxer worked fine — the stream itself arrived without video (an audio-only
+                    // demuxer worked fine - the stream itself arrived without video (an audio-only
                     // stream, or a source that dropped the track). Record which shape this is so the
                     // error the user sees can say so; the main thread words it.
                     if ai >= 0 {
@@ -3943,13 +3943,13 @@ pub fn demux(
                         .store(dur.saturating_mul(1000), Ordering::Relaxed);
                 }
                 // The NAME as well as the id, and the name is what anything downstream should grade.
-                // A raw AV_CODEC_ID is an FFmpeg enum, and that enum RENUMBERS between majors — H264
+                // A raw AV_CODEC_ID is an FFmpeg enum, and that enum RENUMBERS between majors - H264
                 // is 28 on the n3.3 the televisions ship, 27 on FFmpeg 6, and HEVC is 174 / 173 / 172
                 // across n3.3 / 6 / 9. The on-device suite asserted the bare number, so bundling our
                 // own FFmpeg failed all 21 cases at once on a codec the app had identified perfectly
                 // well. `avcodec_get_name` is stable, means what the assertion meant, and is free.
                 // Publish the coded size: the webOS 5+ exported window needs the frame it is being
-                // fed, and this is the only place that knows it for certain — a stream's declared
+                // fed, and this is the only place that knows it for certain - a stream's declared
                 // dimensions and its actual coded size need not agree.
                 SHARED.publish_video_raster((*vcp).width, (*vcp).height);
                 let cname =
@@ -3984,20 +3984,20 @@ pub fn demux(
                 // WHAT THE STREAM ACTUALLY IS, not just what it is called. `codec=hevc` is the same
                 // four letters for an SDR file, an HDR10 file, a Dolby Vision Profile 8.1 file whose
                 // base layer is that same HDR10, and a Profile 5 file that will display in visibly
-                // wrong colours — `avcodec_get_name` cannot tell them apart and neither could this log
+                // wrong colours - `avcodec_get_name` cannot tell them apart and neither could this log
                 // line or any assertion built on it. These fields can. `trc`/`pri`/`spc` are the raw
                 // AVCOL_* enum values, logged as NUMBERS because naming them would mean binding three
                 // more FFmpeg symbols for a diagnostic: trc 16 = smpte2084 (PQ/HDR10), 18 = arib-std-b67
                 // (HLG), spc 9 = bt2020nc, pri 9 = bt2020, and **2 = UNSPECIFIED on all three** (every
                 // one of those six numbers checked against the vendored `libavutil/pixfmt.h`, not
                 // recalled). A Profile 5 file is expected to read 2/2/2, since IPT-PQ signals no
-                // ordinary transfer at all — inferred rather than seen from here; this line is where
+                // ordinary transfer at all - inferred rather than seen from here; this line is where
                 // a television settles it.
                 // All three were declared in the offsets table above and read NOWHERE until now.
                 let dv = match dovi_conf(vcp) {
                     // `bl_compat` is the field that decides whether the base layer means anything on
                     // its own, so it is logged beside the profile rather than left to be inferred
-                    // from it — 0 is Profile 5's "none", 1 the HDR10 of a Profile 8.1.
+                    // from it - 0 is Profile 5's "none", 1 the HDR10 of a Profile 8.1.
                     Some(d) => format!(
                         " dovi=P{} level={} bl_compat={} rpu={} el={} bl={}",
                         d.dv_profile,
@@ -4104,7 +4104,7 @@ pub fn demux(
                 loop {
                     // Direct-play seek (and the armed resume, which is just a seek published before
                     // the first read): the pump leaves a target ns in SHARED.seek_to_ns and THIS
-                    // thread — the only one that ever touches `fmt` — av_seek_frame's between two
+                    // thread - the only one that ever touches `fmt` - av_seek_frame's between two
                     // av_read_frame calls.
                     //
                     // It used to be an INTERRUPT instead: the pump shutdown(2)'d the socket to break
@@ -4112,7 +4112,7 @@ pub fn demux(
                     // That could not work, and the test suite hid it behind inherited resume offsets
                     // until 2026-07-28. Our AVIO is SEEKABLE (`seek_cb` reopens with a byte Range),
                     // so libavformat treats a read error as recoverable, calls seek_cb, and gets a
-                    // brand-new connection at the same offset — av_read_frame never returned an
+                    // brand-new connection at the same offset - av_read_frame never returned an
                     // error, the inner loop never broke, and no reopen ever happened. Every
                     // direct-play seek ran out the stuck-watchdog on PRE-seek packets
                     // (`rebase: dropping stale kf` at the old position) and escalated to a full
@@ -4172,7 +4172,7 @@ pub fn demux(
                     if frame_read_failed(&mut state, r) {
                         reached_end = r == AVERROR_EOF && !state.io_failed;
                         // Genuine end of stream, teardown, or an unrecovered I/O error published by
-                        // `frame_read_failed`. NOT an app seek — that is serviced at the top of this
+                        // `frame_read_failed`. NOT an app seek - that is serviced at the top of this
                         // loop and never surfaces as a read error.
                         break;
                     }
@@ -4452,7 +4452,7 @@ pub fn demux(
         // The payload is almost always a `&str`/`String` (a slice index, an `unwrap`), and the
         // message is worth far more than the bare fact of a panic: this thread walks packet buffers
         // whose sizes come off the wire, so knowing WHICH one gave way is most of the triage. The
-        // C tracer in `main.c` cannot help here — nothing faults, so there is no PC to symbolize.
+        // C tracer in `main.c` cannot help here - nothing faults, so there is no PC to symbolize.
         let what = e
             .downcast_ref::<&str>()
             .map(|s| (*s).to_string())
@@ -4468,11 +4468,11 @@ pub fn demux(
         SHARED.demux_failed.store(true, Ordering::Release);
     }
     // A demux that ends having produced NOTHING is a failure, whatever route it took out.
-    // Only two exits used to say so — the http_open failure and the panic handler — while every
+    // Only two exits used to say so - the http_open failure and the panic handler - while every
     // other early `break` in the open sequence (the ABI refusal, av_malloc, avio_alloc_context,
     // avformat_alloc_context, open_input, find_stream_info, no video stream) simply set EOF and
     // returned. EOF with zero AUs is indistinguishable from a zero-length file: the pump keeps
-    // waiting, `frames` stays 0, and the HUD says "Buffering…" forever with nothing in the log to
+    // waiting, `frames` stays 0, and the HUD says "Buffering..." forever with nothing in the log to
     // say why. That is precisely the report that came back from webOS 6 and 10, and it is why the
     // report could not name a cause. Failing loudly here does not fix any of those bugs; it makes
     // the next one diagnosable. An exit teardown asked for is not one of them: see

@@ -10,12 +10,12 @@
 //!
 //! A **pull source**: [`CurlSource::read`], [`CurlSource::seek`], [`CurlSource::size`],
 //! [`CurlSource::status`], [`CurlSource::abort`]. That is the entire surface, and it is the same
-//! shape `stream.rs` presents to `ff.rs`'s AVIO callbacks, deliberately — `ff.rs` holds a source
+//! shape `stream.rs` presents to `ff.rs`'s AVIO callbacks, deliberately - `ff.rs` holds a source
 //! enum and dispatches, and **never learns curl-multi mechanics**. Every `curl_multi_*` call, the
 //! wake pipe, the header parse and the Range validation live behind this door.
 //!
 //! It is not a general HTTP client. [`tv_net::net`] is that, for the addon and account calls, and it is
-//! *blocking by design* — `curl_easy_perform` runs a whole request to completion. A media stream
+//! *blocking by design* - `curl_easy_perform` runs a whole request to completion. A media stream
 //! is the opposite shape: it must deliver bytes as they arrive, be seekable by byte offset, and be
 //! **interruptible at teardown**, which is what forces the multi interface here.
 //!
@@ -24,7 +24,7 @@
 //! This module's [`dynlib!`] table is a SECOND table, separate from `net.rs`'s, and that is the
 //! whole point: [`tv_base::dynlib::load_into`] is **all-or-nothing**, so one missing symbol empties
 //! the table it is in. If the multi symbols shared net's table, a television without them would
-//! lose **every addon request** — the app would not merely fail to play, it would fail to browse.
+//! lose **every addon request** - the app would not merely fail to play, it would fail to browse.
 //! Two tables means a set that cannot stream over https can still sign in and browse.
 //!
 //! The table contains exactly seven names. `curl_multi_wait` has existed since curl 7.28.0.
@@ -43,20 +43,20 @@
 //! exists to survive: a symbol that is present where you test and absent where you ship.
 //!
 //! The **easy** half of the API (`curl_easy_init` / `_setopt` / `_cleanup`) is NOT duplicated
-//! here — it is read out of `net.rs`'s already-loaded table. Those symbols are ancient and
+//! here - it is read out of `net.rs`'s already-loaded table. Those symbols are ancient and
 //! universal; binding them twice would mean two tables that can disagree about which libcurl they
 //! came from, for no gain. See [`easy_ready`].
 //!
 //! # Abort is a WAKE PIPE, not a short poll
 //!
-//! Teardown's contract everywhere else in the player is "set the flag, then join" — the main
+//! Teardown's contract everywhere else in the player is "set the flag, then join" - the main
 //! thread aborts the AU lanes, fires one `shutdown(2)` at the demux socket, and joins the demux
 //! thread. A curl transfer has no socket we own, so `shutdown(2)` has nothing to aim at.
 //!
 //! `curl_multi_wait` accepts application-owned extra descriptors, so this module creates a pipe
 //! and passes the read end. Teardown sets the abort flag and writes one byte; the thread parked in
 //! `curl_multi_wait` wakes at once, sees the flag, removes the easy handle and returns. That
-//! preserves "set the flag, join" exactly — **without** the 10–100 ms floor a polling timeout
+//! preserves "set the flag, join" exactly - **without** the 10-100 ms floor a polling timeout
 //! would put on every single teardown.
 //!
 //! Three details are contract, not implementation taste:
@@ -64,11 +64,11 @@
 //! 1. both ends are **`O_NONBLOCK` and `FD_CLOEXEC`** ([`Wake::new`]);
 //! 2. the read side is **drained after every wake** ([`multi_wait`], and it is the only place that
 //!    waits, so there is one drain site). A pipe left readable makes every subsequent
-//!    `curl_multi_wait` return instantly and turns the loop into a spin — which passes every other
+//!    `curl_multi_wait` return instantly and turns the loop into a spin - which passes every other
 //!    test in this file and only shows up as burnt CPU in production. That is why
 //!    `two_sequential_abort_cycles_each_block_until_signalled` exists;
 //! 3. **be precise about what "immediate" means.** *Delivery* is immediate. *Observation* is
-//!    immediate whenever control is inside `curl_multi_wait` — but on a libcurl with a
+//!    immediate whenever control is inside `curl_multi_wait` - but on a libcurl with a
 //!    SYNCHRONOUS resolver the thread can already be blocked inside `curl_multi_perform`, in
 //!    `getaddrinfo`, where no byte in our pipe can reach it. The dev set reports `AsynchDNS = YES`
 //!    (c-ares), so the window is much smaller than feared there, but that is ONE firmware.
@@ -83,7 +83,7 @@
 //!
 //! **TLS is strict, with one bounded exception.** An open, reopen or seek whose strict handshake
 //! failed with a missing-issuer verify result is repeated once against the bundled public roots
-//! (`net::roots::Mode::Roots`), verification fully on — a 2020 firmware's trust store lacks the
+//! (`net::roots::Mode::Roots`), verification fully on - a 2020 firmware's trust store lacks the
 //! roots most addon hosts and CDNs chain to; and a latched roots start the bundle now refuses goes
 //! strict once. Same decision (`roots::after_failure`) and option code as the control plane; see
 //! `run_hop`. **Redirects:** this module follows them itself, one hop at a time
@@ -100,22 +100,22 @@
 //! # Why the abort handle lives in a module-global REGISTRY
 //!
 //! [`abort_active`] is what `player::engine`'s teardown calls, and a reader's first instinct is
-//! that it should take a handle instead — pass the `Arc<Abort>` up to the engine and drop the
+//! that it should take a handle instead - pass the `Arc<Abort>` up to the engine and drop the
 //! global. That instinct is right about globals in general and wrong here, for a reason worth
 //! writing down so it is not "simplified" back:
 //!
 //! * The `CurlSource` is **created inside the demux thread** (`ff::demux`), like the `AvioState`
 //!   that owns it, because it must not exist at all on the plaintext path. The engine never holds
 //!   it. `SHARED.hs_ptr` solves the same problem for `stream.rs` by having the ENGINE own the
-//!   `HttpStream` box — an option here only if the engine constructed the curl source too, i.e.
+//!   `HttpStream` box - an option here only if the engine constructed the curl source too, i.e.
 //!   only by moving transport choice out of the demuxer.
 //! * Handing the engine a handle instead means publishing it across a thread boundary after the
 //!   thread starts. The registry closes that race with an [`OpenReservation`]: the demuxer
 //!   publishes the wake target, then re-checks its already-engine-owned AU abort flag, and only
 //!   then starts network I/O. Teardown must win one side or the other.
 //!
-//! So the registry holds an `Arc<Abort>` — atomics and two pipe fds, **no pointer into the
-//! source** — and [`abort_active`] signals it under the same mutex that [`CurlSource::drop`]
+//! So the registry holds an `Arc<Abort>` - atomics and two pipe fds, **no pointer into the
+//! source** - and [`abort_active`] signals it under the same mutex that [`CurlSource::drop`]
 //! deregisters under. There is no lifetime question left: the `Arc` keeps the pipe open for
 //! exactly as long as anyone can signal it, and signalling is a non-blocking `write(2)`, so
 //! holding the lock across it cannot block the main thread.
@@ -144,7 +144,7 @@ pub type CURLM = c_void;
 // over plain loopback HTTP.
 tv_base::dynlib! {
     /// The seven multi-interface symbols, frozen to webOS's oldest libcurl (7.53.1). See this
-    /// module's doc before adding an eighth — `curl_multi_poll`/`curl_multi_wakeup` are absent on
+    /// module's doc before adding an eighth - `curl_multi_poll`/`curl_multi_wakeup` are absent on
     /// the dev television and present on the Mac.
     curlmulti: ["libcurl.so.4", "libcurl.so.5", "libcurl.4.dylib"] {
     fn curl_multi_init() -> *mut CURLM;
@@ -157,7 +157,7 @@ tv_base::dynlib! {
     fn curl_multi_cleanup(multi: *mut CURLM) -> c_int;
 }}
 
-/// `struct curl_waitfd` — `multi.h`, unchanged since 7.28.0. `curl_socket_t` is `int` on POSIX.
+/// `struct curl_waitfd` - `multi.h`, unchanged since 7.28.0. `curl_socket_t` is `int` on POSIX.
 #[repr(C)]
 pub struct curl_waitfd {
     fd: c_int,
@@ -165,7 +165,7 @@ pub struct curl_waitfd {
     revents: i16,
 }
 
-/// `struct CURLMsg` — `multi.h`. `data` is a union of `void *whatever` and `CURLcode result`;
+/// `struct CURLMsg` - `multi.h`. `data` is a union of `void *whatever` and `CURLcode result`;
 /// declaring it pointer-sized keeps this struct's SIZE and field offsets identical to C's on both
 /// a 32-bit television and a 64-bit Mac, which a bare `c_int` + hand-written padding would not.
 /// Reading the `CURLcode` out of it is [`msg_result`].
@@ -190,7 +190,7 @@ use tv_net::net::roots::{self, TLS_VERIFY_FAILED};
 use crate::headers::RequestHeaders;
 
 // curl.h option ids. STRINGPOINT/OBJECTPOINT/CBPOINT/SLISTPOINT = 10000, FUNCTIONPOINT = 20000,
-// LONG = 0 — read off `curl/curl.h` rather than remembered.
+// LONG = 0 - read off `curl/curl.h` rather than remembered.
 const CURLOPT_WRITEDATA: c_int = 10001;
 const CURLOPT_URL: c_int = 10002;
 const CURLOPT_RANGE: c_int = 10007;
@@ -215,7 +215,7 @@ const CURLOPT_TIMEOUT_MS: c_int = 155;
 /// The numeric protocol options are the compatibility surface for this project's curl floor.
 /// Their `_STR` replacements are newer than webOS 4.5's libcurl 7.53.1.
 const CURLOPT_PROTOCOLS: c_int = 181;
-/// `host:port:address` DNS pre-population — the media plane's half of the offline fix. The option
+/// `host:port:address` DNS pre-population - the media plane's half of the offline fix. The option
 /// id and its non-fatal polarity are documented on `net::CURLOPT_RESOLVE` / `net::resolve`.
 const CURLOPT_RESOLVE: c_int = 10203;
 const CURLPROTO_HTTP: c_long = 1 << 0;
@@ -234,7 +234,7 @@ fn allowed_redirect_protocols(url: &[u8]) -> c_long {
 
 /// How long one `curl_multi_wait` may sit before we call `curl_multi_perform` again.
 ///
-/// **This is NOT the abort path** — the wake pipe is, and it fires in microseconds. This bound
+/// **This is NOT the abort path** - the wake pipe is, and it fires in microseconds. This bound
 /// exists only because `curl_multi_wait` (unlike `curl_multi_poll`, which we may not use) does not
 /// consult libcurl's own timer wheel on 7.53, so connect/low-speed timeouts are noticed on the
 /// next perform. 200 ms is therefore a *timer resolution*, not a teardown cost, and while bytes
@@ -256,7 +256,7 @@ pub const READ_STOPPED: c_int = -3;
 /// `CURLOPT_CONNECTTIMEOUT`, seconds. Matches `stream.rs`'s `CONNECT_TIMEOUT_MS` intent.
 const CONNECT_TIMEOUT_S: c_long = 15;
 /// `CURLOPT_LOW_SPEED_LIMIT`/`_TIME`: fewer than 1 byte/s for 30 s ends the transfer. This is the
-/// curl-side equivalent of `stream.rs`'s 15 s `SO_RCVTIMEO` — without it a server that accepts,
+/// curl-side equivalent of `stream.rs`'s 15 s `SO_RCVTIMEO` - without it a server that accepts,
 /// answers headers and then stops sending parks the demuxer forever, which is exactly the
 /// `tools/netcond.py --mode stall` case.
 const LOW_SPEED_TIME_S: c_long = 30;
@@ -274,7 +274,7 @@ impl Wake {
     /// `pipe(2)` with **both ends** `O_NONBLOCK | FD_CLOEXEC`.
     ///
     /// `pipe2(2)` would set both atomically but does not exist on Darwin, and this module's host
-    /// suite is the gate — so `pipe` + `fcntl`, which is portable. The CLOEXEC race that `pipe2`
+    /// suite is the gate - so `pipe` + `fcntl`, which is portable. The CLOEXEC race that `pipe2`
     /// closes needs a concurrent `fork`+`exec`, and this process never does either.
     fn new() -> Option<Wake> {
         let mut fds = [-1 as c_int; 2];
@@ -301,7 +301,7 @@ impl Wake {
     }
 
     /// Make the read end readable. Non-blocking, so a pipe that is already armed simply returns
-    /// `EAGAIN` — an abort signalled twice is one wake, which is all it needs to be.
+    /// `EAGAIN` - an abort signalled twice is one wake, which is all it needs to be.
     fn signal(&self) {
         let b = [1u8; 1];
         unsafe { libc::write(self.w, b.as_ptr() as *const c_void, 1) };
@@ -409,7 +409,7 @@ impl Drop for OpenReservation {
     }
 }
 
-/// **Teardown's entry point** — `player::engine::teardown` calls this beside
+/// **Teardown's entry point** - `player::engine::teardown` calls this beside
 /// `tv_net::stream::http_shutdown`, and exactly one of the two has anything to signal.
 ///
 /// Signals under the registry lock, which is also the lock [`CurlSource::drop`] deregisters under,
@@ -448,7 +448,7 @@ fn ensure_loaded() {
     });
 }
 
-/// Boot-time load, called from `ff::boot` — the media plane's own start-up, after
+/// Boot-time load, called from `ff::boot` - the media plane's own start-up, after
 /// `net::global_init` has run `curl_global_init` on the main thread.
 pub fn boot() {
     ensure_loaded();
@@ -456,7 +456,7 @@ pub fn boot() {
 
 /// Is `net.rs`'s **easy** table live? Read directly rather than duplicated into this module's
 /// table: see the module doc. `curl_easy_init` stands for the whole table because
-/// [`tv_base::dynlib::load_into`] is all-or-nothing — one live cell means every cell is live.
+/// [`tv_base::dynlib::load_into`] is all-or-nothing - one live cell means every cell is live.
 ///
 /// This deliberately does NOT call `net::global_init` itself. `curl_global_init` is not
 /// thread-safe and net's doc requires it on the main thread at boot; a demux thread calling it
@@ -491,7 +491,7 @@ pub enum OpenErr {
     /// is NOT torn down: its multi (and TLS session) and abort pipe are intact, and this is never
     /// grounds for a fallback open.
     Stopped,
-    /// A `CURLcode` — DNS, TLS, connect, low-speed. Named the way `net.rs` names them.
+    /// A `CURLcode` - DNS, TLS, connect, low-speed. Named the way `net.rs` names them.
     Transport(c_int),
     /// A `CURLMcode` from the multi interface itself. This is local transport machinery failing,
     /// not a clean end of the media resource.
@@ -511,7 +511,7 @@ pub enum OpenErr {
 /// The bits the C callbacks write. Boxed by [`CurlSource`] so its address is stable across the
 /// source being moved (it is returned in a `Box`, and `ff.rs` stores it in an `AvioState`).
 struct Xfer {
-    /// Body bytes received and not yet handed to the reader. Only ever appended to while EMPTY —
+    /// Body bytes received and not yet handed to the reader. Only ever appended to while EMPTY -
     /// [`CurlSource::read`] performs a transfer step exclusively when it has nothing left to
     /// deliver, so this cannot grow without bound. The one other writer is a redirect's body, which
     /// [`CurlSource::finish_redirect_body`] reads (and nobody delivers) up to a fixed bound.
@@ -573,7 +573,7 @@ impl Xfer {
 
 /// What a transfer that died AFTER its headers were validated leaves behind (issue #504): the
 /// libcurl result, how much of the body arrived and how long the transfer had lived. Closed facts
-/// only — no URL, no host — so `ff.rs` can carry them to the event log and, bucketed, to the
+/// only - no URL, no host - so `ff.rs` can carry them to the event log and, bucketed, to the
 /// handled playback error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BodyFailure {
@@ -589,7 +589,7 @@ pub struct BodyFailure {
 
 /// One remote file, pulled over http(s) by byte range.
 ///
-/// Lives on the demux thread for its whole life — created there, read there, dropped there. Only
+/// Lives on the demux thread for its whole life - created there, read there, dropped there. Only
 /// [`Abort`] crosses a thread boundary, and it holds no pointer into this struct.
 pub struct CurlSource {
     multi: *mut CURLM,
@@ -621,7 +621,7 @@ pub struct CurlSource {
     /// been removed and cleaned, abandoned with it on `stop`'s catastrophic path.
     header_list: *mut tv_net::net::curl_slist,
     /// The `CURLOPT_RESOLVE` entry for [`url`](Self::url)'s host, when `net::resolve` holds a pin for
-    /// it — computed at open and reopen, applied to the first hop of every chain this source runs (a
+    /// it - computed at open and reopen, applied to the first hop of every chain this source runs (a
     /// seek is a fresh handle). The pinned name is a pure function of the host, so it cannot go stale
     /// mid-stream. A later hop's host has its own entry, looked up for that hop ([`Hop::of`]).
     resolve_entry: Option<CString>,
@@ -671,7 +671,7 @@ pub struct CurlSource {
 
 impl CurlSource {
     /// Open `url` with no stream headers and read up to the end of its response headers, so that
-    /// [`status`](Self::status) and [`size`](Self::size) are answerable the moment this returns —
+    /// [`status`](Self::status) and [`size`](Self::size) are answerable the moment this returns -
     /// the same contract `stream::http_open` has, and what `ff::demux` publishes into the
     /// diagnostics read-out.
     #[cfg(any(test, feature = "test-support"))]
@@ -776,7 +776,7 @@ impl CurlSource {
         if !media_url_allowed(url) {
             return Err(OpenErr::Local);
         }
-        // The resolve pin, by this URL's host and port — see `net::resolve` for why the media
+        // The resolve pin, by this URL's host and port - see `net::resolve` for why the media
         // plane consults a table rather than carrying the pin. Looked up here for the first hop; a
         // seek reuses it, and each later hop looks up its own.
         let (origin, _) = tv_net::net::origin::split(url);
@@ -835,7 +835,7 @@ impl CurlSource {
     /// its `next_check` only shortens a wait and never reaches `CURLOPT_TIMEOUT_MS`, which stays the
     /// caller's deadline alone.
     ///
-    /// **Every open, reopen and seek enters here, and here is where redirects are followed — one hop
+    /// **Every open, reopen and seek enters here, and here is where redirects are followed - one hop
     /// at a time.** libcurl is told not to follow (`CURLOPT_FOLLOWLOCATION` 0): a `3xx` ends an
     /// attempt, [`next_hop`] says where it goes, and the target is a request of its own, in its own
     /// [`run_hop`](Self::run_hop), with its own TLS decision. The CA file and the resolve pin are
@@ -1069,7 +1069,7 @@ impl CurlSource {
                     return Err(OpenErr::Local);
                 }
             }
-            // TLS verification ON, both halves — the certificate is issued for the host NAME, which
+            // TLS verification ON, both halves - the certificate is issued for the host NAME, which
             // is why an Origin is parsed from a URL and never rebuilt from an address
             // (`net/origin.rs`). Turning either of these off would make an https URL "work" against
             // the wrong server. Nothing below lowers either.
@@ -1111,7 +1111,7 @@ impl CurlSource {
                 }
             }
             // We are on a worker thread; curl must not install signal handlers. This is also what
-            // makes DNS uncancellable on a synchronous resolver — see the module doc.
+            // makes DNS uncancellable on a synchronous resolver - see the module doc.
             tv_net::net::curl_easy_setopt_long(easy, CURLOPT_NOSIGNAL, 1);
             // libcurl does NOT follow redirects: a `3xx` is this attempt's answer, and where it goes
             // is [`next_hop`]'s decision (below), made before anything is dialled, with the next
@@ -1149,7 +1149,7 @@ impl CurlSource {
             tv_net::net::curl_easy_setopt_long(easy, CURLOPT_BUFFERSIZE, 65536);
             // NB no CURLOPT_TIMEOUT: a whole movie has no deadline. The low-speed pair above is
             // what bounds a stall, and unlike a total timeout it cannot kill a healthy transfer.
-            // NB no CURLOPT_ACCEPT_ENCODING either — the demuxer wants the bytes the file has.
+            // NB no CURLOPT_ACCEPT_ENCODING either - the demuxer wants the bytes the file has.
             // libcurl starts its total timer when this handle enters the multi. Capture a lower
             // bound immediately before that call so a DONE/28 can be attributed to the timer we
             // own without confusing an earlier connect/low-speed timeout with reserve expiry.
@@ -1352,7 +1352,7 @@ impl CurlSource {
     /// before the hop is left. A `3xx` body is a line of HTML or nothing, and a transfer that has
     /// finished is one whose connection libcurl keeps for the next request; one removed mid-body is
     /// closed. Best effort by design: a body that does not finish inside the bounds, an abort, or a
-    /// multi failure costs the connection and nothing else — the `Location` is already in hand and
+    /// multi failure costs the connection and nothing else - the `Location` is already in hand and
     /// the next attempt resets the transfer and rebuilds a failed multi.
     fn finish_redirect_body(&mut self, deadline: Option<std::time::Instant>) {
         let mut until = std::time::Instant::now() + REDIRECT_BODY_WAIT;
@@ -1469,7 +1469,7 @@ impl CurlSource {
     }
 
     /// Deliver up to `dst.len()` bytes. **`>0` = bytes, `0` = clean end of stream, `<0` = error or
-    /// teardown** — the same three-way return `stream::http_read` gives. `ff.rs` preserves curl's
+    /// teardown** - the same three-way return `stream::http_read` gives. `ff.rs` preserves curl's
     /// negative result as an I/O error rather than collapsing a truncated transfer into EOF.
     #[allow(dead_code)] // convenience wrapper retained for transport tests; production passes deadlines
     pub fn read(&mut self, dst: &mut [u8]) -> c_int {
@@ -1602,12 +1602,12 @@ impl CurlSource {
         self.done = true;
     }
 
-    /// Re-open at byte `to`. `false` means the demuxer must treat the seek as failed — including
+    /// Re-open at byte `to`. `false` means the demuxer must treat the seek as failed - including
     /// the case where the server ignored the Range, which is refused rather than silently served
     /// from byte zero.
     ///
     /// **Checks the abort flag before any curl call**, which is what keeps a teardown from being
-    /// answered with a brand-new connection the main thread's join is already waiting behind — the
+    /// answered with a brand-new connection the main thread's join is already waiting behind - the
     /// same invariant `ff.rs`'s `seek_cb` carries for the socket source, and for the same reason.
     pub fn seek(&mut self, to: i64) -> bool {
         if self.abort.is_set() || self.poisoned {
@@ -1709,7 +1709,7 @@ impl CurlSource {
         self.size
     }
 
-    /// The last response's HTTP status — the diagnostics read-out's `dg_http_status`.
+    /// The last response's HTTP status - the diagnostics read-out's `dg_http_status`.
     pub fn status(&self) -> c_int {
         self.xfer.status
     }
@@ -1722,7 +1722,7 @@ impl CurlSource {
 
     /// The URL the current transfer was answered from: the opened URL, or the last hop of the
     /// redirect chain it followed. What a relative reference in the body resolves against (an
-    /// HLS playlist's segment URIs). Carries the URL's query — never log it.
+    /// HLS playlist's segment URIs). Carries the URL's query - never log it.
     pub fn effective_url(&self) -> String {
         self.hop_url.to_string_lossy().into_owned()
     }
@@ -1925,7 +1925,7 @@ fn log_target(target: Option<&Target>) -> String {
 /// The media plane requests absolute http(s) URLs and nothing else: the scheme is the one fact a
 /// URL's own text decides here. Which hosts a stream may name is the addon's business, not the
 /// transport's, and an authority this client cannot read an origin from (userinfo) is still
-/// libcurl's to dial — it simply gets no roots latch and no resolve pin.
+/// libcurl's to dial - it simply gets no roots latch and no resolve pin.
 pub(crate) fn media_url_allowed(url: &str) -> bool {
     let abs = |scheme: &str| url.get(..scheme.len()).is_some_and(|s| s.eq_ignore_ascii_case(scheme));
     abs("https://") || abs("http://")
@@ -1969,7 +1969,7 @@ enum Wait {
 
 /// `curl_multi_wait` with the abort pipe as an application-owned extra descriptor.
 ///
-/// **The only place this module blocks, and therefore the only place the pipe is drained** — see
+/// **The only place this module blocks, and therefore the only place the pipe is drained** - see
 /// clause 2 of the module doc. A free function rather than a method so the host suite can drive it
 /// against a bare multi handle and prove the drain mechanically.
 ///
@@ -2043,7 +2043,7 @@ fn parse_header_line(x: &mut Xfer, line: &[u8]) {
     let t = trim_ascii(line);
     if t.is_empty() {
         // End of a header block. A 1xx is informational and the response is still to come, so it
-        // is not the one the open waits on — marking it done would stop an open early, with the
+        // is not the one the open waits on - marking it done would stop an open early, with the
         // wrong status in hand. Every other block is: a `3xx` is followed by `start_attempt`, one
         // hop at a time, not by libcurl.
         if !(100..200).contains(&x.status) {
@@ -2232,15 +2232,15 @@ mod tests {
     ///
     /// Two process-globals are in play and both are load-bearing rather than incidental: net.rs's
     /// easy table (brought up the way boot does, so `available()` can be true), and this module's
-    /// [`ACTIVE`] registry — which holds exactly ONE source, because exactly one media transfer
+    /// [`ACTIVE`] registry - which holds exactly ONE source, because exactly one media transfer
     /// exists at a time in the app. Under `cargo test`'s thread pool that assumption is false: two
     /// tests opening sources at once overwrite each other's registration, and then `abort_active`
-    /// signals somebody else's transfer. That is not a hypothetical — it failed four of these
+    /// signals somebody else's transfer. That is not a hypothetical - it failed four of these
     /// tests in four different-looking ways (a seek refused, a connect running to its full
     /// timeout, a stalled read unblocking late, a registry found non-empty before its own open),
     /// none of which reads as "another test did this".
     ///
-    /// So: hold the crate-wide lock for the WHOLE test (`lib.rs`'s `testlock`, not a local mutex —
+    /// So: hold the crate-wide lock for the WHOLE test (`lib.rs`'s `testlock`, not a local mutex -
     /// `ff.rs`'s curl-backed AVIO tests contend on the same registry from another module).
     /// `None` on a host with no libcurl at all, where these tests are vacuous and skip.
     fn curl_gate() -> Option<tv_base::testlock::Serial> {
@@ -2264,7 +2264,7 @@ mod tests {
     ///
     /// `range_mode` decides what it does with a `Range` header: `Honour` answers 206 with a
     /// `Content-Range`, `Ignore` answers 200 with the whole body (the corruption case gate (b) is
-    /// about — `python3 -m http.server` does exactly this), `Stall` answers headers and then never
+    /// about - `python3 -m http.server` does exactly this), `Stall` answers headers and then never
     /// sends the body.
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum RangeMode {
@@ -2282,7 +2282,7 @@ mod tests {
         /// Fail the first seek request with 503, then honour a later retry.
         FailFirstSeek,
         /// Answer requests before the numbered one normally; from it on, read the request and
-        /// never answer — a server slow to produce headers, held until the test ends.
+        /// never answer - a server slow to produce headers, held until the test ends.
         WithholdFrom(usize),
         /// A proxy cut mid-body: the FIRST request promises the whole body and delivers a few
         /// bytes before the connection closes (libcurl: `CURLE_PARTIAL_FILE`, 18); every later
@@ -2297,7 +2297,7 @@ mod tests {
     /// How much of [`BODY`] the truncating modes deliver before they cut the connection.
     const TRUNCATED_AT: usize = 3;
 
-    /// **The offline fix's media half.** A `.invalid` host is opened through the resolve TABLE —
+    /// **The offline fix's media half.** A `.invalid` host is opened through the resolve TABLE -
     /// the pin was recorded the way the registry records one, and the source found it by the
     /// URL's host and port with no parameter threaded through `ff::demux`. The bytes arrive, the
     /// listener saw exactly one connection, and the same URL without an entry opens nothing.
@@ -2349,7 +2349,7 @@ mod tests {
                     match tv_base::testnet::accept(&srv) {
                         Ok((s, _)) => {
                             // Bumped BEFORE the reply, so it is already final by the time any
-                            // open against this listener can return — every assertion is causally
+                            // open against this listener can return - every assertion is causally
                             // behind that, and needs no sleep and no timing margin.
                             accepts.fetch_add(1, Ordering::AcqRel);
                             // One thread per connection: a keep-alive handler blocks, and a
@@ -2381,7 +2381,7 @@ mod tests {
     /// One connection: read a request head, answer it, repeat until the peer closes or the test
     /// ends. Reads into a persistent buffer rather than through `read_line`, because a read
     /// TIMEOUT is how the stop flag gets noticed and `BufRead::read_line` leaves its `String`
-    /// unspecified on error — with keep-alive, the bytes after one head are the next request's.
+    /// unspecified on error - with keep-alive, the bytes after one head are the next request's.
     fn serve(s: std::net::TcpStream, mode: RangeMode, requests: &AtomicUsize, stop: &AtomicBool) {
         use std::io::Read;
         let _ = s.set_read_timeout(Some(std::time::Duration::from_millis(100)));
@@ -2429,7 +2429,7 @@ mod tests {
                 continue;
             }
             if mode == RangeMode::Stall {
-                // Headers, then silence — the shape `tools/netcond.py --mode stall` produces
+                // Headers, then silence - the shape `tools/netcond.py --mode stall` produces
                 // against a real server: the transfer is live and delivers nothing.
                 let _ = w.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1048576\r\n\r\n");
                 let _ = w.flush();
@@ -2592,7 +2592,7 @@ mod tests {
     }
 
     /// `drain_available`/`body_complete` are what `ff.rs::AvioState::drain_wire` calls while
-    /// a progressive stream is parked in `aq_push`, so they otherwise have no test of their own — every other
+    /// a progressive stream is parked in `aq_push`, so they otherwise have no test of their own - every other
     /// case exercises them only transitively through `read`. Pin them directly: the non-blocking
     /// drain must eventually collect the whole body, `body_complete` must not flip early, and a
     /// drain after completion must report nothing left rather than erroring.
@@ -2644,7 +2644,7 @@ mod tests {
     /// **Issue #504, the line that was missing.** A transfer that dies mid-body used to leave
     /// `ff: media transport failed during av_read_frame r=-5` and nothing about WHY: the libcurl
     /// result was kept in `rc` and only the header phase ever logged it. The body phase must name
-    /// the code, how far the transfer got and how long it lived — and say it ONCE, however many
+    /// the code, how far the transfer got and how long it lived - and say it ONCE, however many
     /// times the demuxer keeps reading a dead source, and never for a deliberate teardown.
     #[test]
     fn a_body_that_dies_mid_transfer_is_logged_once_with_its_rc_bytes_and_age() {
@@ -2805,7 +2805,7 @@ mod tests {
                 !src.seek(4),
                 "a 200 answer to a byte Range must FAIL the seek"
             );
-            // …and the source is POISONED, because a refused `avio_seek` does not stop
+            // ...and the source is POISONED, because a refused `avio_seek` does not stop
             // libavformat calling `read_cb` again. Serving the transfer the failed seek left
             // behind would be the same corruption by a different door.
             let mut b = [0u8; 8];
@@ -2919,7 +2919,7 @@ mod tests {
         });
     }
 
-    /// The header parse itself, with no libcurl involved — so the arithmetic is graded even on a
+    /// The header parse itself, with no libcurl involved - so the arithmetic is graded even on a
     /// host where the tests above are vacuous.
     #[test]
     fn content_range_and_content_length_parse_to_the_whole_resource() {
@@ -2954,7 +2954,7 @@ mod tests {
         parse_header_line(&mut i, b"\r\n");
         assert_eq!((i.status, i.body_len, i.headers_done), (200, 99, true));
 
-        // `bytes 0-9/*` — the RFC's unknown-total spelling — must read as unknown, not as 0.
+        // `bytes 0-9/*` - the RFC's unknown-total spelling - must read as unknown, not as 0.
         assert_eq!(parse_content_range(b"bytes 0-9/*"), (0, -1));
         // A non-UTF-8 byte in a value cannot turn a good response into a failure.
         let mut b = Xfer::new();
@@ -3091,7 +3091,7 @@ mod tests {
     // -- (d) abort during connect and during read unblocks promptly ------------------------------
 
     /// `192.0.2.1` is RFC 5737 TEST-NET-1: routed nowhere, so the connect hangs for the full
-    /// `CURLOPT_CONNECTTIMEOUT`. Numeric on purpose — this grades the CONNECT window, and going
+    /// `CURLOPT_CONNECTTIMEOUT`. Numeric on purpose - this grades the CONNECT window, and going
     /// through a name would put `getaddrinfo` in the way, which is the one place the pipe provably
     /// cannot reach (module doc, clause 3).
     #[test]
@@ -3144,7 +3144,7 @@ mod tests {
             let started = std::time::Instant::now();
             std::thread::scope(|sc| {
                 // Through `abort_active`, i.e. exactly what `engine::teardown` calls from the MAIN
-                // thread — a `&CurlSource` is not `Sync` and must not be handed across a thread.
+                // thread - a `&CurlSource` is not `Sync` and must not be handed across a thread.
                 sc.spawn(|| {
                     std::thread::sleep(std::time::Duration::from_millis(120));
                     abort_active();
@@ -3217,8 +3217,8 @@ mod tests {
     }
 
     /// A first open whose server withholds its headers: the caller's checkpoint is consulted
-    /// between `curl_multi_wait` slices, and its Stop ends the open as `Stopped` — neither a
-    /// deadline nor teardown — without a fallback dial.
+    /// between `curl_multi_wait` slices, and its Stop ends the open as `Stopped` - neither a
+    /// deadline nor teardown - without a fallback dial.
     #[test]
     fn a_checkpoint_stop_ends_a_withheld_first_open_without_a_second_dial() {
         let Some(_gate) = curl_gate() else { return };
@@ -3414,9 +3414,9 @@ mod tests {
     ///
     /// `dynlib::load_into` is all-or-nothing, so a television missing one `curl_multi_*` symbol
     /// empties whichever table holds it. If that were net.rs's table, the set would lose every
-    /// addon request — not just streaming. Two halves are graded here: an unavailable multi table
+    /// addon request - not just streaming. Two halves are graded here: an unavailable multi table
     /// refuses cleanly (no `dynlib::missing_symbol` panic), and a failed load of it leaves net's
-    /// easy table — the one sign-in runs on — untouched.
+    /// easy table - the one sign-in runs on - untouched.
     #[test]
     fn an_unavailable_multi_table_refuses_cleanly_and_leaves_sign_in_alone() {
         let _g = tv_base::testlock::serial();
@@ -3427,7 +3427,7 @@ mod tests {
         );
         let net_ok = tv_net::net::global_init();
         // A load that finds nothing publishes nothing (dynlib's own contract), so this cannot
-        // disturb a table that is already live — which is precisely the claim being made.
+        // disturb a table that is already live - which is precisely the claim being made.
         let v = tv_base::dynlib::load_into(
             None,
             &["libwebosiptv-no-such-curl.so.99"],
@@ -3449,7 +3449,7 @@ mod tests {
     /// An undrained pipe passes every other test in this file: the first abort still works, the
     /// source still tears down, nothing returns a wrong value. It shows up only as a
     /// `curl_multi_wait` that returns instantly forever after, i.e. a spinning demux thread in
-    /// production. So the middle assertion here is the one that matters — after a wake, a wait on
+    /// production. So the middle assertion here is the one that matters - after a wake, a wait on
     /// an unsignalled pipe must actually BLOCK to its timeout.
     #[test]
     fn two_sequential_abort_cycles_each_block_until_signalled() {
@@ -3594,7 +3594,7 @@ mod tests {
 
     /// **The instrument check.** Every curl-driven test above SKIPS when libcurl cannot be bound,
     /// which is right on a host that has none and is a green suite grading nothing anywhere else.
-    /// This is the line that makes the difference visible — the project rule is
+    /// This is the line that makes the difference visible - the project rule is
     /// `[[silent-instrument-trap]]`: prove the instrument can see the thing before reading its
     /// silence.
     ///

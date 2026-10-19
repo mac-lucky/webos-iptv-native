@@ -1,4 +1,4 @@
-//! **Declarative forms** — a menu or settings page described as one ordered list of rows, each
+//! **Declarative forms** - a menu or settings page described as one ordered list of rows, each
 //! carrying its own identity, activation kind and action, and a [`FormTable`] that owns the
 //! [`TableView`] and the row bindings together.
 //!
@@ -6,7 +6,7 @@
 //! resolve a press by indexing the second with the table's selection. The two vectors drifted (a
 //! row added to one and not the other), and the raw table index doubled as the row's identity, so
 //! reordering a page moved its focus keys, its remembered seats and its recorded fingerprints.
-//! Here a row is declared ONCE — id, key, kind, action and presentation on one line — so moving a
+//! Here a row is declared ONCE - id, key, kind, action and presentation on one line - so moving a
 //! line reorders the page and nothing else, and [`FormTable::set`] replaces the sections AND the
 //! bindings in a single call so a lookup can never read a previous rebuild's bindings.
 //!
@@ -15,17 +15,17 @@
 //! a page hands to the focus layer (never an enum discriminant, layout or hash). The `< ceiling`
 //! bound on keys is checked here against a parameter because ui/ cannot name
 //! `screens::registry::BAND` (the layer rule in ui/CLAUDE.md); `Dest` ([`RowKind::Nav`]) is likewise
-//! a generic, so `SettingsPage` never enters ui/. Lookups are linear scans over the bindings —
+//! a generic, so `SettingsPage` never enters ui/. Lookups are linear scans over the bindings -
 //! picker lists reach past a hundred rows and a scan of that is cheaper than a hash; the
 //! operation-count test in `form_tests.rs` pins the bound.
 //!
 //! Three more things a declared row carries for pages that drill in: a [`RowKind::Nav`] row gets the drill-in chevron when it is
 //! built; a [`RowKind::Choice`] row declared with [`FormSection::choice`] derives its checkmark from
 //! a current-value predicate instead of a hand-set flag; and an item can be
-//! [`FormSection::disabled`] — drawn dim, still focusable (the viewer can land on it and read why),
+//! [`FormSection::disabled`] - drawn dim, still focusable (the viewer can land on it and read why),
 //! and never activated by [`FormTable::activate`], so OK and RIGHT cannot act on it and no caller
-//! carries its own guard. A table is (re)installed by one of FOUR operations — [`FormTable::set`]
-//! (Settings' snap), [`FormTable::open`], [`FormTable::refresh`], [`FormTable::restore`] — because
+//! carries its own guard. A table is (re)installed by one of FOUR operations - [`FormTable::set`]
+//! (Settings' snap), [`FormTable::open`], [`FormTable::refresh`], [`FormTable::restore`] - because
 //! "the page changed", "the same page's data changed" and "a page came back" want different scroll
 //! and pill behaviour. Design record: `docs/player-submenus.md`.
 //!
@@ -34,7 +34,7 @@
 
 use crate::table::{Row, Section, TableView};
 
-/// A row's stable focus key. Hand-assigned per page, never derived from layout — see the module doc.
+/// A row's stable focus key. Hand-assigned per page, never derived from layout - see the module doc.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RowKey(pub u32);
 
@@ -153,7 +153,7 @@ impl<Id, A, Dest> FormSection<Id, A, Dest> {
     /// Mark the item just declared DISABLED when `cond` holds: drawn dim ([`Row::dim`]), still
     /// focusable, and never activated ([`FormTable::activate`] answers `None` for OK and RIGHT
     /// alike). A no-op when the last slot is not an item, and when the last declaration was an
-    /// [`Self::item_if`] / [`Self::item_keyed_if`] that was skipped: `.item_if(false, …)
+    /// [`Self::item_if`] / [`Self::item_keyed_if`] that was skipped: `.item_if(false, ...)
     /// .disabled(true)` ("dim it during this state") must not dim the row BEFORE the one that was
     /// never declared.
     pub fn disabled(mut self, cond: bool) -> Self {
@@ -246,7 +246,7 @@ impl<Id, A, Dest> Form<Id, A, Dest> {
             .any(|slot| matches!(slot, Slot::Item(b, _) if &b.id == id))
     }
     /// The form's slots in layout order (visible sections only): `Some(binding)` for a focusable
-    /// row, `None` for a separator or note. A READ of what was declared — for a caller that must
+    /// row, `None` for a separator or note. A READ of what was declared - for a caller that must
     /// stamp the layout (a change-detection key) without keeping a second list of it.
     pub fn slots(&self) -> Vec<Option<&Binding<Id, A, Dest>>> {
         self.sections
@@ -260,7 +260,7 @@ impl<Id, A, Dest> Form<Id, A, Dest> {
             .collect()
     }
     /// Re-type every focusable row: `f` gets each binding and answers its replacement, or `None` to
-    /// demote the row to an inert slot — still DRAWN exactly as declared, but never focusable.
+    /// demote the row to an inert slot - still DRAWN exactly as declared, but never focusable.
     /// Sections, headers, accessories and every row's presentation pass through untouched, so a
     /// shared builder (`appkit::source_list::form`) serves a surface that has its own row identities.
     pub fn map<Id2, A2>(self, mut f: impl FnMut(Binding<Id, A, Dest>) -> Option<Binding<Id2, A2, Dest>>) -> Form<Id2, A2, Dest> {
@@ -349,14 +349,14 @@ impl<Id: PartialEq + Clone, A: Clone, Dest: Clone> FormTable<Id, A, Dest> {
     }
 
     /// [`Self::set`] for an ACTION MENU rebuilt under an open panel: a `keep` that vanished does
-    /// NOT slide onto its neighbour (which could be a destructive row — *Sign out* once *Change
+    /// NOT slide onto its neighbour (which could be a destructive row - *Sign out* once *Change
     /// profile* is hidden) but opens afresh on [`TableView::opening_row`], exactly as the first build does.
     pub fn set_or_open(&mut self, form: Form<Id, A, Dest>, keep: Option<&Id>) {
         self.install_keeping(form, keep, false, false);
     }
 
     /// [`Self::set`] for a rebuild that happens UNDER the cursor and must not move the scroll or
-    /// the highlight pill — a toggled switch on a list that has scrolled: the pill and the scroll
+    /// the highlight pill - a toggled switch on a list that has scrolled: the pill and the scroll
     /// keep gliding from where they are instead of snapping (`TableView::set_sections`'s `slide`).
     /// A landing that finds no row to keep still OPENS afresh, snapped.
     pub fn set_sliding(&mut self, form: Form<Id, A, Dest>, keep: Option<&Id>) {
@@ -465,7 +465,7 @@ impl<Id: PartialEq + Clone, A: Clone, Dest: Clone> FormTable<Id, A, Dest> {
         });
     }
 
-    /// Record the key the focus engine now holds (`None`: focus is off the table — the band, an
+    /// Record the key the focus engine now holds (`None`: focus is off the table - the band, an
     /// alert). Call it from the page's `FocusMoved` handler; it ends any pending [`Self::reseat`].
     pub fn note_engine_key(&mut self, key: Option<RowKey>) {
         self.engine_key = key.filter(|k| self.index_of_key(*k).is_some());

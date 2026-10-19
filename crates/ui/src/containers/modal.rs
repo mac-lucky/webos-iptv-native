@@ -1,19 +1,19 @@
-//! `ModalStack` (restructure spec §6.2): a modal surface IS an `Entry` — same `EntryId`, same
+//! `ModalStack` (restructure spec §6.2): a modal surface IS an `Entry` - same `EntryId`, same
 //! `Instance`, same `Screen` contract, mounted by the same `Mounter`. The container is the ONE
 //! owner of a surface's PHASE (`Hidden | Opening | Open | Closing`); `Popover`'s `open`/`closing`/
 //! `dismiss`/`visible` flags are what it replaces, one module at a time (§14). `PopoverMotion` is
-//! the appear spring the panel rides, and [`ModalStack::draw_scrims`] is the modal DIM — both
+//! the appear spring the panel rides, and [`ModalStack::draw_scrims`] is the modal DIM - both
 //! belonged to the legacy `Popover` and neither does now. The panel painter still does, until each
 //! popover's phase.
 //!
 //! - `input_owner()` = the topmost Opening|Open surface.
 //! - `draw_scrims()` runs inside the PAGE PASS, so the dim is on the framebuffer before the
-//!   surface's own glass looks through it — see its doc for the two hand-placed calls it replaces.
+//!   surface's own glass looks through it - see its doc for the two hand-placed calls it replaces.
 //!   Every dim is painted through the stack's ONE inherited field ([`ModalUnderlay`]), latched
 //!   from the undimmed host page (over the video plane: unlatched, the flat neutral ink) at the head
 //!   of that call, re-latched when the host snapshot is re-taken, reset with the last surface.
 //! - `prune()` is the ONLY place Closing clears, so Closing surfaces step unconditionally (the
-//!   fade must finish whatever the host is doing) — `the_closing_phase_is_stepped_even_when_the_host_is_frozen`.
+//!   fade must finish whatever the host is doing) - `the_closing_phase_is_stepped_even_when_the_host_is_frozen`.
 //! - `on_miss(style)` is consulted only while the surface is `Open`: a click beside a Compact,
 //!   Sheet or PlayerPanel dismisses it; an Alert ignores the miss; an Opaque surface swallows it.
 //! - `host_policy()` folds bottom-to-top into the `(HostUpdate, HostRender)` pair the frame reads.
@@ -80,17 +80,17 @@ pub struct PopoverMotion {
     target: f32,
     /// **The frame a surface is presented on draws it at appear 0**, and the spring starts on the
     /// next. That frame is the one that renders the whole host into its snapshot
-    /// (`popover::host::page_pass`) — a full page render on top of the frame's own composite, the
-    /// heaviest GPU frame a modal has — and a dim or a panel ramped onto it as well pushed it past a
+    /// (`popover::host::page_pass`) - a full page render on top of the frame's own composite, the
+    /// heaviest GPU frame a modal has - and a dim or a panel ramped onto it as well pushed it past a
     /// vsync on every open: 13.6 M GPU cycles against Home's 9.2 M, and the frame after it waited
-    /// 22–37 ms for a buffer (television, 2026-09-19). Held, the open frame costs a page render
+    /// 22-37 ms for a buffer (television, 2026-09-19). Held, the open frame costs a page render
     /// (and the field reduction queued with it) and nothing the panel owns; the hold then lasts
     /// until that capture has left the GPU ([`PopoverMotion::tick_gated`]), and the ramp is the
     /// same curve from there.
     hold: bool,
     /// This frame's tick was the held one. Not `settled` until a real step has run, so a surface
-    /// dismissed on its held frame still passes through `Closing` for a frame — the phase every
-    /// dismissal is observed by — rather than being pruned before anything saw it go.
+    /// dismissed on its held frame still passes through `Closing` for a frame - the phase every
+    /// dismissal is observed by - rather than being pruned before anything saw it go.
     holding: bool,
     /// How long the current hold has lasted, for [`SURFACE_TEXT_HOLD_MAX_MS`].
     held_ms: f32,
@@ -104,12 +104,12 @@ pub const APPEAR_K: f32 = 300.0;
 /// **The longest a presented surface waits at appear 0 for its own text to be rasterised.**
 /// A held surface is walked with the recording painter (`dispatch.rs`, the surface loop), so its
 /// cold strings are queued and drained under the text prewarm budget instead of being rasterised
-/// in the frame that also renders the host snapshot — Settings' first open rasterised 21 strings
+/// in the frame that also renders the host snapshot - Settings' first open rasterised 21 strings
 /// inside that frame (a 44 ms frame on the television, 2026-09-29 bench). The hold continues while
 /// the queue is non-empty (as latched for the iteration, `text::surface_text_pending`, since the
 /// drain's pace is the CPU's and a recording must replay it), so the first ramp frame draws only
 /// resident text; the bound keeps a queue that cannot drain (a string too large for the budget, a
-/// surface that keeps producing new text) from ever delaying the open by more than this — about
+/// surface that keeps producing new text) from ever delaying the open by more than this - about
 /// six frames.
 pub const SURFACE_TEXT_HOLD_MAX_MS: f32 = 100.0;
 
@@ -125,7 +125,7 @@ impl PopoverMotion {
             held_ticks: 0,
         }
     }
-    /// Pin the spring where it is for the next [`tick`](Self::tick) — see [`hold`](Self::hold).
+    /// Pin the spring where it is for the next [`tick`](Self::tick) - see [`hold`](Self::hold).
     pub fn hold_one_frame(&mut self) {
         self.hold = true;
         self.held_ms = 0.0;
@@ -136,7 +136,7 @@ impl PopoverMotion {
     pub fn held(&self) -> bool {
         self.hold || self.holding
     }
-    /// The held frame that renders the host snapshot — the presented frame, before any later tick
+    /// The held frame that renders the host snapshot - the presented frame, before any later tick
     /// has extended the hold. A held surface's text is recorded here but not drained: this is the
     /// heaviest GPU frame a modal has, and the drain's uploads belong to the frames after it.
     pub fn capture_frame(&self) -> bool {
@@ -210,23 +210,23 @@ pub fn surface_policy(style: Style, phase: Phase, ground_ready: bool) -> (HostUp
     }
 }
 
-/// **Does this STYLE hold a snapshot of its host?** — the one answer `popover`'s process-wide
+/// **Does this STYLE hold a snapshot of its host?** - the one answer `popover`'s process-wide
 /// `HOST_USERS` counter is driven from (`app/bridge.rs`'s `sync_host`).
 ///
 /// DERIVED from [`surface_policy`] rather than restating it as a second `matches!` over `Style`,
 /// and that is the whole point of the function existing. The counter is what arms
 /// `popover::host::page_pass`'s freeze, so a style the table calls `HostRender::Cached` and this
 /// answer calls `false` produces a surface whose host is redrawn in full on every frame it is up
-/// — with nothing failing, because the two statements live three modules apart and nothing
+/// - with nothing failing, because the two statements live three modules apart and nothing
 /// compares them.
 ///
 /// **That is exactly what happened to `Style::Compact` (restructure phase 8).** The bridge listed
-/// `Sheet | Opaque { snapshot: true } | Alert` by hand and left Compact out — the one production
+/// `Sheet | Opaque { snapshot: true } | Alert` by hand and left Compact out - the one production
 /// Compact surface being the Library's Sort/Filter menu, whose legacy `Popover` had been
 /// `caching_host()` since 2026-09-03, and whose `Style::Compact` doc names `item_menu` (also
 /// `caching_host()`) as its exemplar. Measured on the television, `fps:library-switch`: sustained
-/// 58 ms frames with the whole library page — ambient wash, shelves, poster grid and all their
-/// text — re-rendered under an open menu, `loop=` 43-45 against a floor of 45.
+/// 58 ms frames with the whole library page - ambient wash, shelves, poster grid and all their
+/// text - re-rendered under an open menu, `loop=` 43-45 against a floor of 45.
 ///
 /// The phase is deliberately NOT a parameter. `HOST_USERS` is an ownership count held from the
 /// surface's first live frame to its release; a per-frame answer would flap as
@@ -237,7 +237,7 @@ pub fn style_caches_host(style: Style) -> bool {
     surface_policy(style, Phase::Opening, false).1 != HostRender::Live
 }
 
-/// What a miss beside a surface does, by style — consulted only while `Open`.
+/// What a miss beside a surface does, by style - consulted only while `Open`.
 pub fn on_miss(style: Style) -> OnMiss {
     match style {
         Style::Compact | Style::Sheet | Style::PlayerPanel { .. } => OnMiss::Dismiss,
@@ -250,7 +250,7 @@ pub struct ModalStack<H: Host> {
     pub surfaces: Vec<Surface<H>>,
     /// Surfaces whose `Unmount` is owed (removed by `prune`).
     pub retired: Vec<Entry<H>>,
-    /// The ONE field every surface's dim inherits through — see [`ModalUnderlay`].
+    /// The ONE field every surface's dim inherits through - see [`ModalUnderlay`].
     pub underlay: ModalUnderlay,
 }
 
@@ -264,7 +264,7 @@ pub enum Latched {
     Page(u32),
 }
 
-/// What [`ModalUnderlay`] does at the head of a frame's dims — the decision, as a value.
+/// What [`ModalUnderlay`] does at the head of a frame's dims - the decision, as a value.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum LatchStep {
     /// The field already describes what is asked for.
@@ -307,7 +307,7 @@ pub fn latch_step(
     }
 }
 
-/// **Where a frame's dims meet the renderer** — the one seam between [`ModalStack::draw_scrims`]'
+/// **Where a frame's dims meet the renderer** - the one seam between [`ModalStack::draw_scrims`]'
 /// ordering and GL, so that ordering is host-testable. Production is [`GlDims`]; a test hands in a
 /// fake framebuffer and watches whether the latch ever reads a dim, and when it reads it.
 pub trait DimSink {
@@ -318,13 +318,13 @@ pub trait DimSink {
     /// Did THIS frame capture the host page (`gfx::snapshot_captured_this_frame`)? Its GPU work
     /// is waited out before the next present, so a reduction queued now costs no presented frame.
     fn captured(&self) -> bool;
-    /// `gfx::field_kick`: queue the reduction of the page as it stands NOW — before any dim is on
-    /// it — or `None` when it has no honest answer this frame.
+    /// `gfx::field_kick`: queue the reduction of the page as it stands NOW - before any dim is on
+    /// it - or `None` when it has no honest answer this frame.
     fn kick(&mut self) -> Option<tv_gfx::gfx::FieldTicket>;
     /// `gfx::field_collect`: the reduction `kick` queued, once the GPU has had a frame for it.
     fn collect(&mut self, t: tv_gfx::gfx::FieldTicket) -> tv_gfx::gfx::FieldRead;
     /// A read is (or is no longer) in flight: keep the loop turning for it, and keep the host's
-    /// ground stage — whose quad bakes the dim in — from being taken before it lands.
+    /// ground stage - whose quad bakes the dim in - from being taken before it lands.
     fn in_flight(&mut self, pending: bool);
     /// Paint one surface's dim through `field` at `alpha`.
     fn dim(&mut self, field: &crate::underlay::UnderlayField, alpha: f32);
@@ -344,11 +344,11 @@ impl DimSink for GlDims {
         tv_gfx::gfx::snapshot_captured_this_frame()
     }
     fn kick(&mut self) -> Option<tv_gfx::gfx::FieldTicket> {
-        // A host test links GL but never creates a context — `underlay::upload`'s reason. A test
+        // A host test links GL but never creates a context - `underlay::upload`'s reason. A test
         // that wants a sample drives the seam with its own `DimSink`.
         #[cfg(not(any(test, feature = "test-support")))]
         {
-            // Reduce the host snapshot itself when it is the undimmed page — it was taken at this
+            // Reduce the host snapshot itself when it is the undimmed page - it was taken at this
             // same instant, so the chain's own full-screen copy would duplicate it.
             tv_gfx::gfx::field_kick(crate::popover::host::page_tex())
         }
@@ -365,7 +365,7 @@ impl DimSink for GlDims {
     fn in_flight(&mut self, pending: bool) {
         crate::popover::host::defer_ground(pending);
         if pending {
-            // A frame for the read to land in, without claiming the page changed — which would
+            // A frame for the read to land in, without claiming the page changed - which would
             // re-capture the host and restart the read it is waiting on.
             tv_machine::idle::wake();
         }
@@ -382,19 +382,19 @@ impl DimSink for GlDims {
     }
 }
 
-/// **The one inherited field under a presented stack** — owned HERE, by the container, rather than
+/// **The one inherited field under a presented stack** - owned HERE, by the container, rather than
 /// by any surface or a static: every surface over one host dims the same page, so the page is read
 /// once and every dim in the ladder is painted through the same texture.
 ///
 /// **When it latches, and why it can never see its own dim.** It is brought up to date at the head
 /// of [`ModalStack::draw_scrims`], before the first dim of the frame is painted, and
 /// `draw_scrims` is the only place a surface's dim is ever painted. That call is the last thing in
-/// the host's page pass and runs inside the frame's first `popover::host::live()` — the instant
+/// the host's page pass and runs inside the frame's first `popover::host::live()` - the instant
 /// `popover::host` defines as "the page is complete and no surface has put a pixel on the
 /// framebuffer" and takes its own snapshot at. So what is sampled is the undimmed page (live, or
 /// served from the `Held::Page` snapshot, which is taken at that same instant). The one frame state
-/// in which the framebuffer could carry a dim at that point — `popover::host`'s `Held::Ground`
-/// stage, whose quad bakes the scrim in — arms `PAGE_FROZEN` through that same `live()`, and
+/// in which the framebuffer could carry a dim at that point - `popover::host`'s `Held::Ground`
+/// stage, whose quad bakes the scrim in - arms `PAGE_FROZEN` through that same `live()`, and
 /// `gfx::field_kick` refuses a frozen page; so does a blur source pass. A refusal keeps
 /// the field it had (`UnderlayField::latch_sampled` is only called with a real answer).
 ///
@@ -433,20 +433,20 @@ impl ModalUnderlay {
         self.held
     }
 
-    /// Bring the field up to date for `source` — the head of every frame's dims.
+    /// Bring the field up to date for `source` - the head of every frame's dims.
     ///
     /// **A page read lands one drawn frame after it is asked for** (`gfx::FIELD_READ_LAG_SWAPS`).
     /// The reduction is queued on the frame the host snapshot is taken ([`DimSink::kick`], before
     /// any dim, which is the property this whole type rests on) and read back on the next
     /// ([`DimSink::collect`]). Read on the frame that queued it, the 480-byte `glReadPixels`
-    /// waited for the GPU to draw everything submitted so far — 26–37 ms of every modal's open
+    /// waited for the GPU to draw everything submitted so far - 26-37 ms of every modal's open
     /// frame on the television (2026-09-19), the largest single cost in it. A frame later it
-    /// still waits 11–25 ms (the GPU runs more than a frame behind); two frames later it is free,
-    /// but the collecting frame then measured WORSE overall — see the constant's doc.
+    /// still waits 11-25 ms (the GPU runs more than a frame behind); two frames later it is free,
+    /// but the collecting frame then measured WORSE overall - see the constant's doc.
     ///
     /// Meanwhile the field keeps what it had: the previous snapshot's light when the page under a
-    /// standing stack changed (the same page, re-captured, on every dismissal), and — while a
-    /// stack first opens — nothing, so those frames' dim is the flat ink rather than
+    /// standing stack changed (the same page, re-captured, on every dismissal), and - while a
+    /// stack first opens - nothing, so those frames' dim is the flat ink rather than
     /// `field * TINT`, a difference of `alpha * 0.35 * field` per channel. On the kick frame the
     /// dim alpha is 0 for the account menu, the item menu and Settings, and 0.035 for the About
     /// panel (simulator, 2026-09-19): under two 8-bit codes on the brightest cell of the measured
@@ -558,27 +558,27 @@ impl<H: Host> ModalStack<H> {
     }
 
     /// **The INSTANT twin of [`dismiss`](Self::dismiss): `Closing` with the motion JUMPED to 0**,
-    /// so the next `prune` — the same frame's, since a spring at its target is settled by
-    /// definition — retires the surface with nothing ever composited of it again.
+    /// so the next `prune` - the same frame's, since a spring at its target is settled by
+    /// definition - retires the surface with nothing ever composited of it again.
     ///
     /// `dismiss` runs the appear spring back down, which is right for a person closing a panel
     /// over a screen that stays. It is wrong for the one case that has no screen left to fade
     /// over: Privacy & data → **Delete all local data**, confirmed. That sweep signs the account
     /// out, so the page the surface was presented on is replaced by the sign-in screen in the
-    /// same frame — and a dismissal fade over it composites a stale snapshot of a page that no
+    /// same frame - and a dismissal fade over it composites a stale snapshot of a page that no
     /// longer exists across the incoming one. The legacy code reached for `ui::settings::hide()`
-    /// here for exactly this reason ("the screen under it is going — no fade to run over"), and
+    /// here for exactly this reason ("the screen under it is going - no fade to run over"), and
     /// that is the behaviour this restores.
     ///
     /// Unlike `dismiss` it does NOT refuse a surface already `Closing`: the caller's whole claim
     /// is that there is no longer a host to fade over, which is as true of a fade already running
     /// as of one about to start, so an in-flight dismissal is cut short rather than left to
-    /// finish. The RETURN value still means what `dismiss`'s does — "this call is the one that
-    /// took the surface out of the running" — so a caller that emits the host's `Uncover` off it
+    /// finish. The RETURN value still means what `dismiss`'s does - "this call is the one that
+    /// took the surface out of the running" - so a caller that emits the host's `Uncover` off it
     /// does not emit a second one for a surface whose `dismiss` already did.
     ///
-    /// It is the STACK's method, not `Navigation`'s, and so — unlike
-    /// `Navigation::request(NavOp::Dismiss)` — it emits no `Uncover` on the host. That is not an
+    /// It is the STACK's method, not `Navigation`'s, and so - unlike
+    /// `Navigation::request(NavOp::Dismiss)` - it emits no `Uncover` on the host. That is not an
     /// omission to be tidied up in general: the only caller is the one whose host is being
     /// replaced in the same frame, and telling a page it has been uncovered immediately before
     /// unmounting it is a lie the page might act on. A future caller that hides a surface over a
@@ -592,7 +592,7 @@ impl<H: Host> ModalStack<H> {
         // The jump, not `motion.to(0.0)`: `at` sets appear, velocity AND target together, which
         // is what makes `settled()` true immediately. Leaving the velocity behind would keep the
         // spring unsettled for a frame or two and put the surface back on screen after the host
-        // had gone — the exact artefact this method exists to prevent.
+        // had gone - the exact artefact this method exists to prevent.
         s.motion = PopoverMotion::at(0.0);
         was_running
     }
@@ -634,8 +634,8 @@ impl<H: Host> ModalStack<H> {
             .find(|e| e.id == id)
     }
 
-    /// One frame: EVERY surface's motion steps — Closing ones unconditionally, whatever the host
-    /// fold says — and an Opening surface whose spring settled becomes Open.
+    /// One frame: EVERY surface's motion steps - Closing ones unconditionally, whatever the host
+    /// fold says - and an Opening surface whose spring settled becomes Open.
     ///
     /// **Each surface's step runs in its OWN [`MotionScope`](tv_machine::idle::MotionScope)** (§4.4),
     /// the `tv_machine::idle` half of the `Present::set_scope(Surface)` the dispatcher already sets around
@@ -670,7 +670,7 @@ impl<H: Host> ModalStack<H> {
             }
         }
         // The last surface is gone: nothing is dimming this host any more, and the next stack
-        // presented over it — perhaps over a different page — starts from a fresh read.
+        // presented over it - perhaps over a different page - starts from a fresh read.
         if self.surfaces.is_empty() {
             self.underlay.retire();
         }
@@ -704,32 +704,32 @@ impl<H: Host> ModalStack<H> {
         })
     }
 
-    /// **Every surface's modal dim, drawn INSIDE THE PAGE PASS** (spec §6.2, §8.3) — bottom to
+    /// **Every surface's modal dim, drawn INSIDE THE PAGE PASS** (spec §6.2, §8.3) - bottom to
     /// top, so a later surface's dim recedes the one below it exactly as its panel does.
     ///
     /// It is here, and not at each surface's own `draw`, because of WHERE the dim has to land
     /// rather than what it looks like. The scrim sits between the host page and the surface's
-    /// glass, so it is part of what that glass looks through — and the glass grabs its backdrop
+    /// glass, so it is part of what that glass looks through - and the glass grabs its backdrop
     /// off the framebuffer (or, for a dynamic backdrop, off a re-render of the page closure). A
     /// dim drawn with the panel lands after that grab, and the frosted ground then comes out at
     /// full page brightness inside a dimmed screen. That was `account_menu`'s reported bug,
-    /// and the fix was two hand-placed `draw_scrim()` calls in the loop's page closure — a list
+    /// and the fix was two hand-placed `draw_scrim()` calls in the loop's page closure - a list
     /// exactly two modules long, which no third panel could join without editing the loop.
     ///
     /// **`Style::Opaque` is skipped, and that is the mechanism's one documented boundary rather
     /// than a second mechanism.** An opaque surface REPLACES its host once its ground is drawn
     /// (`surface_policy`), so on the frames that matter there is no page pass to draw into and no
     /// snapshot for the dim to belong to: its dim is part of its own ground, composed with it, in
-    /// its own `draw`. Every style whose host is CACHED — Compact, Sheet, Alert — goes through
+    /// its own `draw`. Every style whose host is CACHED - Compact, Sheet, Alert - goes through
     /// here, and so does `PlayerPanel`: its host is `(Live, Live)` and behind it is punch-through
     /// alpha to a hardware plane, but the player's page pass (the transport) is a page pass
-    /// like any other, so a dim painted at its end covers the HUD and lies under the panel — the
-    /// z-order the panels used to hand-draw. Its dim is [`UnderlaySource::Flat`] — the neutral ink —
+    /// like any other, so a dim painted at its end covers the HUD and lies under the panel - the
+    /// z-order the panels used to hand-draw. Its dim is [`UnderlaySource::Flat`] - the neutral ink -
     /// because the page, which GL cannot read there, has no light to inherit.
     ///
     /// **Each dim is the page's own light pushed down, not a black sheet**: it is painted through
     /// the stack's one [`ModalUnderlay`] field as `Role::Dim { weight: theme::underlay::TINT }`,
-    /// and the field is brought up to date at the head of this call, before the first dim — see
+    /// and the field is brought up to date at the head of this call, before the first dim - see
     /// `ModalUnderlay` for why that instant can never see a dim.
     ///
     /// `nav_page_alpha` is the route transition's own dip: a panel left at full strength over a
@@ -740,7 +740,7 @@ impl<H: Host> ModalStack<H> {
     /// `popover::host::live()` scope or a frozen page will refuse every fill.
     ///
     /// `chip_read` is the shared top bar's render values this frame
-    /// (`crate::dispatch::Rig::scrim_chip_read`) — every lift called here receives the SAME
+    /// (`crate::dispatch::Rig::scrim_chip_read`) - every lift called here receives the SAME
     /// pair, since there is one bar and at most one lift reads it (spec phase 12, PX-WIDGETS): a
     /// bare `Scrim::lift` fn cannot borrow the rig that owns those values, so they cross as this
     /// call's own argument instead of through a static.
@@ -761,7 +761,7 @@ impl<H: Host> ModalStack<H> {
         self.draw_scrims_on(nav_page_alpha, read, &mut GlDims);
     }
 
-    /// [`draw_scrims`](Self::draw_scrims) against any [`DimSink`] — the order is the contract:
+    /// [`draw_scrims`](Self::draw_scrims) against any [`DimSink`] - the order is the contract:
     /// the field is brought up to date FIRST, from a framebuffer no dim of this frame has touched,
     /// and only then is each surface's dim painted through it, bottom to top, each followed by its
     /// lift.
@@ -778,10 +778,10 @@ impl<H: Host> ModalStack<H> {
         let source = self.underlay_source();
         // The page is read on the frame that CAPTURED it, or else the first frame a dim is seen.
         // The capture frame renders the whole host into its snapshot and is the heaviest GPU frame
-        // a modal has — but nothing presents after it until that work has left the GPU
+        // a modal has - but nothing presents after it until that work has left the GPU
         // (`gfx::snapshot_frame_begin`), so the reduction queued alongside it is waited out with it
         // and costs no presented frame. Queued a frame later instead, on the first ramp frame, it
-        // was the backlog the frame after that paid: 20–24 ms (television, 2026-09-19). A held
+        // was the backlog the frame after that paid: 20-24 ms (television, 2026-09-19). A held
         // surface on a frame that captured nothing still queues nothing.
         if !dims.is_empty() || source != Some(UnderlaySource::Page) || sink.captured() {
             tv_base::diag::spans::span("ulatch", || self.underlay.sync(source, sink));
@@ -792,7 +792,7 @@ impl<H: Host> ModalStack<H> {
         }
     }
 
-    /// Where the stack's field inherits from: the BOTTOM surface that declares a dim — it is the
+    /// Where the stack's field inherits from: the BOTTOM surface that declares a dim - it is the
     /// one whose dim lies directly on the host, and every dim above it lies over the same page.
     /// `None` when no surface declares one. Asked whatever the surface's appear; the READ waits for
     /// the first frame a dim is painted (`draw_scrims_on`).
@@ -809,8 +809,8 @@ impl<H: Host> ModalStack<H> {
     /// [`draw_scrims`](Self::draw_scrims)'s decision, without the paint: which surfaces owe their
     /// host a dim this frame, at what alpha, lifting what. Bottom to top.
     ///
-    /// Split out so the rule is host-testable. A `cargo test --lib` run has no GL context — the
-    /// fixture screens register stops and paint nothing — so the two halves have to be separable
+    /// Split out so the rule is host-testable. A `cargo test --lib` run has no GL context - the
+    /// fixture screens register stops and paint nothing - so the two halves have to be separable
     /// or neither the alpha ladder nor the draw ORDER could be graded at all. Every eligible
     /// surface is ASKED (`Screen::scrim`) whatever its answer, which is what makes "the container
     /// asked me, in the page pass" observable from a fixture that wants no dim.
@@ -849,7 +849,7 @@ impl<H: Host> ModalStack<H> {
     }
 }
 
-/// `dismiss` vs [`ModalStack::hide`] — the fade and the CUT, which are the same phase change and
+/// `dismiss` vs [`ModalStack::hide`] - the fade and the CUT, which are the same phase change and
 /// two entirely different frames on the panel.
 #[cfg(test)]
 mod hide_tests {
@@ -907,8 +907,8 @@ mod hide_tests {
         let a = ms.surface(id).unwrap().motion.appear;
         assert!(a > 0.0 && a < 0.2, "the ramp begins on the frame after, from 0: {a}");
 
-        // Dismissed ON the held frame, a surface still passes through `Closing` for that frame —
-        // prune leaves it — and retires on the next, with nothing ever ramped.
+        // Dismissed ON the held frame, a surface still passes through `Closing` for that frame -
+        // prune leaves it - and retires on the next, with nothing ever ramped.
         let (id, _) = ms.present(&mut ids, FixtureArg::Modal, Style::Sheet);
         {
             let mut ph = PresentHandle::of(&mut present);
@@ -1022,7 +1022,7 @@ mod hide_tests {
         assert_eq!(held_for(&|f| f < 3, true), 4, "the latch, not the queue, decides the open frame");
     }
 
-    /// `hide` retires on the same frame — no spring runs at all — while `dismiss` over the same
+    /// `hide` retires on the same frame - no spring runs at all - while `dismiss` over the same
     /// surface is still on screen many frames later.
     #[test]
     fn hide_retires_without_a_spring_while_dismiss_still_runs_one() {
@@ -1051,7 +1051,7 @@ mod hide_tests {
         assert!(!ms.is_empty(), "…so it is still on screen");
     }
 
-    /// A dismissal already in flight is CUT SHORT rather than refused — the caller's claim is that
+    /// A dismissal already in flight is CUT SHORT rather than refused - the caller's claim is that
     /// there is no host left to fade over, which a fade already running does not change. The
     /// return value still reports that this call was not the one that closed it, so a caller
     /// emitting the host's `Uncover` off it does not emit a second one.

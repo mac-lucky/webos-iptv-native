@@ -6,7 +6,7 @@
 //! out, the player probes the stream itself before it builds the Load (`player::probe`, then
 //! [`PlaybackSession::resolve`]); a playlist describes a stream, never its codecs. The device's own
 //! capabilities are read from `tv_platform` (`devcaps`, `tv::sandbox`), never passed. Everything the media layer reports back leaves through one
-//! [`PlaybackObserver`] the start carries — nothing here knows what a playlist, a guide or a
+//! [`PlaybackObserver`] the start carries - nothing here knows what a playlist, a guide or a
 //! watch-history is.
 //!
 //! [`PlaybackSession`] is the main-thread value the player machine owns
@@ -31,7 +31,7 @@ use std::sync::Arc;
 pub struct PlaybackStart {
     /// The stream: `http` or `https`. Carries whatever query its addon put there; never logged.
     pub url: String,
-    /// Sent on every request the media transport makes for this stream — the first open, every
+    /// Sent on every request the media transport makes for this stream - the first open, every
     /// Range seek, every redirect hop (credential headers only to the stream's own origin).
     pub headers: RequestHeaders,
     /// Where to start, in nanoseconds of content time (a resume). 0 = the beginning.
@@ -44,7 +44,7 @@ pub struct PlaybackStart {
     /// track: the probe picks the audio track by them before the Load (`stream::
     /// derive_declaration`). `None`: the file's audio choice.
     pub tracks: Option<tv_base::tracks::TrackPrefs>,
-    /// What the stream is, as the Load must declare it — an OVERRIDE. `None` (the default, and
+    /// What the stream is, as the Load must declare it - an OVERRIDE. `None` (the default, and
     /// what a playlist channel has): the player probes the stream with the bundled demuxer before
     /// it builds the Load, and derives this from what the container says.
     pub stream: Option<StreamDeclaration>,
@@ -110,7 +110,7 @@ pub enum StopReason {
 
 /// **What the media layer reports upward**, one value per playback. Every method has an empty
 /// default, so an observer implements only what it records. Called from the progress worker
-/// (`progress`) or the main thread (the rest); an implementation must not block — a slow one is
+/// (`progress`) or the main thread (the rest); an implementation must not block - a slow one is
 /// handed the facts and does its own I/O on its own thread.
 pub trait PlaybackObserver: Send + Sync {
     /// The playback's first frame is on the panel, at `position_ms`.
@@ -121,7 +121,7 @@ pub trait PlaybackObserver: Send + Sync {
     fn stopped(&self, _at: Progress, _reason: StopReason) {}
 }
 
-/// Why a start was refused before any native object was built — each is an explicit `Error`
+/// Why a start was refused before any native object was built - each is an explicit `Error`
 /// state (`player::state`), never a Load that cannot advance.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StartRefusal {
@@ -348,7 +348,7 @@ impl PlaybackSession {
     }
 
     /// [`select_audio`](Self::select_audio) by track position alone, reading the codec, channel
-    /// count and Atmos flag off the probe — what a track menu over a probed stream has. `Err` for
+    /// count and Atmos flag off the probe - what a track menu over a probed stream has. `Err` for
     /// a track the probe did not see is the same refusal an undecodable one gets.
     pub fn select_probed_audio(&mut self, track: i32) -> Result<(), StartRefusal> {
         let Some(a) = self.probed.as_ref().and_then(|p| p.audio.get(usize::try_from(track).ok()?)).cloned() else {
@@ -434,7 +434,7 @@ impl PlaybackSession {
 /// `raster` larger than that codec's own row in the table (PlxNative's `video_direct_plays`
 /// resolution gate, per codec: its shared `hevc_max` is the MIN over H.264 and HEVC and would
 /// refuse a 4K HEVC file on a SoC whose AVC decoder stops at 1080p, and there is no server here to
-/// transcode it). An axis that is 0 (unknown, or not stated — every row of an unread table) never
+/// transcode it). An axis that is 0 (unknown, or not stated - every row of an unread table) never
 /// convicts.
 fn video_refusal(vcodec: &str, raster: (u16, u16), profile: i32, caps: &tv_platform::devcaps::Caps) -> Option<StartRefusal> {
     let codec = vcodec.to_ascii_lowercase();
@@ -629,7 +629,7 @@ mod tests {
         assert_eq!(resolve_with(None), (0, "ac3".into()));
     }
 
-    /// A probe failure is a refusal on the session — never an unresolved start left spinning —
+    /// A probe failure is a refusal on the session - never an unresolved start left spinning -
     /// and the start stays installed so the read-out can offer it again.
     #[test]
     fn a_failed_probe_is_an_explicit_refusal_that_keeps_the_start() {

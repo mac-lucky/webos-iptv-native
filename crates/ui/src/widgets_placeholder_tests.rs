@@ -85,8 +85,8 @@ fn a_poster_whose_art_has_not_arrived_counts_its_thumb_as_the_key() {
 
 /// The neutral collection tile is drawn by `collection_tile::draw` (text and icon, which the host
 /// cannot rasterize), on the never-sentinel `CARD_ABSENT`, and `card_named` returns right after it:
-/// it reaches no counting call. What this pins is the decision that sends a tile down that path —
-/// a collection with no `thumb` — and, beside it, that one WITH a thumb is a poster that can wait.
+/// it reaches no counting call. What this pins is the decision that sends a tile down that path -
+/// a collection with no `thumb` - and, beside it, that one WITH a thumb is a poster that can wait.
 #[test]
 fn a_collection_with_no_artwork_takes_the_absence_path_and_one_with_a_thumb_does_not() {
     let bare = TileFacts { kind: TileKind::Collection, title: "Marvel", thumb: "", ..TileFacts::default() };
@@ -121,7 +121,7 @@ fn a_still_whose_art_has_not_arrived_counts_its_still_key() {
 
 /// The "fused still with no texture" line of the plan is the same draw: the fused pass declines
 /// texture 0 before it paints, so a still with no picture always reaches the skeleton arm that
-/// counts it — there is no second ground to hook.
+/// counts it - there is no second ground to hook.
 #[test]
 fn a_still_with_no_texture_is_never_fused() {
     let fused = placeholder::capture_declared(|| {
@@ -253,7 +253,7 @@ fn the_placeholder_tokens_keep_their_default_values() {
 // ---- the loading shimmer and the progress ring (2026-10-17) -------------------------------------
 
 /// The shimmer's crest is a narrow bump that travels LEFT TO RIGHT: a later clock reaches the same
-/// phase further right. A skeleton still counts once, and its draw asks for NO frame — it moves on
+/// phase further right. A skeleton still counts once, and its draw asks for NO frame - it moves on
 /// the frames something else presents and stands still when nothing does.
 #[test]
 fn the_skeleton_shimmer_sweeps_rightward_and_never_keeps_the_loop_awake() {

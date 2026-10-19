@@ -60,10 +60,10 @@ pub struct LinkedHeading<'a> {
     title: &'a str,
     count: &'a str,
     presentation: Presentation,
-    /// The heading's room from its origin, chevron included — `card_row::draw_heading`'s
+    /// The heading's room from its origin, chevron included - `card_row::draw_heading`'s
     /// `max_w`. `INFINITY` (the default) never elides.
     max_w: f32,
-    /// How many members the linked collection holds — the "· N" a `Heading` carries after its
+    /// How many members the linked collection holds - the "· N" a `Heading` carries after its
     /// title (`Collections.dc.html` D1/E1). 0 draws no count.
     total: usize,
 }
@@ -166,7 +166,7 @@ impl<'a> LinkedHeading<'a> {
     /// The two grow differently because their content sits differently. `Entry`'s face scales
     /// whole and centres its run (person.rs's Filmography pill). A focused `Heading` is the whole
     /// pill scaled from its left edge (D1b/E1): its PADDING grows with the face while the text,
-    /// set at the fixed size rungs, keeps its width — so the air after the chevron stays the side
+    /// set at the fixed size rungs, keeps its width - so the air after the chevron stays the side
     /// padding rather than collecting the whole width's 7% as empty face.
     pub fn face_rect(&self, x: f32, y: f32, focus_t: f32, m: &LinkedMeasure) -> Rect {
         let scale = focus_scale(focus_t);
@@ -490,7 +490,7 @@ mod tests {
         assert_eq!(heading.content_x(rest, &m), 96.0);
     }
 
-    /// **D1b/E1: the focused heading grows as ONE pill from its left edge** — its padding scales
+    /// **D1b/E1: the focused heading grows as ONE pill from its left edge** - its padding scales
     /// with the face, so the air after the chevron stays the side padding (×1.07) rather than the
     /// whole width's growth piling up as empty face after it.
     #[test]
@@ -509,8 +509,8 @@ mod tests {
         assert!((right - SIDE_PAD * s).abs() < 0.01, "air after the chevron {right}");
     }
 
-    /// `(leading, trailing)` air of a face around its inked content — the text's left edge to the
-    /// chevron's ink right edge — at a focus amount, measured from what `draw` paints.
+    /// `(leading, trailing)` air of a face around its inked content - the text's left edge to the
+    /// chevron's ink right edge - at a focus amount, measured from what `draw` paints.
     fn air(h: LinkedHeading<'_>, focus_t: f32) -> (f32, f32) {
         let m = h.measure(&FixtureMeasure);
         let face = h.face_rect(super::super::consts::MARGIN_X, 300.0, focus_t, &m);
@@ -545,7 +545,7 @@ mod tests {
         }
     }
 
-    /// D1/E1: "Starfall Saga Collection · 12 ›" — the count rides after the title, ahead of any
+    /// D1/E1: "Starfall Saga Collection · 12 ›" - the count rides after the title, ahead of any
     /// source annotation, and a zero count draws none.
     #[test]
     fn a_heading_carries_its_collections_count() {

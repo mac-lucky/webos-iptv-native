@@ -1,4 +1,4 @@
-//! `nav` — **the page transition's PRESENTATION, published once a frame**: the two cascade alphas
+//! `nav` - **the page transition's PRESENTATION, published once a frame**: the two cascade alphas
 //! a route change rides, the pill the shared strip must read as selected while one is in flight,
 //! and the dev blurred-dissolve prototype's ramp.
 //!
@@ -6,14 +6,14 @@
 //! made it the second navigation authority in the app: the loop's `nav_commit` applied its route
 //! change at THIS module's floor while the container's own `NavStack` ran `Immediate` and committed
 //! at the same frame for its own reasons. Restructure phase 12 (D1) put `PageDip` on the
-//! application's page stack — the same schedule, the same 70/1/140 ms, the same continuous-chrome
+//! application's page stack - the same schedule, the same 70/1/140 ms, the same continuous-chrome
 //! rule and the same reversal on cancel, lifted into `ui::containers::transition` where it can be
-//! tested against the container that uses it — and this module became what its readers actually
+//! tested against the container that uses it - and this module became what its readers actually
 //! wanted: a place to ASK what the transition looks like this frame.
 //!
 //! **It is a PUBLICATION, not a mirror.** `app::bridge::frame_with_results` writes it from
 //! `NavStack::{page_alpha, chrome_alpha}` immediately after the dispatcher's frame, and nothing
-//! else writes it — so it cannot disagree with the container, and a reader that runs before the
+//! else writes it - so it cannot disagree with the container, and a reader that runs before the
 //! first frame sees the rest values (1.0, 1.0, no pending pill), which is exactly right.
 //!
 //! The dip schedule is documented at [`PageDip`](crate::containers::transition::PageDip).
@@ -26,7 +26,7 @@
 //! Two alphas, and the split is the whole design. [`page_alpha`] is for content the swap replaces;
 //! [`chrome_alpha`] is for the **shared top tab bar**, the SAME control on Home, the Library and
 //! Search, which must hold still while the pages swap under it. Its readers are the ones that draw
-//! outside a page's own `DrawFrame` — `ui::popover`'s panel and scrim, `widgets::redraw_profile_chip`,
+//! outside a page's own `DrawFrame` - `ui::popover`'s panel and scrim, `widgets::redraw_profile_chip`,
 //! and the glass track's "am I settled enough to sample the ground" test.
 //!
 //! [`view_tab`] is the other half of "the control acknowledges the press on the press frame": the
@@ -34,7 +34,7 @@
 //! The pending destination is the container's (`NavStack::pending_dest`); which PILL that page is
 //! remains the application's answer, so `app::bridge` resolves it before publishing.
 //!
-//! **Main-thread only**, a `thread_local!` cell rather than a `static mut` — `ci/check-statics.sh`
+//! **Main-thread only**, a `thread_local!` cell rather than a `static mut` - `ci/check-statics.sh`
 //! carried this module as a migration entry ("the statics die in 12") and it is now three plain
 //! values behind a safe borrow.
 
@@ -75,7 +75,7 @@ pub fn publish(page: f32, chrome: f32, tab: Option<usize>) {
     }));
 }
 
-/// The cascade alpha for PAGE CONTENT — everything a screen draws that does not survive the swap.
+/// The cascade alpha for PAGE CONTENT - everything a screen draws that does not survive the swap.
 ///
 /// **Except under the `/tmp/webosiptv-navblur` prototype**, where it is a flat 1: that experiment
 /// replaces the grey trough with a full-bleed blur cross-faded OVER the page (see
@@ -94,7 +94,7 @@ pub fn set_blur_dissolve(on: bool) {
     BLUR_DISSOLVE.with(|b| b.set(on));
 }
 
-/// How strongly the transition's blur slab should cover the page, 0 at rest and 1 at the floor —
+/// How strongly the transition's blur slab should cover the page, 0 at rest and 1 at the floor -
 /// the fade the dip would have ridden, inverted. Always 0 unless the prototype is armed, so the
 /// caller needs no second test.
 pub fn blur_amount() -> f32 {
@@ -105,7 +105,7 @@ pub fn blur_amount() -> f32 {
     }
 }
 
-/// The cascade alpha for CONTINUOUS CHROME — the shared top band (tab row + profile chip), which is
+/// The cascade alpha for CONTINUOUS CHROME - the shared top band (tab row + profile chip), which is
 /// the same object on Home and on the Library and must NOT blink when one replaces the other. Full
 /// while the bar exists on both sides of the transition; otherwise it rides the page fade, because
 /// a destination with no tab bar has nothing for it to be continuous WITH.

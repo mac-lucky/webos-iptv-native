@@ -96,7 +96,7 @@ fn the_track_darkens_faster_than_it_clears() {
 
 /// The regression that would otherwise draw a bright capsule sweeping the whole strip on the
 /// first Library frame: an UNPLACED capsule lands on its pill, it does not fly to it. Alpha still
-/// fades in, because arriving in a row is a fade — the two are deliberately different motions.
+/// fades in, because arriving in a row is a fade - the two are deliberately different motions.
 #[test]
 fn a_capsule_lands_on_its_first_pill_instead_of_flying_in_from_the_origin() {
     let _g = serial_for_motion();
@@ -155,7 +155,7 @@ fn a_travelling_capsule_is_never_sitting_on_nothing() {
 }
 
 /// Focus leaving the row fades the capsule where it stands rather than parking it at the origin,
-/// and coming back LANDS — the "capsule streaks across the row when you come back from the grid"
+/// and coming back LANDS - the "capsule streaks across the row when you come back from the grid"
 /// failure, which is the whole reason [`CAP_LAND_A`] exists.
 #[test]
 fn focus_leaving_the_row_fades_in_place_and_coming_back_lands() {
@@ -191,7 +191,7 @@ fn focus_leaving_the_row_fades_in_place_and_coming_back_lands() {
 
 /// The two-capsule model, locked against a regression to one: on the Library screen the selected
 /// tab is the section you are browsing while focus walks the row, so a pill can be wearing either,
-/// both, or neither — and the mixes it is inked with are exactly that answer.
+/// both, or neither - and the mixes it is inked with are exactly that answer.
 #[test]
 fn the_ink_a_pill_wears_is_exactly_the_capsule_over_it() {
     let _g = serial_for_motion();
@@ -229,7 +229,7 @@ fn the_ink_a_pill_wears_is_exactly_the_capsule_over_it() {
         near(both.mixes(span_of(&w, 3)), (1.0, 1.0)),
         "one pill can wear both at once"
     );
-    // …and nothing is marked at all when there is nothing to mark (an emptied season strip, or
+    // ...and nothing is marked at all when there is nothing to mark (an emptied season strip, or
     // focus off the row on a page that has no selection either).
     let none = settle(-1, -1);
     assert!(
@@ -240,7 +240,7 @@ fn the_ink_a_pill_wears_is_exactly_the_capsule_over_it() {
 
 /// Ink CONSERVATION across a travel: the two capsules only ever have one pill's worth of coverage
 /// between them, so no frame can ink two labels toward `ACCENT_INK` at once. This is what bounds
-/// the one transient the design accepts — a partly covered pill inks its WHOLE label — to half
+/// the one transient the design accepts - a partly covered pill inks its WHOLE label - to half
 /// a label on each of two pills for the length of one travel, rather than a whole row dimming.
 #[test]
 fn a_travel_never_inks_more_than_one_pills_worth_of_label() {
@@ -286,7 +286,7 @@ fn the_selection_mark_lands_on_a_season_strip_and_travels_on_a_tab_bar() {
     };
     let (far, near) = (span_of(3).0, span_of(0).0);
 
-    // LANDS — one frame after the selection moves it is already at the new pill
+    // LANDS - one frame after the selection moves it is already at the new pill
     let mut season = TabStrip::new();
     settle(&mut season, 0, SelMark::Lands);
     assert!(
@@ -300,7 +300,7 @@ fn the_selection_mark_lands_on_a_season_strip_and_travels_on_a_tab_bar() {
         season.sel.span().0
     );
 
-    // TRAVELS — one frame later it has barely left, which is the whole point of the other strip
+    // TRAVELS - one frame later it has barely left, which is the whole point of the other strip
     let mut bar = TabStrip::new();
     settle(&mut bar, 0, SelMark::Travels);
     bar.update(3, -1, span, SelMark::Travels, DT);
@@ -311,13 +311,13 @@ fn the_selection_mark_lands_on_a_season_strip_and_travels_on_a_tab_bar() {
     );
 }
 
-/// Every RESTING state a strip-driven pill can be in must be the look it replaced, to the bit —
+/// Every RESTING state a strip-driven pill can be in must be the look it replaced, to the bit -
 /// this is the whole reason the mix lerps between the same ink roles the boolean arms pick from
 /// rather than inventing a ramp of its own.
 ///
 /// **The IDLE role is the one deliberate exception, and it is a fact about grounds rather than
 /// about pills.** The strip-driven row is the standing tab track: it sits on glass over
-/// uncontrolled artwork, and its scrim is solved so this ink clears [`TRACK_INK_CONTRAST`] — a
+/// uncontrolled artwork, and its scrim is solved so this ink clears [`TRACK_INK_CONTRAST`] - a
 /// muted `TEXT_TERTIARY` there costs .61 of black over a bright hero, which is a band laid across
 /// the picture rather than a material. The boolean arms are the detail page's season tabs, drawn
 /// bare on a controlled dark ground where nothing is solved and the muted ink is right. Two
@@ -377,7 +377,7 @@ fn a_settled_mixed_pill_is_the_boolean_look_it_replaced() {
 /// **The bottom stop may not run past the ceiling.** The solve sizes the scrim so the labels
 /// clear their floor against the TOP stop, which is the lightest of the pair, and the bottom was
 /// free to be `a + spread` however heavy `a` got. Past [`theme::TAB_TRACK_A_TOP`] there is
-/// nothing left to see through, so a bar drawn there has stopped being glass at its lower edge —
+/// nothing left to see through, so a bar drawn there has stopped being glass at its lower edge -
 /// which is the flat capsule this material replaced, reintroduced under every heavy bar. Found by
 /// a judging panel doing the arithmetic, not by looking.
 #[test]
@@ -387,7 +387,7 @@ fn the_pair_never_draws_past_the_weight_where_glass_stops_being_glass() {
     for i in 0..=40 {
         // a neutral ground swept the whole way up, so the solve sweeps its whole range
         let v = i as f32 / 40.0;
-        // A fresh `TrackDensity` per iteration, on the stack — `track_density` used to be a
+        // A fresh `TrackDensity` per iteration, on the stack - `track_density` used to be a
         // process-wide static a test had to save and restore; it is a plain `&mut` argument
         // now (spec phase 12, PX-WIDGETS), so there is nothing left to leak into the next test.
         let mut density = TrackDensity::new();
@@ -407,7 +407,7 @@ fn the_pair_never_draws_past_the_weight_where_glass_stops_being_glass() {
     }
 }
 
-/// A dark ground keeps the authored pair to the bit — that is the case the tokens were drawn
+/// A dark ground keeps the authored pair to the bit - that is the case the tokens were drawn
 /// for, and the taper must not disturb it.
 #[test]
 fn a_dark_ground_draws_the_authored_pair_exactly() {
@@ -427,8 +427,8 @@ fn a_dark_ground_draws_the_authored_pair_exactly() {
 }
 
 /// **The plated composite**, which is arithmetic and therefore has no business being graded by
-/// eye. A season tab's ground is now TWO layers — the pill's own idle plate and the strip's
-/// travelling selection capsule over it — where it used to be one flat token. Same-colour
+/// eye. A season tab's ground is now TWO layers - the pill's own idle plate and the strip's
+/// travelling selection capsule over it - where it used to be one flat token. Same-colour
 /// source-over is `a + b − ab`, so the pair must land back on [`theme::TAB_PLATE_SELECTED`]; and
 /// the plate must retire exactly as the OPAQUE focus capsule arrives, or a focused season would
 /// wear a 0.08 white film its unplated twin in the top row does not.
@@ -443,7 +443,7 @@ fn a_travelling_plate_lands_back_on_the_plate_it_replaced() {
         theme::TAB_PLATE_SELECTED[3]
     );
     // order-independence is what lets the pill keep painting its plate AFTER the strip drew the
-    // capsule under it — the draw order this component actually uses
+    // capsule under it - the draw order this component actually uses
     assert!(
         ((idle + over * (1.0 - idle)) - composite).abs() < 1e-6,
         "same-colour source-over must be order-independent, or the draw order becomes load-bearing"
@@ -461,7 +461,7 @@ fn a_travelling_plate_lands_back_on_the_plate_it_replaced() {
             "channel {i}"
         );
     }
-    // …and the split survives the `Painter` cascade, which scales BOTH layers: two layers under
+    // ...and the split survives the `Painter` cascade, which scales BOTH layers: two layers under
     // a cascade are not the same function as one, so the drift is bounded here rather than
     // assumed. (Nothing draws a tab strip at α<1 today; this is the guard for the day one does.)
     for &a in &[1.0f32, 0.75, 0.5, 0.25] {
@@ -477,7 +477,7 @@ fn a_travelling_plate_lands_back_on_the_plate_it_replaced() {
 /// **The container has to be visible on a page that is not.** A black scrim can only subtract,
 /// so before the lift existed the bar's face over an L\*0 page measured the page exactly and
 /// the whole object was one pixel of rim. This is the invariant that says it never happens
-/// again — stated as a face lighter than its ground, which is what a person sees, rather than
+/// again - stated as a face lighter than its ground, which is what a person sees, rather than
 /// as the constant that currently produces it.
 #[test]
 fn the_glass_never_goes_darker_than_its_floor() {
@@ -502,7 +502,7 @@ fn the_glass_never_goes_darker_than_its_floor() {
     );
 }
 
-/// …and it costs a bright bar NOTHING. The lift is spent out of the density solve's slack, so
+/// ...and it costs a bright bar NOTHING. The lift is spent out of the density solve's slack, so
 /// the moment the solve leaves its floor there is none: a heavy bar is the same black scrim it
 /// was, to the bit. Without this the fix for the dark end quietly lightens the light end, which
 /// is where the labels are hardest to hold.
@@ -542,7 +542,7 @@ fn the_lift_never_spends_the_labels_contrast() {
     }
 }
 
-/// **The floor above is the TRACK's, over the track's own ground — and the band's other surface
+/// **The floor above is the TRACK's, over the track's own ground - and the band's other surface
 /// has no equivalent.** A PINNED EXPOSURE, not a bug assertion: [`BarMaterial`]'s note is where
 /// the decision and the three candidate fixes live.
 ///
@@ -550,15 +550,15 @@ fn the_lift_never_spends_the_labels_contrast() {
 /// away, and the unfurled capsule's whole content is a name in [`theme::TEXT_PRIMARY`]. Where
 /// the two grounds agree the shared face is exactly right, which is the arrangement's whole
 /// argument; where they do not, the chip carries a promise nobody made about it. Nothing
-/// darkens the top band before this — [`HERO_BASE_SCRIM_Y0`] is 367 and [`HERO_SCRIM_TOP`]
-/// 162 — so both grounds are raw backdrop, and `gfx::sample_ground`'s census puts the MEDIAN
+/// darkens the top band before this - [`HERO_BASE_SCRIM_Y0`] is 367 and [`HERO_SCRIM_TOP`]
+/// 162 - so both grounds are raw backdrop, and `gfx::sample_ground`'s census puts the MEDIAN
 /// span at 26.8 L* across the track alone.
 ///
 /// Written as a test so the number cannot drift silently in EITHER direction: tightening the
 /// exposure, or closing it, fails here and sends the next reader to the note.
 #[test]
 fn the_bands_face_carries_no_promise_about_the_chips_own_ground() {
-    // a neutral at a CIE lightness — the axis every measurement in this material is quoted in
+    // a neutral at a CIE lightness - the axis every measurement in this material is quoted in
     let grey_at = |l: f32| {
         let (mut lo, mut hi) = (0.0f32, 1.0f32);
         for _ in 0..40 {
@@ -587,7 +587,7 @@ fn the_bands_face_carries_no_promise_about_the_chips_own_ground() {
         contrast(theme::TEXT_READING, face_over(dark, a)) >= TRACK_INK_CONTRAST,
         "the track's own ink is served — that is the contract this one is measured against"
     );
-    // …and the same face, under the chip, over a bright corner of the same hero.
+    // ...and the same face, under the chip, over a bright corner of the same hero.
     let bright = grey_at(92.0);
     let chip = contrast(theme::TEXT_PRIMARY, face_over(bright, a));
     assert!(
@@ -610,7 +610,7 @@ fn the_bands_face_carries_no_promise_about_the_chips_own_ground() {
 /// The owner's rule, 2026-09-05: *"visual play indicators mean immediate playback, progress
 /// bars mean viewing progress, and cards without a play indicator navigate to details."* Two of
 /// those three clauses are about what is ABSENT, which is why an exhaustive table is the only
-/// honest test — the defect this was written for was a cell nobody looked at (in-progress on a
+/// honest test - the defect this was written for was a cell nobody looked at (in-progress on a
 /// shelf that plays), and it was invisible to every screen test because it is a missing draw
 /// call rather than a wrong one.
 #[test]

@@ -6,7 +6,7 @@
 //!
 //! Two assumptions are STATED and CHECKED rather than assumed: rustc does not contract into FMA
 //! without a flag (the grep gate on `fp-contract`/`fast-math`/`+fma`), and the armv7 soft-float
-//! routines are correctly rounded for the five operations — which is what
+//! routines are correctly rounded for the five operations - which is what
 //! [`differential_table`] exists to measure: the same 4,096 operands through the same code on
 //! the host and on the television (`make softfloat-probe`, the `webosiptv-softfloat` trigger),
 //! compared as one hash. The host half is pinned here, and **the ARM half was measured on the
@@ -20,7 +20,7 @@
 //! not build for. It is also not a licence to widen the same-build promise of §5.5: a replay
 //! fixture is still pinned to the build lineage that recorded it, and this result only removes the
 //! ARITHMETIC as a suspect when a cross-target replay does diverge. Re-run
-//! `make softfloat-probe` after any toolchain or `-C target-cpu` change — those are the inputs
+//! `make softfloat-probe` after any toolchain or `-C target-cpu` change - those are the inputs
 //! that would move it, and nothing in `make check` can see them. If it ever diverges, the fixture
 //! is target-scoped and the divergence named rather than the promise widened.
 //!
@@ -39,7 +39,7 @@ const LOG2E: f32 = 1.442_695_04;
 const LN2_HI: f32 = 0.693_145_751_953_125;
 const LN2_LO: f32 = 1.428_606_765_330_187e-6;
 
-/// e^x. Overflow saturates to +∞, underflow past 2^-126 flushes to 0 (no denormal tail — a spring
+/// e^x. Overflow saturates to +∞, underflow past 2^-126 flushes to 0 (no denormal tail - a spring
 /// envelope of 1e-38 is zero for every purpose here). NaN in, NaN out.
 pub fn exp(x: f32) -> f32 {
     if x.is_nan() {
@@ -107,7 +107,7 @@ fn moving(pos: f32, target: f32, vel: f32, dt: f32) -> bool {
     (pos - target).abs() > t || (vel * dt).abs() > t
 }
 
-/// Critically-damped spring step — the exact analytic solution of `x'' + 2ω·x' + ω²·x = 0`
+/// Critically-damped spring step - the exact analytic solution of `x'' + 2ω·x' + ω²·x = 0`
 /// (`gfx::spring`'s form, on this module's `exp`), reporting `Motion` while it moves.
 pub fn spring(
     pos: &mut f32,
@@ -166,14 +166,14 @@ pub struct Ramp {
 }
 
 impl Ramp {
-    /// Arm the ramp so that THIS tick's own delta already counts toward it — backdating `at_ms`
+    /// Arm the ramp so that THIS tick's own delta already counts toward it - backdating `at_ms`
     /// by `t`'s own `dt_us` rather than anchoring at `t.ms` itself. Every caller starts a `Ramp`
     /// lazily from inside the very `tick`/`advance` call that first needs it (the `len_ms == 0`
     /// sentinel idiom), so without the backdating the FIRST `advance` on the same tick always
-    /// reads `el = 0` (progress 0.0) — silently dropping one frame's worth of progress versus the
+    /// reads `el = 0` (progress 0.0) - silently dropping one frame's worth of progress versus the
     /// raw `dt` accumulator this replaced, which decremented on the very tick that armed it. A
     /// caller that starts from one event (`FocusMoved`, with its own `cx.tick`) and advances from
-    /// a LATER tick is unaffected in practice — the backdate is at most one frame's `dt_us` — but
+    /// a LATER tick is unaffected in practice - the backdate is at most one frame's `dt_us` - but
     /// makes the same-tick arithmetic exact when the two coincide.
     pub fn start(&mut self, t: Tick, len_ms: u32) {
         self.at_ms = t.ms.wrapping_sub(t.dt_us / 1000);
@@ -196,7 +196,7 @@ impl Ramp {
     }
 }
 
-/// An UNBOUNDED clock-driven phase — a spinner's own spin, an escape-offer stall timer — where
+/// An UNBOUNDED clock-driven phase - a spinner's own spin, an escape-offer stall timer - where
 /// [`Ramp`] does not fit because there is no fixed length to reach 1.0 at. Anchored to wall-clock
 /// `Tick.ms` rather than an accumulated per-frame `dt`, so there is no drift from summing float
 /// deltas over the minutes a login screen can sit waiting, and a caller that skips a frame (the
@@ -215,7 +215,7 @@ pub struct Phase {
 }
 
 impl Phase {
-    /// Reset the clock to start counting from `t` — `advance` reads ~0 the next time it is called
+    /// Reset the clock to start counting from `t` - `advance` reads ~0 the next time it is called
     /// at this same tick. For a phase that restarts on some external event (a QR code replaced,
     /// a wait that moved to a new stage) rather than running for the screen's whole lifetime.
     pub fn reset(&mut self, t: Tick) {
@@ -223,7 +223,7 @@ impl Phase {
         self.running = true;
     }
 
-    /// Milliseconds elapsed since the last [`reset`](Self::reset) — or, if never reset, since the
+    /// Milliseconds elapsed since the last [`reset`](Self::reset) - or, if never reset, since the
     /// FIRST `advance` call, so a freshly constructed `Phase` needs no `Tick` at construction time
     /// and starts counting from whenever its owner first calls this. Reports `Motion` on every
     /// call.
@@ -251,7 +251,7 @@ thread_local! {
     static HELD_PHASE_MS: std::cell::Cell<u32> = const { std::cell::Cell::new(u32::MAX) };
 }
 
-/// Hold every [`Phase`] clock at `ms` — the screenshot pipeline's pin on free-running animation
+/// Hold every [`Phase`] clock at `ms` - the screenshot pipeline's pin on free-running animation
 /// (spinner angle, stall timers). `None` releases it. Dev builds only.
 #[cfg(feature = "devtriggers")]
 pub fn hold_phase_clocks(ms: Option<u32>) {
@@ -263,7 +263,7 @@ fn held_phase_ms() -> Option<u32> {
     HELD_PHASE_MS.with(|h| Some(h.get()).filter(|ms| *ms != u32::MAX))
 }
 
-/// Where the [`Phase`] clocks are held ([`hold_phase_clocks`]), if they are — for a clock that is
+/// Where the [`Phase`] clocks are held ([`hold_phase_clocks`]), if they are - for a clock that is
 /// not a `Phase` but must hold with them (the Up Next countdown). Always `None` without
 /// `devtriggers`.
 #[inline]
@@ -313,7 +313,7 @@ fn operand(s: &mut u32) -> f32 {
 }
 
 /// The 4,096-operand table: for each pair `(a, b)`, the bits of `a+b`, `a-b`, `a*b`, `a/b`,
-/// `sqrt(|a|)`, `exp(a/2^16)`, `sin(b/2^12)`, `cos(b/2^12)` — eight words per pair.
+/// `sqrt(|a|)`, `exp(a/2^16)`, `sin(b/2^12)`, `cos(b/2^12)` - eight words per pair.
 pub fn differential_table(out: &mut Vec<u32>) {
     out.clear();
     out.reserve(DIFFERENTIAL_N * 8);
@@ -456,7 +456,7 @@ mod tests {
         let mut present = Present::new();
         let _ = present.take(0);
         let mut ph_clock = Phase::default();
-        // never explicitly `reset` — the first `advance` call anchors it, so a freshly constructed
+        // never explicitly `reset` - the first `advance` call anchors it, so a freshly constructed
         // `Phase` (what every screen's `Default`-derived state gets) needs no `Tick` up front.
         let mut ph = PresentHandle(&mut present);
         let e0 = ph_clock.advance(Tick { ms: 1_000, dt_us: 0 }, &mut ph);

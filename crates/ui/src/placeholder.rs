@@ -13,7 +13,7 @@
 //!   draws one.
 //! * **The pixel sentinel (feature `placeholder-sentinel`).** The tokens [`theme::SKELETON_TOP`],
 //!   [`theme::SKELETON_BOT`] and [`theme::CARD_PLACEHOLDER`] become [`theme::PLACEHOLDER_SENTINEL`]
-//!   (#FF00FE), and every placeholder paint — through [`painter`] — ignores the painter's alpha
+//!   (#FF00FE), and every placeholder paint - through [`painter`] - ignores the painter's alpha
 //!   and RGB-dim cascade (`STALE_ALPHA`, a route fade) and the sheen, so it lands as exactly that
 //!   value. It fails when a placeholder is drawn in a colour nobody overrode, which is the one
 //!   thing the counter cannot see. Blending stays ON (the renderer has one program), and is exact
@@ -22,7 +22,7 @@
 //!   enabled by the dump build alone and is absent from every shipping and television build
 //!   (`make check` compiles it, code and tests, so it keeps building).
 //!
-//! **Where the call goes — the one rule.** At the DRAW, never at a resolve. `HomeScreen::prefetch`
+//! **Where the call goes - the one rule.** At the DRAW, never at a resolve. `HomeScreen::prefetch`
 //! resolves the neighbouring heroes' backdrops and draws none of them; a count there would hold
 //! debt on art that is not on screen (`Backdrop::bind` only records `pending_art` for the hero it
 //! draws, and `Backdrop::draw` does the counting). A recording pass (`Painter::is_recording`, a text
@@ -35,17 +35,17 @@
 //!
 //! **Absence is not a wait.** A person with no headshot, a collection with no artwork of its own,
 //! a hero whose clearLogo 404ed: nothing will ever arrive, the tile is correct, and it is drawn in
-//! [`theme::CARD_ABSENT`] (or, for text, as plain ink) — neither counted nor painted in the
+//! [`theme::CARD_ABSENT`] (or, for text, as plain ink) - neither counted nor painted in the
 //! sentinel. A hero logo that SETTLED as a miss is reported in [`Frame::absent`]
 //! ([`Reason::HeroLogoAbsent`], [`note_absent`]) so a storyboard that needs the logo can fail fast on
 //! it; the count only moves while the logo is still on its way. A key of `""` never resolves at all
 //! (`Art::Thumb { key: "" }`, an empty `still_key`): it IS counted, because it is a card with no
-//! picture, and it will never clear — a driver must fail fast on an entry whose key is empty
+//! picture, and it will never clear - a driver must fail fast on an entry whose key is empty
 //! instead of holding for it. A POSTER with no `thumb`, or whose art settled as a miss, is the
 //! exception: it draws its title on the absent ground (`collection_tile::draw_title`), uncounted.
 //!
 //! **A held page image.** During a `PageDip` route push the destination is drawn live ONCE into a
-//! snapshot and then painted as that image — nothing walks the page — on every frame until it is
+//! snapshot and then painted as that image - nothing walks the page - on every frame until it is
 //! quiescent (up to `PAGE_QUIESCENCE_HOLD_MAX_MS` after the dip), when one replacement capture draws
 //! it live again. The dispatcher records what the capture drew ([`mark`], [`since`] → [`Debt`]) and
 //! re-notes it ([`renote`]) on every frame the image stands in for the page, so a spinner, a
@@ -77,9 +77,9 @@
 //!    `Xfade` In ramp IS one of them in a dump, and plays as the product plays it: the dump films
 //!    the page live under the dip, so a page that mounts hidden fades in over its own 140 ms
 //!    while the dip's In half runs.)
-//! 5. **Content that arrives late with no placeholder drawn** — Home shelves and Continue Watching,
+//! 5. **Content that arrives late with no placeholder drawn** - Home shelves and Continue Watching,
 //!    Detail's related, cast, extras and ratings, Library shelves and the grid header, `Xfade` Hold
-//!    over a search's results — is invisible to both oracles. The landing predicate
+//!    over a search's results - is invisible to both oracles. The landing predicate
 //!    (`landgate`) and `expect.complete` must cover them.
 //! 6. **Logos and empty keys**: every hero title the storyboard shows must have a clearLogo, and the
 //!    driver fails on [`Frame::absent`] and on an entry with an empty key rather than holding.
@@ -120,8 +120,8 @@
 //! The call sites are closed by a rule, not by memory: `ci/check-placeholders.py` greps every
 //! reference to `SKELETON_TOP`, `SKELETON_BOT`, `CARD_PLACEHOLDER`, `CARD_ABSENT`, `STALE_ALPHA`,
 //! `Spinner::new`/`leading`/`Spinner { .. }`, the `SKEL_*` alphas and the `*_loading` messages and
-//! requires a call into this module INSIDE THE SAME FUNCTION — or a `placeholder-exempt:` comment
-//! that says why not — and checks that every [`Reason`] is still named by production code. Its
+//! requires a call into this module INSIDE THE SAME FUNCTION - or a `placeholder-exempt:` comment
+//! that says why not - and checks that every [`Reason`] is still named by production code. Its
 //! docstring lists the sites it cannot see (a new spinner type, a wait caption not named
 //! `*_loading`, an uncounted wait that draws nothing).
 
@@ -209,7 +209,7 @@ impl Reason {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Entry {
     pub reason: Reason,
-    /// What it stood in for: an image path, a ratingKey, a caption — whatever the site has. Empty
+    /// What it stood in for: an image path, a ratingKey, a caption - whatever the site has. Empty
     /// when the site has nothing better (a `None` tile, a spinner).
     pub key: String,
 }
@@ -556,7 +556,7 @@ pub fn face(p: Painter, reason: Reason, key: &str, r: Rect, rad: f32, top: [f32;
     }
 }
 
-/// **The sheened flat ground** (`CARD_PLACEHOLDER`) at `r`, counted — a `Thumb` or `Person` tile
+/// **The sheened flat ground** (`CARD_PLACEHOLDER`) at `r`, counted - a `Thumb` or `Person` tile
 /// whose picture has not arrived.
 pub fn ground(p: Painter, reason: Reason, key: &str, r: Rect, rad: f32) {
     note(p, reason, key);
@@ -569,7 +569,7 @@ pub fn ground(p: Painter, reason: Reason, key: &str, r: Rect, rad: f32) {
     painter(p).rrect(r, rad, rad, theme::CARD_PLACEHOLDER);
 }
 
-/// **The unsheened flat ground** (`CARD_PLACEHOLDER`) at `r`, counted — the info panel's still.
+/// **The unsheened flat ground** (`CARD_PLACEHOLDER`) at `r`, counted - the info panel's still.
 pub fn flat(p: Painter, reason: Reason, key: &str, r: Rect, rad: f32) {
     note(p, reason, key);
     painter(p).rrect(r, rad, rad, theme::CARD_PLACEHOLDER);

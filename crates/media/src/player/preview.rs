@@ -3,22 +3,22 @@
 //! keeps its observer silent (`PlaybackSession::observer`).
 //!
 //! **Interaction, once the picture is up and the viewer presses UP.** The detail page stays
-//! mounted and there is no route change — the player screen never adopts this engine. The page
+//! mounted and there is no route change - the player screen never adopts this engine. The page
 //! draws a trailer transport in place of its chrome. What a trailer does NOT get is the rest of
 //! the HUD - no audio or Info control: a preview has no observer and no watch state,
 //! and a control that writes one has no business on it. OK and PLAYPAUSE pause and resume it
 //! ([`transport`]). A second dwell on an item that has a trailer starts from the beginning again.
 //! None of the cache facts is a replay suppressor.
 //!
-//! **LEFT/RIGHT scrub, through this machine's own admitted path — not `player::request_seek`.**
-//! Every non-in-place seek path in `player::engine` falls back to `reload_at` — a fresh Starfish
-//! `Load` — and an un-admitted reload spends a 64 KiB slot outside [`CYCLE_BUDGET`]'s accounting,
+//! **LEFT/RIGHT scrub, through this machine's own admitted path - not `player::request_seek`.**
+//! Every non-in-place seek path in `player::engine` falls back to `reload_at` - a fresh Starfish
+//! `Load` - and an un-admitted reload spends a 64 KiB slot outside [`CYCLE_BUDGET`]'s accounting,
 //! while a reload that then fails would be observed as an admitted-Load failure, arming the
 //! process-wide breaker and ending trailer autoplay for every later item in the session. [`seek`]
 //! closes both halves of that hazard: [`Machine::admit_seek`] counts the reload against
 //! [`CYCLE_BUDGET`] the moment `reload_at` actually issues it (mirroring
 //! [`admit`](Machine::admit)'s own timing), and [`Machine::fail_admitted`] does not arm the breaker
-//! for a failure that lands after this session's first picture — a seek that goes wrong inside a
+//! for a failure that lands after this session's first picture - a seek that goes wrong inside a
 //! trailer that already proved it plays is a LOCAL failure (this preview stops and [`view`] goes
 //! back to [`View::STILL`]), never a reason to disable autoplay for the rest of the session.
 //! **Budget exhaustion is the conservative case**: [`seek`] refuses before calling `reload_at` at
@@ -38,13 +38,13 @@
 /// Admitted Loads per process, from the source arithmetic above. Not a device measurement.
 pub const CYCLE_BUDGET: u32 = 14;
 
-/// How long the hero must sit still before a preview is requested. Was 4.5 — cut to 2.0 to make
+/// How long the hero must sit still before a preview is requested. Was 4.5 - cut to 2.0 to make
 /// autoplay feel responsive (Apple TV/Netflix hover-preview territory), matching a browsing pause
 /// rather than a long, deliberate stop.
 ///
 /// **This is the documented fallback of a two-option design, not the option that was fully
 /// investigated.** `docs/trailer-ux-plan.md` §2.1 asks whether the felt latency (`dwell + Load
-/// time`) can be cut further by decoupling when the fetch STARTS from when the frame is REVEALED —
+/// time`) can be cut further by decoupling when the fetch STARTS from when the frame is REVEALED -
 /// i.e. start `request_preview` on a short fetch-commit threshold while holding the screen's Idle
 /// presentation for a separate, longer minimum reveal delay. That mechanism was not implemented:
 /// it needs real device data to know whether a short fetch-commit threshold actually reduces
@@ -52,7 +52,7 @@ pub const CYCLE_BUDGET: u32 = 14;
 /// items (the cost the plan's own review flagged and did not resolve on paper). A single dwell
 /// timer is the safe, already-understood mechanism; if the investigation above is carried out and
 /// finds the two-timer approach worth the complexity, it replaces this constant rather than adding
-/// a parallel path — nothing else in the trailer UI depends on which mechanism sets `view.picture`.
+/// a parallel path - nothing else in the trailer UI depends on which mechanism sets `view.picture`.
 pub const DWELL_S: f32 = 2.0;
 
 /// Scroll, in px, at which the opaque cover is fully up and the plane is released.
@@ -196,7 +196,7 @@ impl Machine {
         Start::Accepted
     }
 
-    /// The standing refusal for `id`, if any — the one list both [`start`](Self::start) and
+    /// The standing refusal for `id`, if any - the one list both [`start`](Self::start) and
     /// [`blocked`] answer from. `Busy` is not here: it is about this moment, not about the item.
     fn block_reason(&self, id: &str, enabled: bool) -> Option<Start> {
         if !enabled {
@@ -253,7 +253,7 @@ impl Machine {
     }
 
     /// This machine's own request landed with no URL. Remembered against the key [`start`]
-    /// recorded — the item that was asked for — so the page does not re-resolve it every dwell.
+    /// recorded - the item that was asked for - so the page does not re-resolve it every dwell.
     pub fn refuse_landing(&mut self) {
         if let Some(id) = self.key.take() {
             self.remember(&id, Fact::RefusedDirect);
@@ -270,11 +270,11 @@ impl Machine {
         self.key = None;
     }
 
-    /// An admitted Load that then failed. This is what arms the breaker — UNLESS this session has
+    /// An admitted Load that then failed. This is what arms the breaker - UNLESS this session has
     /// already shown a picture before now (`picture_ms.is_some()`), which only happens once a
     /// seek's own `reload_at` was admitted ([`admit_seek`]) partway through an already-playing
-    /// trailer. That failure says "this seek went wrong", not "this trailer cannot play" — the
-    /// trailer already proved the opposite — so it must not disable autoplay for every later item
+    /// trailer. That failure says "this seek went wrong", not "this trailer cannot play" - the
+    /// trailer already proved the opposite - so it must not disable autoplay for every later item
     /// in the session. Either way the cycle already spent stays spent and this session stops: an
     /// admission refusal (never admitted in the first place) must not come through here.
     pub fn fail_admitted(&mut self, num: u32) {
@@ -289,7 +289,7 @@ impl Machine {
     }
 
     /// Would a user-driven seek's reload have room in the shared budget? A pure query so [`seek`]
-    /// can refuse BEFORE calling `engine::reload_at` at all — the conservative
+    /// can refuse BEFORE calling `engine::reload_at` at all - the conservative
     /// budget-exhaustion answer this file's module doc commits to: refuse the seek and leave the
     /// trailer playing exactly where it was, rather than spend one of the last
     /// [`CYCLE_BUDGET`] slots on a control nobody needs the session to survive.
@@ -299,11 +299,11 @@ impl Machine {
 
     /// **The seek's reload was actually issued** (`engine::reload_at` returned `Started`): count
     /// it against [`CYCLE_BUDGET`] the same moment [`admit`](Self::admit) would, and put the phase
-    /// back in `Loading` for exactly the span the cold-start Load spends there — [`bound`] and
+    /// back in `Loading` for exactly the span the cold-start Load spends there - [`bound`] and
     /// [`picture`] carry it back to `Playing` once the reload lands, same as any other admitted
     /// Load. Callable only once [`seek_budget_ok`] has already said yes; the caller
     /// ([`seek`]) also gates on [`bound_or_playing`], so this only ever runs from `Binding` or
-    /// `Playing` — a picture has already been shown, which is what lets [`fail_admitted`] tell
+    /// `Playing` - a picture has already been shown, which is what lets [`fail_admitted`] tell
     /// this reload's failure apart from the trailer never having started at all.
     pub fn admit_seek(&mut self) {
         self.phase = Phase::Loading;
@@ -328,8 +328,8 @@ impl Machine {
 
     /// A presented frame. Returns the `preview=` line for the FIRST one this session ever shows;
     /// every later call (this session's own reload landing after a seek, or a redundant call once
-    /// already `Playing`) still moves the phase to `Playing` — that part is not once-only, or a
-    /// seek's reload would land with a picture up and no way back out of `Loading`/`Binding` — but
+    /// already `Playing`) still moves the phase to `Playing` - that part is not once-only, or a
+    /// seek's reload would land with a picture up and no way back out of `Loading`/`Binding` - but
     /// answers `None`, since the line is a "started playing" fact, not a "still playing" one.
     pub fn picture(&mut self, now_ms: u32) -> Option<String> {
         if !matches!(self.phase, Phase::Loading | Phase::Binding | Phase::Playing) {
@@ -357,9 +357,9 @@ impl Machine {
     }
 
     /// [`halt`] has asked the engine to stop. `still_live` is whether it is still installed
-    /// afterwards — a Load that had not returned is left to land unbound rather than joined.
-    /// Still installed means `Abandoning` whatever the phase was — including Idle, when the
-    /// machine had already lost track of the session — so `occupies()` holds a Play until
+    /// afterwards - a Load that had not returned is left to land unbound rather than joined.
+    /// Still installed means `Abandoning` whatever the phase was - including Idle, when the
+    /// machine had already lost track of the session - so `occupies()` holds a Play until
     /// [`after_pump`] joins the returned Load.
     pub fn halted(&mut self, still_live: bool) {
         if still_live {
@@ -377,7 +377,7 @@ impl Machine {
 
     /// **`Loading`/`Binding` count as "picture up" too, once this session has shown one before.**
     /// A seek's `reload_at` briefly leaves `Playing` for `Loading`→`Binding` on its way back
-    /// ([`admit_seek`]/[`bound`]/[`picture`]) — if this returned [`View::STILL`] for that span,
+    /// ([`admit_seek`]/[`bound`]/[`picture`]) - if this returned [`View::STILL`] for that span,
     /// `screens::detail`'s own `!view.picture` rule would read it as the trailer ending and pop
     /// the page out of full-trailer mode for the fraction of a second the reload takes, then back
     /// in once the next frame lands. `picture_ms.is_some()` is what tells that span apart from the
@@ -412,7 +412,7 @@ pub fn defer_media_join(loading: bool, thread_finished: bool) -> bool {
 }
 
 tv_base::devtrig::latched_flag!(
-    /// `/tmp/webosiptv-nopreview` — disable background trailer autoplay. Latched: `enabled()`
+    /// `/tmp/webosiptv-nopreview` - disable background trailer autoplay. Latched: `enabled()`
     /// runs on `preview_tick`'s every-frame path (via `blocked`) while the detail hero holds
     /// focus, and a `devtrig::flag` read is a `stat(2)` syscall per call.
     fn nopreview_armed = "nopreview";
@@ -452,7 +452,7 @@ pub fn view() -> View {
     with_mut(|m| m.view())
 }
 
-/// Run one machine transition and log it when the phase actually moved — the only record a
+/// Run one machine transition and log it when the phase actually moved - the only record a
 /// field report has of why autoplay stopped, or never started again.
 fn transition(why: &str, f: impl FnOnce(&mut Machine)) {
     let moved = with_mut(|m| {
@@ -487,8 +487,8 @@ pub fn blocked(id: &str) -> bool {
 
 /// Has the preview session now running, or the one that last ran, put a picture on the panel?
 /// The machine keeps the fact past its own retirement (`picture_ms` is cleared only by the next
-/// [`Machine::start`]), which is what lets a failure report — observed a frame after the session
-/// retired — say that a trailer which played and then failed did start.
+/// [`Machine::start`]), which is what lets a failure report - observed a frame after the session
+/// retired - say that a trailer which played and then failed did start.
 pub fn picture_shown() -> bool {
     with_mut(|m| m.picture_ms.is_some())
 }
@@ -502,7 +502,7 @@ pub fn abandoning() -> bool {
     with_mut(|m| m.phase == Phase::Abandoning)
 }
 
-/// Is `phase` an actual bound-or-playing session — as against merely non-Idle? A free function of
+/// Is `phase` an actual bound-or-playing session - as against merely non-Idle? A free function of
 /// `Phase` alone (not the singleton) so it is host-testable with no global/`testlock` involved, the
 /// same way every other `Machine`/`Phase` fact in this file is. See [`bound_or_playing`]'s doc for
 /// why this, and not [`occupies`]'s wider `phase != Idle`, is the question [`transport`] must ask.
@@ -512,7 +512,7 @@ fn phase_bound_or_playing(phase: Phase) -> bool {
 
 /// Is there a session actually bound to the plane or already showing a frame? Unlike
 /// [`occupies`] (`phase != Idle`, true for Fetching/Loading/Abandoning/Stopping too), this is
-/// specifically `Binding | Playing` — [`transport`] gates on this, not `occupies`, because a press
+/// specifically `Binding | Playing` - [`transport`] gates on this, not `occupies`, because a press
 /// racing the machine's own stop (an in-flight fetch, an admitted-but-unbound Load, an abandoned
 /// one) is exactly the race its own doc says must be refused, and all three of those are
 /// "occupied" without a live engine a pause/resume could reach.
@@ -554,7 +554,7 @@ pub fn note_picture(now_ms: u32) {
     }
 }
 
-/// A preview landing is about to start an engine. Refused — and logged — when the machine is no
+/// A preview landing is about to start an engine. Refused - and logged - when the machine is no
 /// longer waiting for it: the page that asked has since stopped it (a halt while the resolve
 /// was in flight), and an engine started now would play with nothing tracking it.
 pub fn expects_landing() -> bool {
@@ -566,7 +566,7 @@ pub fn expects_landing() -> bool {
 }
 
 /// Test-only: force the process-wide singleton straight into `phase`, skipping the normal
-/// transition ladder (`start`/`admit`/`bound`/`picture`/…) so a test can probe a phase-gated
+/// transition ladder (`start`/`admit`/`bound`/`picture`/...) so a test can probe a phase-gated
 /// predicate ([`bound_or_playing`], `DetailScreen::full_trailer()`) without wiring a live session
 /// end to end. Reset with [`reset_for_test`] before the guard (`testlock::serial()`) that must
 /// surround both calls is dropped, so no state leaks to whichever test the process runs next.
@@ -600,7 +600,7 @@ pub enum Settle {
     Ended,
     /// A preview Load failed before any frame.
     Failed,
-    /// The machine tracks a session that no longer exists — a landing replaced the preview
+    /// The machine tracks a session that no longer exists - a landing replaced the preview
     /// session, or its engine was torn down by a path that is not this file's.
     Stale,
     /// The preview's own landing produced no engine (its start was refused).
@@ -622,7 +622,7 @@ pub struct PumpFacts {
     pub seen_frame: bool,
 }
 
-/// Decide what [`after_pump`] must do. Abandoning is not asked here — it waits on the Load
+/// Decide what [`after_pump`] must do. Abandoning is not asked here - it waits on the Load
 /// thread, which is not a fact this function can see.
 ///
 /// **The installed session, not the machine, says whose engine it is.** The machine is this
@@ -648,7 +648,7 @@ pub fn settle(f: PumpFacts) -> Settle {
         };
     }
     // A live preview engine. Its end and its failure are this file's to act on even when the
-    // machine lost track of it — nothing else will stop it.
+    // machine lost track of it - nothing else will stop it.
     if f.ended {
         Settle::Ended
     } else if f.failed && !f.seen_frame {
@@ -658,7 +658,7 @@ pub fn settle(f: PumpFacts) -> Settle {
     }
 }
 
-/// After the engine pump, every frame playback may run — NOT only while an engine is started:
+/// After the engine pump, every frame playback may run - NOT only while an engine is started:
 /// a refused landing and a stale machine have no engine at all, and are exactly what used to
 /// strand the machine outside Idle (and every later autoplay with it). Finishes an abandoned Load
 /// once the media thread has returned, logs the first picture, and arms the breaker if an
@@ -687,7 +687,7 @@ pub fn after_pump(
         // Play for the rest of the session. Adding a budget here is NOT a drop-in of that same
         // mechanism: `engine::teardown` re-checks `finished` itself and bails out identically while
         // the thread is still running (see its `is_preview` arm), so forcing a teardown past a
-        // timeout means abandoning a native resource an OS thread may still be executing against —
+        // timeout means abandoning a native resource an OS thread may still be executing against -
         // a memory-safety question (does the leaked `SfSlot` pattern in `native/starfish.c` make
         // that safe) that needs device verification and a firmware-compatibility review.
         let finished = pa
@@ -747,12 +747,12 @@ pub fn after_pump(
 
 /// Is the live preview's transport paused? The engine is shared, so this is the same
 /// `player::TX.paused` the player HUD reads, qualified by a preview actually being what occupies
-/// it — with no session there is nothing paused, whatever the flag last said.
+/// it - with no session there is nothing paused, whatever the flag last said.
 pub fn paused() -> bool {
     occupies() && crate::player::TX.paused.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-/// Pause or resume the live preview session — full-trailer mode's OK/PLAY/PAUSE, performed by the
+/// Pause or resume the live preview session - full-trailer mode's OK/PLAY/PAUSE, performed by the
 /// loop because it needs the `MainThread` token a screen may not hold. `play` is
 /// `Some(true)`/`Some(false)` for the remote's dedicated keys and `None` for a toggle.
 ///
@@ -763,7 +763,7 @@ pub fn paused() -> bool {
 ///
 /// [`bound_or_playing`], not [`occupies`]: `occupies` is true for the whole non-Idle span,
 /// including Fetching/Loading/Abandoning/Stopping, and a press landing in any of those IS the
-/// race this doc says must be refused — there is no bound engine yet (or no longer) for a
+/// race this doc says must be refused - there is no bound engine yet (or no longer) for a
 /// pause/resume to reach.
 pub fn transport(
     ps: &mut crate::session::PlaybackSession,
@@ -781,7 +781,7 @@ pub fn transport(
 pub enum SeekOutcome {
     /// `engine::reload_at` issued the reload; the picture will catch up once it lands.
     Started,
-    /// Refused before anything was touched — not the live bound/playing session, or
+    /// Refused before anything was touched - not the live bound/playing session, or
     /// [`Machine::seek_budget_ok`] said no. Nothing was torn down: the trailer keeps playing
     /// exactly where it already was.
     Refused,
@@ -794,16 +794,16 @@ pub enum SeekOutcome {
 }
 
 /// **A user-driven LEFT/RIGHT seek inside a playing trailer.** This is the ONLY place a preview's
-/// picture is ever moved to a position it did not arrive at on its own — see this file's module
+/// picture is ever moved to a position it did not arrive at on its own - see this file's module
 /// doc for why every other seek path (`player::request_seek`) is wrong for it.
 ///
-/// Refused unless a preview really is the live, bound/playing session — the same race
+/// Refused unless a preview really is the live, bound/playing session - the same race
 /// [`transport`] refuses, for the same reason. Past that gate the shared budget is the only other
 /// question: [`Machine::seek_budget_ok`] is checked BEFORE `engine::reload_at` is ever called, so
-/// an exhausted budget never spends anything — see [`SeekOutcome::Refused`]. Only once
+/// an exhausted budget never spends anything - see [`SeekOutcome::Refused`]. Only once
 /// `reload_at` reports it actually issued the Load does this admit the cycle
 /// ([`Machine::admit_seek`]); a synchronous start failure is [`refuse_admission`], not
-/// [`fail_admitted`] — the native call never ran, so it is not itself evidence the trailer can't
+/// [`fail_admitted`] - the native call never ran, so it is not itself evidence the trailer can't
 /// play.
 pub fn seek(
     ps: &mut crate::session::PlaybackSession,
@@ -835,7 +835,7 @@ pub fn seek(
 /// **Only a preview session's engine is ever stopped here.** With no preview installed, a
 /// machine still `Fetching` is released so its landing is discarded ([`expects_landing`]), and
 /// any other non-Idle phase is stale; neither is a reason to tear down whatever engine the
-/// session does hold — that one belongs to a film.
+/// session does hold - that one belongs to a film.
 pub fn halt(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::PlayerAdapter) {
     if !ps.is_preview() {
         if occupies() {
@@ -847,7 +847,7 @@ pub fn halt(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
     retire(ps, pa, "halt");
 }
 
-/// **Stop a preview session's engine — the one way every preview exit does it** (EOS, a failed
+/// **Stop a preview session's engine - the one way every preview exit does it** (EOS, a failed
 /// Load or open, a failed seek, a halt, an abandoned Load that has finally returned).
 ///
 /// `engine::teardown` defers a preview Load that has not returned rather than join it on the main
@@ -903,7 +903,7 @@ mod tests {
 
     /// **The invariant `transport`'s own doc claims: a press racing the machine's own stop must be
     /// refused.** `occupies()` (`phase != Idle`) would pass Fetching/Loading/Abandoning/Stopping
-    /// through — all of them mid-race, none of them a live engine a pause/resume could reach.
+    /// through - all of them mid-race, none of them a live engine a pause/resume could reach.
     /// `bound_or_playing` (what `transport` actually gates on) must accept only Binding/Playing.
     #[test]
     fn bound_or_playing_excludes_every_race_occupies_would_let_through() {
@@ -959,7 +959,7 @@ mod tests {
 
     /// **Requirement 1's own gate: [`seek`] must refuse a user-driven seek once the shared budget
     /// is spent, BEFORE it ever calls `engine::reload_at`.** [`Machine::seek_budget_ok`] is the
-    /// pure predicate that answer comes from — this pins it directly, the same way
+    /// pure predicate that answer comes from - this pins it directly, the same way
     /// `the_budget_stops_new_starts_after_the_source_ceiling` pins `start`'s own ceiling check,
     /// without needing a live engine to prove the query answers `false` at exactly `CYCLE_BUDGET`
     /// admitted cycles and `true` below it.
@@ -980,11 +980,11 @@ mod tests {
 
     /// **Requirement 2's own hazard: an admitted SEEK's failure must not arm the process-wide
     /// breaker the way a cold start's admitted-Load failure does.** The only thing that tells the
-    /// two apart is `picture_ms` — this session already proved it can show a picture before the
+    /// two apart is `picture_ms` - this session already proved it can show a picture before the
     /// seek's own `reload_at` was ever admitted, so a later `fail_admitted` reads as "this seek
     /// went wrong", not "this trailer cannot play", and leaves autoplay armed for every later item.
     /// Contrast with `an_admitted_then_failed_load_arms_the_breaker` above, which is the SAME
-    /// `fail_admitted` call on a machine that has never shown a picture — the breaker DOES arm
+    /// `fail_admitted` call on a machine that has never shown a picture - the breaker DOES arm
     /// there, which is exactly the case this one must not regress into.
     #[test]
     fn a_failed_seek_after_a_shown_picture_does_not_arm_the_breaker() {
@@ -995,7 +995,7 @@ mod tests {
         assert!(m.picture(100).is_some(), "the trailer must have proven it can show a picture");
         assert_eq!(m.phase(), Phase::Playing);
 
-        // The seek's own admitted reload, then its failure — `fail_admitted`, not
+        // The seek's own admitted reload, then its failure - `fail_admitted`, not
         // `refuse_admission`: `reload_at` DID issue the Load (this is the async-failure path
         // `pump.rs`'s existing failure-observation machinery drives for every admitted Load).
         m.admit_seek();
@@ -1016,17 +1016,17 @@ mod tests {
     }
 
     /// **Requirement 3, the trivial half: `seek` refuses outright, and touches nothing, when there
-    /// is no live bound/playing preview to seek within** — the same race [`transport`] refuses for
+    /// is no live bound/playing preview to seek within** - the same race [`transport`] refuses for
     /// the same reason. `TX.seek_reqs` is the counter `player::request_seek` bumps on every call;
     /// this pins that `preview::seek` never becomes a second path to it. The `Started`/`StartFailed` arms of
     /// `seek` reach `engine::reload_at`, which needs a live native session this host test cannot
-    /// build without the `hostsim` feature — those remain proven by `arm_seek`'s own body (it only
+    /// build without the `hostsim` feature - those remain proven by `arm_seek`'s own body (it only
     /// touches engine-level `SHARED` atomics) and by device verification, not by this test.
     ///
     /// Gated on `hostsim`, like `player::engine`'s own `PlayerAdapter`-constructing tests
     /// (`lifecycle_clock_tests`, `replay_after_stop_tests`): it needs the simulator's video sink
     /// (`ffi_host::HostSink`) to hold a native session, which the default build's `NoSink` does
-    /// not — `make check` runs the full suite a second time with it on for exactly this class of test.
+    /// not - `make check` runs the full suite a second time with it on for exactly this class of test.
     #[test]
     #[cfg(feature = "hostsim")]
     fn seek_refuses_and_touches_no_user_seek_bookkeeping_with_no_live_preview() {
@@ -1143,7 +1143,7 @@ mod tests {
         }
     }
 
-    /// Field report, 0.7.0 prep: a trailer logged `EOS reached … → ended` and then ran on for
+    /// Field report, 0.7.0 prep: a trailer logged `EOS reached ... → ended` and then ran on for
     /// three minutes, because the EOS stop was gated on the MACHINE's phase. A preview engine at
     /// its end is stopped whatever the machine believes.
     #[test]
@@ -1162,8 +1162,8 @@ mod tests {
     }
 
     /// The same field report's other half: a later detail page never autoplayed. A machine that
-    /// outlives its session — a landing replaced the preview, or its engine went away through a
-    /// path that is not this file's — must return to Idle, and must NEVER stop or fail the
+    /// outlives its session - a landing replaced the preview, or its engine went away through a
+    /// path that is not this file's - must return to Idle, and must NEVER stop or fail the
     /// engine that is now there: that engine is a film's.
     #[test]
     fn a_machine_that_outlived_its_session_is_released_without_touching_the_engine() {
@@ -1185,7 +1185,7 @@ mod tests {
     }
 
     /// A `/decision` that refuses a preview (not a direct play) lands with no URL, `pump_play`
-    /// returns nothing, and the loop's refusal handling never ran — so the machine sat in
+    /// returns nothing, and the loop's refusal handling never ran - so the machine sat in
     /// `Fetching`, `occupies()` stayed true, and no later page could dwell.
     #[test]
     fn a_refused_preview_landing_releases_the_machine_and_the_next_item_starts() {
@@ -1207,7 +1207,7 @@ mod tests {
 
     /// Halting a preview whose Load has not returned leaves the engine installed. The machine
     /// must say so (`Abandoning`, so `occupies()` holds a Play) even if it had already lost
-    /// track of the session — otherwise a Play goes straight at the installed engine and fails.
+    /// track of the session - otherwise a Play goes straight at the installed engine and fails.
     #[test]
     fn a_halt_that_leaves_the_engine_installed_keeps_the_machine_abandoning() {
         let mut m = Machine::default();

@@ -6,15 +6,15 @@
 //! # Why `dlopen` and not a crate
 //!
 //! Adding a compression crate would put a new dependency into a `-Z build-std` cross build for one
-//! feature that never ships. zlib is present wherever libcurl and OpenSSL are — which is every
-//! webOS release this app claims, and macOS — and this needs exactly **one** symbol from it.
+//! feature that never ships. zlib is present wherever libcurl and OpenSSL are - which is every
+//! webOS release this app claims, and macOS - and this needs exactly **one** symbol from it.
 //!
 //! # Its own table, and a fallback rather than a failure
 //!
 //! [`crate::dynlib::load_into`] is all-or-nothing, so this gets a table of its own (the reasoning
 //! `curlio.rs` gives for binding `curl_multi_*` separately from `net.rs`'s easy table). If the
 //! table does not load, [`gzip`] answers `None` and the uploader sends
-//! `Content-Encoding: identity` — a header, not an error. A set that cannot compress must still be
+//! `Content-Encoding: identity` - a header, not an error. A set that cannot compress must still be
 //! able to report.
 //!
 //! # gzip, not zlib
@@ -42,7 +42,7 @@ const Z_OK: c_int = 0;
 
 /// Is the table live? Resolved ONCE for the process.
 ///
-/// `load` reaches `dlopen`, and `dynlib::Handle` is deliberately never `dlclose`d — so calling it
+/// `load` reaches `dlopen`, and `dynlib::Handle` is deliberately never `dlclose`d - so calling it
 /// per upload leaked a refcount each time, and on a machine with no zlib cost four failed
 /// `dlopen`s per press. `ff::boot` latches its load for the same reason.
 fn loaded() -> bool {

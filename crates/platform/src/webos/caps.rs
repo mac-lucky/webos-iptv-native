@@ -15,12 +15,12 @@ const KEY: &str = "tv.config.supportDolbyHDRContents";
 static STARTED: OnceLock<()> = OnceLock::new();
 
 tv_base::devtrig::latched_flag!(
-    /// `/tmp/webosiptv-dvcaps0` — force the boot's platform answer to unsupported.
+    /// `/tmp/webosiptv-dvcaps0` - force the boot's platform answer to unsupported.
     pub fn forced_unsupported = "dvcaps0";
 );
 
 tv_base::devtrig::latched_flag!(
-    /// `/tmp/webosiptv-dvcaps1` — force the boot's platform answer to supported.
+    /// `/tmp/webosiptv-dvcaps1` - force the boot's platform answer to supported.
     pub fn forced_supported = "dvcaps1";
 );
 
@@ -265,7 +265,7 @@ impl ProbeFailure {
 /// (webOS 3.9.3, m16p) with a Profile 8.1 film: configd answers `true`, the declared Load
 /// wedged, and the same build with the declaration removed played. So a webOS 3 set reports
 /// Dolby Vision as unsupported to the route, which plays a cross-compatible base layer (Profile
-/// 8.1) as HDR and refuses one that has none (Profile 5) — the same answer an unsupported set
+/// 8.1) as HDR and refuses one that has none (Profile 5) - the same answer an unsupported set
 /// gets. `major == 0` is an unknown version and keeps configd's answer; webOS 4+ is untouched.
 #[cfg(any(
     test,

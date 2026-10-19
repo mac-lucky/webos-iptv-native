@@ -6,13 +6,13 @@ use super::*;
 use super::test_support::*;
 
 /// Teardown fires ONE `shutdown(2)` at the demux socket, but our AVIO is SEEKABLE, so
-/// libavformat heals the resulting broken read by calling `seek_cb` — which reopened the URL
+/// libavformat heals the resulting broken read by calling `seek_cb` - which reopened the URL
 /// with a byte Range. That fresh socket is one the already-fired shutdown cannot reach, so the
 /// demuxer reads on while the main thread sits in `stream_th.join()`. `read_cb` has bailed on
 /// an aborted lane since it was written, and the reopen site in `demux` carries the same guard
 /// with a comment naming this exact failure; `seek_cb` was the third way in and had neither.
 ///
-/// The invariant is carried by the ACCEPT COUNT, not the return value — a `seek_cb` that
+/// The invariant is carried by the ACCEPT COUNT, not the return value - a `seek_cb` that
 /// reopened and then failed for an unrelated reason would also return -1. The trailing
 /// AVSEEK_SIZE assertion pins the guard's PLACEMENT: bolted to the top of `seek_cb` it would
 /// start reporting the stream as unsized, a second behaviour change smuggled in under a
@@ -67,7 +67,7 @@ fn a_seek_after_teardown_fails_instead_of_opening_a_second_connection() {
 
 /// The pair invariant, and the answer to "can an aborted demuxer ping-pong forever?".
 /// `read_cb` returns AVERROR_EOF unconditionally once the lane is aborted, and libavformat's
-/// recovery for a failed read on a seekable AVIO is to seek and read again — so if `seek_cb`
+/// recovery for a failed read on a seekable AVIO is to seek and read again - so if `seek_cb`
 /// succeeds, every hop of that loop is a full `http_open` (connect + request + header read)
 /// against a server the main thread is already waiting on. Measured on the unguarded code: nine
 /// accepts for eight hops, i.e. one whole reopen per hop, not the single wasted open the
@@ -455,8 +455,8 @@ fn a_cut_transfer_is_reopened_at_its_offset_before_the_read_fails() {
 
 /// A stream sat inside `avformat_open_input` (the server was slow to serve it) and a reload tore
 /// that demuxer down. Teardown aborts the lanes, `read_cb` answers the abort with EOF, and
-/// libavformat reports the truncated probe as `AVERROR_INVALIDDATA` — which the progressive tail
-/// logged as `ff: open_input failed r=-1094995529` and then "produced no access units — treating
+/// libavformat reports the truncated probe as `AVERROR_INVALIDDATA` - which the progressive tail
+/// logged as `ff: open_input failed r=-1094995529` and then "produced no access units - treating
 /// as a failure", raising `demux_failed` for a demuxer that was merely told to stop. Every exit
 /// now reads the same rule: an aborted lane is not a failure.
 #[test]

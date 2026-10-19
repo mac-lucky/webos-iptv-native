@@ -1,4 +1,4 @@
-// THE FLAT FILL — one colour, square corners, no focus, no rim, no pill. `gfx::draw_rect` and
+// THE FLAT FILL - one colour, square corners, no focus, no rim, no pill. `gfx::draw_rect` and
 // `gfx::draw_rrect` route a uniform rect here instead of through `fs_src.frag`'s flat path, which
 // still interpolates a top/bottom pair per fragment for a quad whose two colours are the same.
 //

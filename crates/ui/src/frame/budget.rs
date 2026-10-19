@@ -12,14 +12,14 @@ pub const PREPARE_MAX_US: u64 = 5000;
 
 /// The ceiling a SOLO frame runs under (§8.1). A class whose worst case cannot fit
 /// [`PREPARE_MAX_US`] is not ordinary prepare work: it is admitted at most once per frame, only
-/// as that frame's FIRST take, and it then owns the frame — every other take is refused. The
+/// as that frame's FIRST take, and it then owns the frame - every other take is refused. The
 /// frame it lands on is a long one by construction; the point of the rule is that it is long
 /// ALONE, rather than long on top of three poster uploads.
 pub const SOLO_MAX_US: u64 = 8000;
 
 /// A solo frame logs one line. An oscillator sweeping a shelf of backdrops would otherwise put a
-/// line on the event log every few frames — the log is the primary debugging surface and a
-/// diagnostic that drowns it is worse than none — so the line is rate-limited to at most one per
+/// line on the event log every few frames - the log is the primary debugging surface and a
+/// diagnostic that drowns it is worse than none - so the line is rate-limited to at most one per
 /// second of the budget's own frame clock. The count is not lost: `admitted`/`refused` and the
 /// `solo` field of [`FrameStats`] ride the heartbeat, which is where a rate belongs.
 const SOLO_LOG_GAP_US: u64 = 1_000_000;
@@ -29,7 +29,7 @@ pub enum Class {
     /// One decoded poster's GL upload (a 250x375 poster is ≈375 KB). Quota 3 per frame; the clock
     /// ([`PREPARE_MAX_US`]) usually admits two.
     Poster,
-    /// The GL upload + `warm_tex` pair for a LARGE decoded image — a 1280x720 backdrop (≈3.7 MB)
+    /// The GL upload + `warm_tex` pair for a LARGE decoded image - a 1280x720 backdrop (≈3.7 MB)
     /// or a hero logo (up to 1.44 MB; `app/adapters/poster.rs`'s request boxes). A SOLO class:
     /// its worst case is over [`PREPARE_MAX_US`], so it takes the frame to itself.
     Residency,
@@ -38,7 +38,7 @@ pub enum Class {
 impl Class {
     /// The device-measured worst case. Two of them, and they are not the same KIND of number:
     ///
-    /// * `Poster` — **[M-dev]** 2500 µs, measured on the television 2026-10-08 (every-frame
+    /// * `Poster` - **[M-dev]** 2500 µs, measured on the television 2026-10-08 (every-frame
     ///   `FRAMEDROP` lines, mock server, `library-scroll` / `home-grid` / `search-type`). A 250x375
     ///   poster costs `glTexImage2D` 1.3-1.5 ms plus the offscreen `warm_tex` 0.3-0.4 ms: 1.7-2 ms
     ///   p50, 2.5-3 ms p90, 2.7-2.9 ms each when 4-6 share a frame. The earlier 400 µs placeholder
@@ -49,7 +49,7 @@ impl Class {
     ///   was a wait, not layout. With the warm offscreen, upload frames read prepare p50 3.9 /
     ///   p90 6.1 ms on Library (was 10.0 / 12.9) and the clock admits two per frame (uploads per
     ///   frame {1:18, 2:12, 3:1}; a 19-poster burst in 12 frames, was 19).
-    /// * `Residency` — **[M-dev]** 6 ms, device-measured 2026-09-02 with `webosiptv-framedrop`:
+    /// * `Residency` - **[M-dev]** 6 ms, device-measured 2026-09-02 with `webosiptv-framedrop`:
     ///   a 1280x720 backdrop landing cost 6 ms in the pump and 116 ms in the NEXT frame's draw
     ///   without the `warm_tex` that now follows it (`gfx.rs`'s `warm_tex`, whose doc is the
     ///   record). That 6 ms is the pair this class prices.
@@ -109,7 +109,7 @@ pub struct Budget {
     stats_solo: Option<Class>,
     /// The frame clock of the last `budget solo=` line, for the rate limit.
     solo_logged_us: Option<u64>,
-    /// `webosiptv-nobudget`: the budget as it was BEFORE phase 11 — quota only, no time ceiling,
+    /// `webosiptv-nobudget`: the budget as it was BEFORE phase 11 - quota only, no time ceiling,
     /// no solo rule, `Residency` spending the `Poster` quota. The A/B control leg.
     relaxed: bool,
 }
@@ -131,7 +131,7 @@ impl Budget {
         }
     }
 
-    /// The `webosiptv-nobudget` control leg: admission as it was before phase 11 — the `Poster`
+    /// The `webosiptv-nobudget` control leg: admission as it was before phase 11 - the `Poster`
     /// quota of 3 per frame and nothing else. The time ceiling is off, the solo rule is off, and
     /// `Residency` is treated as `Poster` (before phase 11 there was no such class: every upload,
     /// backdrop included, spent one of the three). It exists so a device A/B measures THIS
@@ -147,7 +147,7 @@ impl Budget {
     ///
     /// **The origin is the start of the PREPARE WINDOW, not the top of the iteration.** It was
     /// the loop top until phase 11, which made the ceiling a test of how long ingest, the result
-    /// landings, the nav commit and the tick drain had already taken — on a cold-open frame
+    /// landings, the nav commit and the tick drain had already taken - on a cold-open frame
     /// (~62 ms) the ceiling refused every upload and only the forward-progress escape below let
     /// ONE through, so the quota of three was silently a quota of one on exactly the frames that
     /// had the most textures waiting.
@@ -177,8 +177,8 @@ impl Budget {
         self.admitted += 1;
     }
 
-    /// Admission. The caller reads the clock BEFORE every take and hands it in — one
-    /// `SDL_GetPerformanceCounter` per take, never a stale value — and is admitted only if the
+    /// Admission. The caller reads the clock BEFORE every take and hands it in - one
+    /// `SDL_GetPerformanceCounter` per take, never a stale value - and is admitted only if the
     /// class's worst case still fits the ceiling and its quota is not spent.
     ///
     /// Three rules on top of that, in the order they apply:
@@ -186,11 +186,11 @@ impl Budget {
     /// 1. **A solo frame is spent.** Once a solo class has been admitted this frame, every
     ///    further take is refused: that is what makes the raised ceiling safe.
     /// 2. **A solo class is admitted only as the frame's FIRST take**, under [`SOLO_MAX_US`].
-    ///    Not first means "wait for a frame of your own", not "shrink" — there is no shrinking a
+    ///    Not first means "wait for a frame of your own", not "shrink" - there is no shrinking a
     ///    texture upload. It gets no forward-progress escape, which is the one place this could
     ///    in principle stall: a queue head that is over the raised ceiling on every frame would
     ///    never upload while `has_queued_work` kept forcing the frame. It cannot sustain itself
-    ///    on the loop as written — the only thing that spends milliseconds between `begin_frame`
+    ///    on the loop as written - the only thing that spends milliseconds between `begin_frame`
     ///    and this take is the drain of newly DECODED images, which empties each frame, so the
     ///    frame after a slow one opens with an elapsed of microseconds and admits. TV session 7
     ///    is where that argument gets a measurement rather than a derivation.
@@ -258,7 +258,7 @@ impl Budget {
         }
     }
 
-    /// Whether prepare work is waiting — the second term of §3.3 step 8's present decision.
+    /// Whether prepare work is waiting - the second term of §3.3 step 8's present decision.
     pub fn has_queued_work(&self) -> bool {
         self.queued
     }
@@ -282,7 +282,7 @@ impl Budget {
         self.refused
     }
 
-    /// Drain the counters for the heartbeat (§8.4). Once per report, not once per frame — see
+    /// Drain the counters for the heartbeat (§8.4). Once per report, not once per frame - see
     /// [`FrameStats`].
     pub fn take_frame_stats(&mut self) -> FrameStats {
         let s = FrameStats {

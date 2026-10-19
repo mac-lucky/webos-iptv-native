@@ -1,8 +1,8 @@
 //! **A debrid stream's first open, and seeking a Matroska file whose Cues sit at its end**, through
 //! the real bundled FFmpeg over a loopback server that misbehaves on cue.
 //!
-//! The field case: a ~100 GB UHD remux MKV from a debrid link. Its first start was refused —
-//! `probe: open_input failed r=-1094995529` (`AVERROR_INVALIDDATA`) — and the second start of the
+//! The field case: a ~100 GB UHD remux MKV from a debrid link. Its first start was refused -
+//! `probe: open_input failed r=-1094995529` (`AVERROR_INVALIDDATA`) - and the second start of the
 //! same stream played: the first hop answered with something that was not the file (an HTML error
 //! page) or cut it short. Both opens (the probe's and the demuxer's) now retry ONCE from the
 //! original URL, which re-resolves the redirect; a URL that keeps failing still fails, after that
@@ -12,7 +12,7 @@
 //! Cues on the FIRST seek of a context (`matroska_read_seek` → `matroska_parse_cues`, FFmpeg 9.0
 //! `libavformat/matroskadec.c`) and keeps the index in the `AVStream` for the context's life, so
 //! an in-place seek (`SHARED.seek_to_ns`) after the first never fetches the Cues again. Only a
-//! reload — a fresh `AVFormatContext` — would.
+//! reload - a fresh `AVFormatContext` - would.
 //!
 //! Like `ff_eof_seek_tests.rs`, these need the host build of the bundled FFmpeg and the `ffmpeg`
 //! CLI, so they are `#[ignore]`d in the plain suite:
@@ -202,7 +202,7 @@ impl Drop for Scratch {
 
 /// 10 s of 320x240 H.264 (a keyframe a second; noise, so it really is ~6 Mbit/s and a seek leaves
 /// the AVIO buffer) + AAC,
-/// in Matroska as FFmpeg's muxer writes it — Cues at the END — with three chapters.
+/// in Matroska as FFmpeg's muxer writes it - Cues at the END - with three chapters.
 fn generate_mkv(dir: &Path) -> Vec<u8> {
     let meta = dir.join("chapters.txt");
     std::fs::write(
@@ -230,7 +230,7 @@ fn generate_mkv(dir: &Path) -> Vec<u8> {
     std::fs::read(&out).expect("read the fixture")
 }
 
-/// The byte offset of the Matroska `Cues` element (ID 1C 53 BB 6B) — the occurrence that is not
+/// The byte offset of the Matroska `Cues` element (ID 1C 53 BB 6B) - the occurrence that is not
 /// the SeekHead's `SeekID` value naming it (preceded by 53 AB 84).
 fn cues_offset(file: &[u8]) -> u64 {
     const ID: [u8; 4] = [0x1C, 0x53, 0xBB, 0x6B];
@@ -475,8 +475,8 @@ fn two_in_place_seeks_read_the_cues_once_and_the_chapters_are_published() {
 // -- a live channel's probe ---------------------------------------------------------------
 
 /// A live channel's MPEG-TS carries AAC the bundled FFmpeg has no decoder for, so its stream info
-/// search never completes and ran to FFmpeg's 5 MB default `probesize`: 20–30 s of a 1–2 Mbit/s
-/// channel read — and on a live window, waited for — before the first picture (TvVoo, 4.5 s
+/// search never completes and ran to FFmpeg's 5 MB default `probesize`: 20-30 s of a 1-2 Mbit/s
+/// channel read - and on a live window, waited for - before the first picture (TvVoo, 4.5 s
 /// probes). An HLS probe reads at most [`super::HLS_PROBE_BYTES`]; the AAC parameters come from
 /// the ADTS headers as before.
 #[test]

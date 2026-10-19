@@ -5,7 +5,7 @@
 //! [`GridBand`]): only the focused row reserves `card_row::UNDER_LABEL_H` under its posters, and
 //! rows below it move down by what that row grows. The default-geometry free functions (test-only now that
 //! `cards::Grid` computes its own) are the six-column grid
-//! of a page without an alphabet rail (the Collection page) — row pitch, band-aware cell
+//! of a page without an alphabet rail (the Collection page) - row pitch, band-aware cell
 //! placement, culling window and reveal arithmetic, so draw, focus placement, scrolling and
 //! paging all describe the same cells. [`neighbour`], [`settled`] and [`growth_before`] are
 //! column-count agnostic, and the Library's rail-aware layout uses them too.
@@ -89,15 +89,15 @@ impl GridBands {
     }
 }
 
-/// **The focus pop of a poster grid** — the spring that carries the focused cell toward
+/// **The focus pop of a poster grid** - the spring that carries the focused cell toward
 /// `RowStyle::focus_scale` and the one that lets the cell that just lost focus back down, the
 /// grid's counterpart of a shelf's `RowMotion` per-tile springs. The Library's All grid and the
 /// Collection page both read their cells' scale from here, so neither draws `focus_scale` as a
 /// step.
 ///
 /// It only starts from REST when a deliberate MOVE arms it ([`arm`](Self::arm), from the
-/// `FocusMoved` arm for `By::Dir` / `By::Pointer`); every other way a cell becomes focused — a
-/// restore, a reconcile, a command seating the cursor — is adopted at full scale by
+/// `FocusMoved` arm for `By::Dir` / `By::Pointer`); every other way a cell becomes focused - a
+/// restore, a reconcile, a command seating the cursor - is adopted at full scale by
 /// [`tick`](Self::tick), because a page coming back from a Detail push must land exactly as it
 /// was left. Inputs and the `FocusMoved` they deliver run BEFORE the screen's `Tick`, so a D-pad
 /// step has already armed the pop by the time `tick` steps it on from 1.0.
@@ -169,14 +169,14 @@ impl GridPop {
     }
 
     /// The focused cell's LIVE scale: the pop spring's position while the pop belongs to this
-    /// cell, and FULL scale when it does not — a focus this grid has not been told about yet (a
+    /// cell, and FULL scale when it does not - a focus this grid has not been told about yet (a
     /// restore, a reconcile, a seat that landed after this frame's tick) lands finished rather
     /// than animating, so drawing it at rest would be a one-frame collapse.
     pub fn pop_scale(&self, index: usize, style: &RowStyle) -> f32 {
         if self.pop.0 == Some(index) { self.pop.1.pos } else { style.focus_scale }
     }
 
-    /// **The one scale a cell draws at — for its RECT and for its TREATMENT, always together**
+    /// **The one scale a cell draws at - for its RECT and for its TREATMENT, always together**
     /// (`card_row::draw_tile`/`draw_focused` derive the radius and shadow ramp from it): the live
     /// pop while `focused`, the live shrink for the cell that just lost focus, rest for every
     /// other. The press is the caller's to multiply in.
@@ -200,7 +200,7 @@ impl Default for GridPop {
     fn default() -> Self { Self::new() }
 }
 
-/// The SETTLED bands of a grid whose focus is `row` — every reveal and scroll bound is computed
+/// The SETTLED bands of a grid whose focus is `row` - every reveal and scroll bound is computed
 /// from where the bands are going, never from their live springs (`card_row::settled_top`'s
 /// argument).
 pub fn settled(row: Option<usize>) -> [GridBand; 1] {
@@ -269,8 +269,8 @@ pub fn max_scroll_in(g: &Geom, len: usize, top: f32, bands: &[GridBand]) -> f32 
     (row_top_in(g, len.div_ceil(g.cols), top, bands) - (SCR_H - MARGIN_Y)).max(0.0)
 }
 
-/// The scroll that shows row `row` focused — its posters AND its open caption band above the
-/// bottom margin — computed from the settled bands of that focus.
+/// The scroll that shows row `row` focused - its posters AND its open caption band above the
+/// bottom margin - computed from the settled bands of that focus.
 #[cfg(test)]
 pub fn reveal_row(current: f32, row: usize, len: usize, top: f32) -> f32 {
     let g = Geom::DEFAULT;
@@ -317,7 +317,7 @@ pub fn neighbour(index: usize, len: usize, cols: usize, dir: crate::screen::Dir)
     .filter(|&i| i < len)
 }
 
-/// The members that can touch the screen at `scroll` — one row wider on each side than the
+/// The members that can touch the screen at `scroll` - one row wider on each side than the
 /// collapsed pitch alone says, so an open band shifting rows down never culls a visible one.
 #[cfg(test)]
 pub fn visible(len: usize, top: f32, scroll: f32) -> std::ops::Range<usize> {
@@ -348,7 +348,7 @@ mod tests {
     }
 
     /// C2: a row focused below the first scrolls the page so a row's top rests exactly on the
-    /// content edge — the row above the focused one, when both fit — and never cuts a row; row 0
+    /// content edge - the row above the focused one, when both fit - and never cuts a row; row 0
     /// shows the head again.
     #[test]
     fn a_snapped_page_rests_a_row_on_the_content_edge() {

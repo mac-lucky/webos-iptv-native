@@ -1,5 +1,5 @@
 //! The §6 container tests (spec §15.1), over the fixture bundle. What these grade is the
-//! container's DECISIONS — which entry hears what, in which order, and who owns input — never a
+//! container's DECISIONS - which entry hears what, in which order, and who owns input - never a
 //! pixel: the surfaces' scrims and the dip's colour are device captures.
 
 use super::modal::{HostRender, HostUpdate, Phase, Style};
@@ -44,7 +44,7 @@ fn open_modal(d: &mut Dispatcher<FixtureHost>, rig: &mut FixtureRig, style: Styl
 /// The snapshot a Cached host is served from is taken at the end of the page pass, and it is what
 /// the surface's own glass looks through. A dim drawn WITH the panel reaches the visible frame and
 /// never that texture, so the frosted ground comes out at full page brightness inside a dimmed
-/// screen — `account_menu`'s reported bug, answered until now by two hand-placed `draw_scrim()`
+/// screen - `account_menu`'s reported bug, answered until now by two hand-placed `draw_scrim()`
 /// calls in the loop's page closure, a list no third panel could join.
 ///
 /// What a host test can see of that is the ORDER, which is the property itself: the container asks
@@ -102,7 +102,7 @@ fn the_page_pass_is_the_only_place_a_scrim_is_asked_for() {
 
 /// An `Opaque` surface is the mechanism's one documented boundary: it REPLACES its host once the
 /// ground is drawn, so there is no page pass to draw into and no snapshot for a dim to belong to
-/// — its dim is composed with its own ground, in its own `draw`.
+/// - its dim is composed with its own ground, in its own `draw`.
 #[test]
 fn an_opaque_surface_is_never_asked_for_a_page_scrim() {
     let (mut d, mut rig, _) = booted();
@@ -134,7 +134,7 @@ fn the_scrim_ladder_scales_by_appear_and_the_route_dip() {
     assert_eq!(ramping.len(), 1);
     assert_eq!(ramping[0].0, id);
     assert!((ramping[0].1 - 0.2).abs() < 1e-6, "0.5 x 0.4 appear, got {}", ramping[0].1);
-    // …and a route change dips it with the page underneath
+    // ...and a route change dips it with the page underneath
     let dipped = d.nav.modals.scrims(0.5);
     assert!((dipped[0].1 - 0.1).abs() < 1e-6, "…x 0.5 page alpha, got {}", dipped[0].1);
     // settled and no transition: exactly what the surface declared
@@ -185,7 +185,7 @@ fn the_scrim_callback_receives_the_normal_chromes_borrowed_frame_read() {
 
 /// A framebuffer that remembers what was painted on it: one grey level, darkened by every dim
 /// exactly as `scrim_black(a)` over it would. `kick` queues it as a flat grid that `collect` hands
-/// back once a frame has ended — `gfx::field_kick`/`field_collect`'s contract — so a field latched
+/// back once a frame has ended - `gfx::field_kick`/`field_collect`'s contract - so a field latched
 /// from it says, in its `key`, which picture it saw, and the events say WHEN it was read.
 struct FakeFb {
     level: f32,
@@ -288,7 +288,7 @@ fn dims_frame(d: &mut Dispatcher<FixtureHost>, rig: &FixtureRig, fb: &mut FakeFb
     d.nav.modals.draw_scrims_on(1.0, read, fb);
 }
 
-/// **The field is latched from the page BEFORE any dim is on it — and so it can never inherit its
+/// **The field is latched from the page BEFORE any dim is on it - and so it can never inherit its
 /// own dim** (the one property the whole mechanism rests on: a dim keyed to a dimmed picture of
 /// itself darkens a little more every time it is re-read).
 ///
@@ -309,13 +309,13 @@ fn the_dims_field_is_latched_from_the_undimmed_page_before_the_first_dim() {
     assert_eq!(fb.events, ["kick", "dim", "dim"], "the reduction is queued before every dim");
     assert!((fb.level - 0.125).abs() < 1e-6, "and both dims still landed, bottom to top");
 
-    // The next frame reads what was queued — the undimmed page, whatever is on the framebuffer now.
+    // The next frame reads what was queued - the undimmed page, whatever is on the framebuffer now.
     fb.frame(0.5);
     dims_frame(&mut d, &rig, &mut fb);
     assert_eq!(fb.events, ["collect", "dim", "dim"], "the read lands before this frame's dims");
     assert!((key_level(&d) - 0.5).abs() < 2e-3, "latched from the UNDIMMED page, got {}", key_level(&d));
 
-    // Same host snapshot: the page has not been re-captured, so the field is not re-read — even
+    // Same host snapshot: the page has not been re-captured, so the field is not re-read - even
     // though what is on the framebuffer between frames is the dimmed picture.
     fb.frame(0.5);
     dims_frame(&mut d, &rig, &mut fb);
@@ -325,9 +325,9 @@ fn the_dims_field_is_latched_from_the_undimmed_page_before_the_first_dim() {
 
 /// **The page read never stalls the frame that asked for it.** A `glReadPixels` of work queued on
 /// the same frame waits for the GPU to draw everything submitted so far: measured on the
-/// television (2026-09-19, `FRAMEDROP … spans=…fieldread:25.7`), 26–37 ms of every modal's
-/// 60–69 ms open frame, when the read ran inside `draw_scrims` on the frame the host was captured.
-/// So the read is due only once a drawn frame has ended since the kick — and until it lands, the
+/// television (2026-09-19, `FRAMEDROP ... spans=...fieldread:25.7`), 26-37 ms of every modal's
+/// 60-69 ms open frame, when the read ran inside `draw_scrims` on the frame the host was captured.
+/// So the read is due only once a drawn frame has ended since the kick - and until it lands, the
 /// loop is kept turning for it (a settled stack may otherwise stop presenting, and the read would
 /// wait for the keepalive) and the host's ground stage, which bakes the dim in, is held off.
 #[test]
@@ -354,8 +354,8 @@ fn the_page_read_lands_a_frame_after_it_is_queued_and_holds_the_ground_until_the
 
 /// **The page is read on the frame that captured it, before any dim is seen.** That frame's GPU
 /// work is waited out before anything else presents (`gfx::snapshot_frame_begin`), so the
-/// reduction queued there costs no presented frame — queued a frame later, it was the GPU backlog
-/// the frame after THAT paid (20–24 ms, television, 2026-09-19). Without a capture on the frame, a
+/// reduction queued there costs no presented frame - queued a frame later, it was the GPU backlog
+/// the frame after THAT paid (20-24 ms, television, 2026-09-19). Without a capture on the frame, a
 /// held surface still queues nothing: there is no fence to hide the reduction behind.
 #[test]
 fn the_page_is_read_on_the_capture_frame_and_not_on_a_held_frame_without_one() {
@@ -415,14 +415,14 @@ fn a_recaptured_host_relatches_and_the_last_dismissal_resets_the_field() {
     assert_eq!(d.nav.modals.underlay.held(), super::modal::Latched::Page(0));
 
     // The page under the stack changed and `popover::host` re-took its snapshot: the field keeps
-    // the old page's light for the one frame the new read is in flight…
+    // the old page's light for the one frame the new read is in flight...
     fb.frame(0.8);
     fb.epoch = 1;
     dims_frame(&mut d, &rig, &mut fb);
     assert_eq!(fb.events, ["kick", "dim", "dim"], "a new host snapshot is read again, first");
     assert!((key_level(&d) - 0.5).abs() < 2e-3, "the old light stands while the read is in flight");
     assert_eq!(d.nav.modals.underlay.held(), super::modal::Latched::Page(0));
-    // …and follows it once the read lands.
+    // ...and follows it once the read lands.
     fb.frame(0.8);
     dims_frame(&mut d, &rig, &mut fb);
     assert!((key_level(&d) - 0.8).abs() < 2e-3, "…and the field follows it, got {}", key_level(&d));
@@ -442,7 +442,7 @@ fn a_recaptured_host_relatches_and_the_last_dismissal_resets_the_field() {
     // Both sheets leave: once the stack is empty the field is re-armed for whatever comes next.
     // (`hide` rather than a dismissal stepped through `Dispatcher::frame`: a frame DRAWS, and a
     // host test has no GL context for a dim at a nonzero alpha to be painted into.) One leaving
-    // is not enough — the other still dims the same page.
+    // is not enough - the other still dims the same page.
     assert!(d.nav.modals.hide(b));
     d.nav.modals.prune();
     assert!(d.nav.modals.underlay.field().is_latched(), "a surface is still up over the page");
@@ -472,7 +472,7 @@ fn the_latch_policy_reads_the_page_once_per_snapshot_and_never_over_the_video_pl
     assert_eq!(latch_step(None, L::Nothing, 1, false), S::Keep);
 }
 
-/// **At `TINT == 0` the inherited dim IS today's flat scrim, to the bit, at every role's weight** —
+/// **At `TINT == 0` the inherited dim IS today's flat scrim, to the bit, at every role's weight** -
 /// the one knob that turns the whole family's inheritance off must turn it off exactly. And an
 /// unlatched field (nothing read yet, or a video-plane item with no envelope) is the flat ink
 /// whatever `TINT` is.
@@ -803,7 +803,7 @@ fn one_navigation_snapshot_reaches_draw_frames_without_mutating_logical_state() 
 
 /// Present a Sheet (the account menu's shape): the page beneath is FROZEN and CACHED and
 /// receives no Tick; dismiss it: the phase is Closing on the SAME frame, the host is live again,
-/// and the surface keeps stepping until `prune` clears it — then, and only then, it unmounts.
+/// and the surface keeps stepping until `prune` clears it - then, and only then, it unmounts.
 #[test]
 fn the_closing_phase_is_stepped_even_when_the_host_is_frozen() {
     let (mut d, mut rig, home) = booted();
@@ -873,8 +873,8 @@ fn a_fixture_screen_mounts_with_no_app_change() {
     assert!(probe.contains("\"mount\", \"enter\""), "{probe}");
 }
 
-/// The Settings family's BACK (§6.2 `SettingsSurface`): the surface walks its OWN stack — two
-/// inner pushes, two inner pops — and only at its own depth 0 does BACK reach the container,
+/// The Settings family's BACK (§6.2 `SettingsSurface`): the surface walks its OWN stack - two
+/// inner pushes, two inner pops - and only at its own depth 0 does BACK reach the container,
 /// which dismisses the surface. The app's stack never moves.
 #[test]
 fn settings_back_walks_its_own_stack_not_the_apps() {
@@ -939,7 +939,7 @@ fn person_detail_person_is_three_entries() {
 }
 
 /// A page's logical state survives a push over it and a pop back: the Library's section, scroll
-/// and cursor are the instance's own while it lives (§6.1 tier 1) — nothing remounts.
+/// and cursor are the instance's own while it lives (§6.1 tier 1) - nothing remounts.
 #[test]
 fn library_remembers_its_section_scroll_and_cursor_across_a_detail_push() {
     let (mut d, mut rig, home) = booted();
@@ -970,7 +970,7 @@ fn search_keeps_its_query_and_shelves_across_a_result_push() {
     assert_eq!(probe.matches("\"uncover\"").count(), 1);
 }
 
-/// A profile switch drops every entry — surfaces first, then the pages top-down.
+/// A profile switch drops every entry - surfaces first, then the pages top-down.
 #[test]
 fn switching_profile_drops_every_tab_instance() {
     let (mut d, mut rig, _) = booted();
@@ -1062,7 +1062,7 @@ fn a_modal_scopes_focus_to_its_own_groups() {
 }
 
 /// §8.3: the render set is checked over the WHOLE composition, with REAL numbers in all three
-/// rules — a Cached host counts the one shared FrameCache and holds no render of its own; a
+/// rules - a Cached host counts the one shared FrameCache and holds no render of its own; a
 /// surface's own count is whatever that surface reports; the ceiling covers every byte term.
 ///
 /// Rules (b) and (c) were both inert until phase 11: `draw_with` pushed a literal `1` per surface,
@@ -1131,7 +1131,7 @@ fn the_render_set_is_checked_over_the_whole_frame() {
 }
 
 /// Rule (b) end to end: a surface reporting two backing renders breaches the frame's set, and the
-/// debug policy for a breach is an ASSERTION (§8.3) — so the frame that draws it dies here rather
+/// debug policy for a breach is an ASSERTION (§8.3) - so the frame that draws it dies here rather
 /// than shipping a leak to a television. `on_breach`'s own tests grade the release half.
 #[test]
 #[should_panic(expected = "render set breach")]
@@ -1144,7 +1144,7 @@ fn a_surface_holding_two_renders_breaches_the_frames_render_set() {
 }
 
 /// §4.4 `MotionScope`: a surface's foreground spring reports `Motion` (so the frame presents)
-/// without the PAGE reading as moving — the host snapshot is not re-taken for it.
+/// without the PAGE reading as moving - the host snapshot is not re-taken for it.
 #[test]
 fn a_modal_foreground_spring_does_not_invalidate_the_host_snapshot() {
     let (mut d, mut rig, _) = booted();
@@ -1155,13 +1155,13 @@ fn a_modal_foreground_spring_does_not_invalidate_the_host_snapshot() {
 }
 
 /// §4.4, the same claim in `tv_machine::idle`'s vocabulary rather than the container gate's: the
-/// dispatcher opens ONE motion scope per surface — around its `ModalStack::tick`, its body's step
-/// and its draw — and NONE around the page's, so `idle::page_moving()` answers "did the HOST move"
+/// dispatcher opens ONE motion scope per surface - around its `ModalStack::tick`, its body's step
+/// and its draw - and NONE around the page's, so `idle::page_moving()` answers "did the HOST move"
 /// on a frame that stepped both.
 ///
 /// The other test above grades `FrameReport::underlay_moving`, which a screen reaches only by
 /// calling `fx.note(Motion)`. This one grades the channel an owned screen actually animates
-/// through — `gfx::spring` — which reaches `tv_machine::idle` and nothing else, and which had no
+/// through - `gfx::spring` - which reaches `tv_machine::idle` and nothing else, and which had no
 /// per-surface attribution at all until phase 10: every spring a surface stepped read as the page
 /// moving, and `app/bridge.rs` compensated by scoping the WHOLE dispatcher frame, which lost the
 /// page's own motion in exchange (`a_host_page_spring_under_an_open_panel_is_host_motion`).
@@ -1192,7 +1192,7 @@ fn a_surface_spring_and_a_page_spring_are_told_apart_by_the_idle_gate() {
         "the page under a Compact panel is still the page: its spring is host motion"
     );
 
-    // …and once the page has settled, the surface's own spring is NOT host motion. `open_modal`
+    // ...and once the page has settled, the surface's own spring is NOT host motion. `open_modal`
     // mounted a fresh surface, so its pop window is still open here.
     for _ in 0..60 {
         tv_machine::idle::frame_begin(1.0 / 60.0);
@@ -1228,7 +1228,7 @@ fn prepare_does_not_change_the_logical_state_hash() {
 }
 
 /// The dip lifted off `ui::nav`: over a `PageDip` the op applies at the FLOOR, several frames
-/// after the press, while a cut applies at the same commit — and BACK inside the window
+/// after the press, while a cut applies at the same commit - and BACK inside the window
 /// withdraws the transition with nothing mounted.
 #[test]
 fn a_page_dip_commits_at_its_floor_and_a_back_inside_the_window_withdraws_it() {
@@ -1247,7 +1247,7 @@ fn a_page_dip_commits_at_its_floor_and_a_back_inside_the_window_withdraws_it() {
     let at = mounted_at.expect("Home mounted at the floor");
     assert!(at >= 4, "70 ms out at 16 ms frames: the floor is ~5 frames in, not the press frame (got {at})");
     assert_eq!(d.top_screen().unwrap().name(), "home");
-    // let the IN ramp settle (a request mid-ramp fades out from wherever the alpha is — a
+    // let the IN ramp settle (a request mid-ramp fades out from wherever the alpha is - a
     // retarget, whose floor comes sooner)
     for i in 0..20u32 {
         d.frame(&mut rig, tick(400 + i * 16), vec![], vec![], &mut NoTap);
@@ -1301,8 +1301,8 @@ fn a_page_pushed_behind_a_dip_has_its_text_resident_before_it_is_seen() {
 /// **A surface's first frames rasterise none of its text; they warm it.** A presented surface is
 /// held at appear 0 while its host snapshot renders (`PopoverMotion`'s hold). It used to draw its
 /// whole tree through the live painter on exactly that frame, so a cold Settings open rasterised
-/// and uploaded all 21 of its strings in the heaviest GPU frame a modal has — `modal-100`'s cycle
-/// 1, 44 ms. A held surface is invisible, so it is walked through the text recorder instead —
+/// and uploaded all 21 of its strings in the heaviest GPU frame a modal has - `modal-100`'s cycle
+/// 1, 44 ms. A held surface is invisible, so it is walked through the text recorder instead -
 /// including text painted off a `Painter::root()` the surface built itself, as Settings does. The
 /// capture frame only records; the hold then lasts while the prewarm budget makes the text
 /// resident, and the ramp's first frame finds it cached.
@@ -1338,7 +1338,7 @@ fn a_held_surface_warms_its_text_instead_of_rasterising_it() {
 }
 
 /// **Asking for the page that is already on its way is not a second navigation.** The dip-out
-/// PREPARES a pushed destination — its body mounts ahead of the floor, and a mount is where a
+/// PREPARES a pushed destination - its body mounts ahead of the floor, and a mount is where a
 /// screen consumes its one-shot seed (the player's origin, a detail page's season). A second
 /// `Push` of the same page while the first is pending used to replace it, dropping the prepared
 /// body and preparing a fresh one that found its seed already spent: a player landing inside the
@@ -1406,7 +1406,7 @@ fn a_dismissed_surface_hears_closing_before_its_host_is_entered_and_leaves_only_
 }
 
 /// **`has_pending_navigation` is a question about the PAGE stack**, and [`Navigation::moves_page`]
-/// is the one classifier that answers it — the same one [`Navigation::request`] routes by, so the
+/// is the one classifier that answers it - the same one [`Navigation::request`] routes by, so the
 /// guard and the commit cannot disagree about what a parked op is.
 ///
 /// Its caller is `app::bridge::sync_page`, which mirrors the committed route onto the tree and
@@ -1448,7 +1448,7 @@ fn only_a_parked_page_op_counts_as_a_pending_navigation() {
 
 // =================================================================================================
 // `NavOp::Root` / `NavOp::SelectTab` split (TV 2026-09-17: a per-frame `Root(Profiles)` follower
-// remounted the picker and the first-run consent surface forever — see
+// remounted the picker and the first-run consent surface forever - see
 // `app::session_picker_regression_tests::first_run_consent_over_the_picker_does_not_flip_mounts_every_frame`
 // for the host-level repro). `Root` now truly replaces the stack, root included; `SelectTab` keeps
 // the old shared arm's cover-and-mint pill semantics; and `NavStack::request` drops an
@@ -1456,7 +1456,7 @@ fn only_a_parked_page_op_counts_as_a_pending_navigation() {
 // =================================================================================================
 
 /// **`Root` retires EVERY entry, including the one under the caller's feet, and any surface
-/// covering it is swept along with it** — never left covered and alive, which is what the shared
+/// covering it is swept along with it** - never left covered and alive, which is what the shared
 /// `Root`/`SelectTab` arm used to do and what let a never-retired root sit under every later mint.
 #[test]
 fn root_over_a_stacked_page_replaces_everything_and_sweeps_its_covered_surface() {
@@ -1486,11 +1486,11 @@ fn root_over_a_stacked_page_replaces_everything_and_sweeps_its_covered_surface()
 
 /// **A `Root`/`SelectTab`/`PopTo` the settled stack already satisfies is dropped before it
 /// touches `pending` OR the transition.** Without that dedup, a per-frame re-request does not
-/// quietly do nothing — it still COMMITS, in the sense that matters here: `request()` overwrites
+/// quietly do nothing - it still COMMITS, in the sense that matters here: `request()` overwrites
 /// `pending` and calls `transition.request()` again, and a `PageDip` answers that by restarting
 /// its Out ramp from wherever it currently is. So re-asking it every frame (the Login/Profiles
-/// follower's own shape) never lets the transition SETTLE — it is not stalled, it is continuously
-/// RESTARTED — which is the mechanism behind the TV 2026-09-17 bug, independent of the
+/// follower's own shape) never lets the transition SETTLE - it is not stalled, it is continuously
+/// RESTARTED - which is the mechanism behind the TV 2026-09-17 bug, independent of the
 /// mount/unmount churn the `Root`/`SelectTab` split fixes on its own.
 #[test]
 fn redundant_root_select_tab_and_pop_to_requests_are_inert() {
@@ -1504,7 +1504,7 @@ fn redundant_root_select_tab_and_pop_to_requests_are_inert() {
     let home = d.nav.top_page().unwrap().id;
 
     // `Dispatcher::request` only enqueues (`has_pending_navigation` reads THAT raw queue); the
-    // op does not reach `NavStack::request` — and so `is_inert` — until the next `frame()` drains
+    // op does not reach `NavStack::request` - and so `is_inert` - until the next `frame()` drains
     // it. Checking the STACK's own `is_pending`/the transition therefore has to happen AFTER it.
     for (i, op) in [NavOp::Root(FixtureArg::Home), NavOp::SelectTab(FixtureArg::Home), NavOp::PopTo(home)]
         .into_iter()
@@ -1526,7 +1526,7 @@ fn redundant_root_select_tab_and_pop_to_requests_are_inert() {
 /// **An EVICTED entry is never "already satisfied", whichever op names it.** `Root` asks
 /// [`NavStack::root_settled`], which requires a body; `SelectTab` and `PopTo` used to compare only
 /// ids and `same_instance`, so a tab press or a `PopTo` returning to a root whose body `CAP`
-/// eviction had dropped was refused as redundant — and the apply arm's own `Mount` for a bodyless
+/// eviction had dropped was refused as redundant - and the apply arm's own `Mount` for a bodyless
 /// target (`stack.rs`'s `bodyless` branch) never ran, leaving the page permanently unmounted.
 /// (Reported by review on PR #113; the sibling property is
 /// `an_evicted_entry_keeps_its_focus_identity_on_remount`, which reaches the same remount by BACK.)
@@ -1543,7 +1543,7 @@ fn a_select_tab_or_pop_to_naming_an_evicted_entry_remounts_it_rather_than_being_
         // What `CAP` eviction leaves behind: the entry, its `ReturnState` and its id, with the
         // body dropped and `evicted` set. Done by hand because reaching the cap here would put
         // other pages ON TOP of Home, and the case under test is the op that names the entry
-        // that is ALREADY the top — the only shape `is_inert` can mistake for settled.
+        // that is ALREADY the top - the only shape `is_inert` can mistake for settled.
         {
             let e = d.nav.tabs.stack.entries.iter_mut().find(|e| e.id == home).unwrap();
             e.inst = None;
@@ -1557,7 +1557,7 @@ fn a_select_tab_or_pop_to_naming_an_evicted_entry_remounts_it_rather_than_being_
             mounted_or_pending,
             "select_tab={op_is_select_tab}: the request must reach the stack, not be dropped as satisfied",
         );
-        // …and it really does come back, with the same identity.
+        // ...and it really does come back, with the same identity.
         for i in 0..20u32 {
             let r = d.frame(&mut rig, tick(2016 + i * 16), vec![], vec![], &mut NoTap);
             d.prune(&r.unmounted);
@@ -1568,7 +1568,7 @@ fn a_select_tab_or_pop_to_naming_an_evicted_entry_remounts_it_rather_than_being_
     }
 }
 
-/// **A `Root` request while a DIFFERENT op is pending still replaces it — newest wins**, which
+/// **A `Root` request while a DIFFERENT op is pending still replaces it - newest wins**, which
 /// sign-out and a profile switch both depend on (they `Root` right after asking for something
 /// else in the same breath). This is a property of `NavStack::is_inert` only refusing an
 /// exactly-redundant repeat of the SAME kind, never a differently-shaped one.
@@ -1593,7 +1593,7 @@ fn a_root_request_while_a_different_op_is_pending_still_wins() {
 }
 
 /// **`SelectTab` covers-and-mints over the existing root rather than replacing it, and BACK off
-/// the pressed pill returns to the SAME root entry** — the pill semantics the old shared
+/// the pressed pill returns to the SAME root entry** - the pill semantics the old shared
 /// `Root`/`SelectTab` arm had, kept exactly by the split's other half.
 #[test]
 fn select_tab_covers_the_root_rather_than_replacing_it_and_back_returns_to_it() {
@@ -1612,7 +1612,7 @@ fn select_tab_covers_the_root_rather_than_replacing_it_and_back_returns_to_it() 
     assert_eq!(d.nav.tabs.stack.depth(), 1);
     assert_eq!(d.nav.top_page().unwrap().id, home, "BACK off the pill lands on the SAME Home entry");
 
-    // Re-cover, then `SelectTab(Home)` is a `PopTo(root)` — not a fresh mint of Home.
+    // Re-cover, then `SelectTab(Home)` is a `PopTo(root)` - not a fresh mint of Home.
     d.request(MachineId::Nav, NavOp::SelectTab(FixtureArg::Page(9)));
     let r = d.frame(&mut rig, tick(48), vec![], vec![], &mut NoTap);
     d.prune(&r.unmounted);
@@ -1628,12 +1628,12 @@ fn select_tab_covers_the_root_rather_than_replacing_it_and_back_returns_to_it() 
 /// **A tab press's arrival animates the same regardless of which strip pill sent it** (owner
 /// report #17): a `SelectTab` cover-and-mint always originates FROM the visible strip, so its
 /// first `FocusMoved` must read as a deliberate move (`By::Dir`, the same as a directional press
-/// — the thing that already makes `library::LibraryScreen`'s tile grow from rest instead of
+/// - the thing that already makes `library::LibraryScreen`'s tile grow from rest instead of
 /// snapping, `pop_from_rest`, gated on `By::Dir | By::Pointer`), not as `By::Restore` ("this page
 /// is back where it was", which was never true the first time a tab is visited this session and
 /// silently disabled every screen's own arrival animation for this one path). Before the fix,
 /// `FocusTarget::FirstInGroup`'s `By::Restore` made a fresh Home → Page(9) mint SNAP its first
-/// `FocusMoved` to the destination with no transition — the tab jump this test pins.
+/// `FocusMoved` to the destination with no transition - the tab jump this test pins.
 #[test]
 fn a_fresh_tab_mint_reports_a_deliberate_move_not_a_restore() {
     let (mut d, mut rig, _home) = booted();
@@ -1657,7 +1657,7 @@ fn a_fresh_tab_mint_reports_a_deliberate_move_not_a_restore() {
 
 /// **`reset_for_profile` also clears the stack's own pending op and due flag.** Without this, a
 /// `Push` parked before the reset (mid fade-out, on the STACK rather than merely the dispatcher's
-/// own queue) would still apply at its own floor — some frames later — over the tree the reset
+/// own queue) would still apply at its own floor - some frames later - over the tree the reset
 /// just emptied, minting an entry nobody asked for post-reset.
 #[test]
 fn reset_for_profile_clears_a_pending_op_so_it_cannot_apply_over_the_emptied_tree() {
@@ -1810,7 +1810,7 @@ fn frozen_dispatch_holds_past_the_dip_while_page_motion_and_resource_work_remain
 }
 
 /// **A page's text is resident before its replacement capture draws it.** Content that lands
-/// after the dip's floor — a detail page's metadata — is drawn by nothing while the image stands in
+/// after the dip's floor - a detail page's metadata - is drawn by nothing while the image stands in
 /// for the page, so the one settled capture used to rasterise every new string in a single frame
 /// (84 ms on the television, 48 ms of it text). The held page is walked through the text recorder
 /// instead, and the capture waits for that queue to drain.
@@ -1888,8 +1888,8 @@ fn a_held_page_has_its_text_resident_before_its_replacement_capture() {
 ///
 /// Reported from the television as a blink when Home's `Movies` pill was pressed: the bar dropped
 /// to a dark track over the hero and then, on the first frame of the grey Library, wore Home's warm
-/// frosted hero. Both are CAPTURE frames — the dip's first frame (outgoing page) and its floor
-/// (incoming page) — where the page image does not exist until the visible pass takes it. The
+/// frosted hero. Both are CAPTURE frames - the dip's first frame (outgoing page) and its floor
+/// (incoming page) - where the page image does not exist until the visible pass takes it. The
 /// source walks drew no page at all there, so the blur's direct replay painted nothing and the
 /// chain re-blurred its own scratch target: the previous source, i.e. the OLD page. And no layer
 /// published the dip's alpha, so that stale source was composited at full weight over a page drawn

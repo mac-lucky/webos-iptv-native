@@ -26,8 +26,8 @@ use crate::stream::{Dovi, NotVideo, ProbeFailure, ProbedAudio, ProbedStreams, Pr
 use std::sync::{Arc, Mutex};
 
 /// The probe's transports and their cancellation, shared between the probe thread and whoever
-/// may cancel it. Freed when the last holder drops it — which may be the probe thread, after a
-/// cancel that did not wait for it — so nothing here is ever closed under a thread still using it.
+/// may cancel it. Freed when the last holder drops it - which may be the probe thread, after a
+/// cancel that did not wait for it - so nothing here is ever closed under a thread still using it.
 pub struct ProbeIo {
     /// A private AU lane, used only for its abort flag: the AVIO callbacks check it on entry.
     lane: *mut AuQueue,
@@ -419,7 +419,7 @@ unsafe fn read_streams(
 /// header or its channel configuration is 0 (carried in-band, unknown here). ISO 14496-3 1.A.2.
 const RATES: [i64; 13] = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
 
-/// The CORE sampling rate an AudioSpecificConfig names (`aot(5) freqIdx(4) …`): for HE-AAC, half
+/// The CORE sampling rate an AudioSpecificConfig names (`aot(5) freqIdx(4) ...`): for HE-AAC, half
 /// what FFmpeg reports as `sample_rate`, and the rate `ff::adts_params` frames each packet with.
 /// `None` for an escape-coded object type or an explicit 24-bit rate (exotic; codecpar stands).
 fn asc_core_rate(asc: &[u8]) -> Option<i64> {
@@ -449,7 +449,7 @@ fn adts_audio(data: &[u8]) -> Option<(i64, i64)> {
 /// frame carries no such extension, `None` when `data` holds no E-AC-3 frame this can read.
 ///
 /// The bundled FFmpeg has the `ac3` PARSER, which reads only the first 54 header bits, and no
-/// E-AC-3 decoder — the only thing that sets `AV_PROFILE_EAC3_DDP_ATMOS` — so the bit walk is
+/// E-AC-3 decoder - the only thing that sets `AV_PROFILE_EAC3_DDP_ATMOS` - so the bit walk is
 /// ported here, field for field, from FFmpeg 9.0 `libavcodec/ac3_parser.c`'s
 /// `ff_ac3_parse_header` + `eac3_parse_header` (ETSI TS 102 366 Annex E.1.2 `bsi()`): the first
 /// `addbsi` byte's least significant bit is the extension flag, as `ac3dec.c` reads it.
@@ -743,7 +743,7 @@ mod tests {
     /// **HE-AAC declares its CORE rate**, the one the AudioSpecificConfig's frequency index names
     /// and the ADTS header we reframe with carries. FFmpeg's `sample_rate` is the SBR OUTPUT rate
     /// (twice the core), so a 24 kHz-core HE-AAC track was declared `aacInfo.frequency=48` over
-    /// ADTS frames saying 24 — measured on the dev set from an MP4 and a Matroska file (an MPEG-TS
+    /// ADTS frames saying 24 - measured on the dev set from an MP4 and a Matroska file (an MPEG-TS
     /// one, read from its ADTS, declared 24).
     #[test]
     fn the_asc_core_rate_is_the_declared_rate() {
@@ -790,7 +790,7 @@ mod tests {
         }
     }
 
-    /// An E-AC-3 5.1 frame header as a Dolby Atmos (JOC) encoder lays it out — ETSI TS 102 366
+    /// An E-AC-3 5.1 frame header as a Dolby Atmos (JOC) encoder lays it out - ETSI TS 102 366
     /// E.1.2: independent substream 0, 48 kHz, six blocks, 3/2 + LFE, bsid 16, then the mixing
     /// and informational metadata a real stream carries (`mixmdate`/`infomdate` set, so every
     /// conditional field the parser walks is exercised), then `addbsi`: length 1 (two bytes), the
@@ -840,7 +840,7 @@ mod tests {
         assert_eq!(eac3_joc(&joc_frame(0, 0, Some(false))), Some(false), "addbsi without the extension");
         assert_eq!(eac3_joc(&joc_frame(0, 0, None)), Some(false), "no addbsi at all");
         // A real E-AC-3 5.1 frame header from the host's FFmpeg encoder (`ffmpeg -f lavfi -i
-        // sine=… -ac 6 -c:a eac3 -b:a 384k -f eac3`, first 32 bytes): plain DD+, no JOC.
+        // sine=... -ac 6 -c:a eac3 -b:a 384k -f eac3`, first 32 bytes): plain DD+, no JOC.
         let real = [
             0x0b, 0x77, 0x02, 0xff, 0x3f, 0x87, 0xc0, 0x00, 0x20, 0x80, 0x20, 0x00, 0x02, 0x00, 0x40, 0x00, 0x03, 0xe0, 0x1f,
             0xba, 0x7e, 0x1e, 0x01, 0x01, 0x07, 0xe1, 0xe1, 0xf8, 0x78, 0x7e, 0x1e, 0x10,

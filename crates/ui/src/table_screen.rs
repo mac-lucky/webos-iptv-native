@@ -1,19 +1,19 @@
 //! **The route family's screens as COMPONENTS** (restructure spec §10, phase 5a): `Header`
 //! (crumb → title → copy, the narrative column), `TableScreen` (a header beside a `TableView`
-//! in the content column — Settings' root, the Legal index) and `DocumentScreen` (a header
-//! beside a `DocumentReader` — every Legal document, Privacy, About). Each is `Composed` of
+//! in the content column - Settings' root, the Legal index) and `DocumentScreen` (a header
+//! beside a `DocumentReader` - every Legal document, Privacy, About). Each is `Composed` of
 //! `Part`s, so it answers the focus protocol (spec §7.1) through `composed_*` and draws through
 //! `composed_draw`; and each also draws for the LEGACY loop through `paint(Painter)`, the same
 //! routine, so the pixels are one function whichever loop calls it.
 //!
 //! What the components ADD over a bare `TableView`/`DocumentReader` is the focus protocol as data
 //! (spec §10's reading of route_screen's rules): the table is a `Column` group with
-//! `Seat::Remembered` (rules 1, 3, 5), its LEFT edge is `EdgeRule::Nav(Back)` (rule 9 — the crumb
+//! `Seat::Remembered` (rules 1, 3, 5), its LEFT edge is `EdgeRule::Nav(Back)` (rule 9 - the crumb
 //! is literal) unless the screen holds an uncommitted edit, in which case it is `Stop`; its RIGHT
 //! edge is `EdgeRule::Screen`, so a chevron row's RIGHT reaches the screen's own `step` (rule 8)
 //! and a plain row's is dropped; a document is a `Document` group that scrolls inside and leaves
 //! at its ends. The band (rules 2, 4, 6, 7) is [`BandPart`], this module's own struct with its own
-//! focus/hit logic honouring those rules, attached with [`TableScreen::with_band`] — NOT a wrapper
+//! focus/hit logic honouring those rules, attached with [`TableScreen::with_band`] - NOT a wrapper
 //! over `route_screen::ActionRow`, which has no caller left outside that module's own tests.
 //!
 //! **Phase 5b completed the handover this module was built for, so read the paragraph above as
@@ -21,7 +21,7 @@
 //! the statics and the `RouteFocus` ladders stayed behind in `ui/settings.rs`, `ui/legal.rs`,
 //! `ui/consent.rs` and `ui/onboard.rs`; 5b moved all four onto owned screens under
 //! `crate::screens` and DELETED those four modules, so there is no legacy ladder left to answer a
-//! key and `band` is no longer `None` — `screens::consent` and `screens::onboard` both attach one.
+//! key and `band` is no longer `None` - `screens::consent` and `screens::onboard` both attach one.
 //! The `paint(Painter)` entry points survive that deletion and are still exercised, but by owned
 //! screens choosing to draw imperatively (`screens/onboard.rs`, `screens/consent.rs`) rather than
 //! by a frame loop that owns the state; `composed_draw` is the other half and neither is dead.
@@ -143,7 +143,7 @@ pub struct TablePart<'a> {
     pub frame: Rect,
     pub group: GroupId,
     pub entry: EntryId,
-    /// Rule 9's guard: `true` while the screen holds an edit BACK would discard — LEFT is a wall.
+    /// Rule 9's guard: `true` while the screen holds an edit BACK would discard - LEFT is a wall.
     pub uncommitted: bool,
     /// A band sits beside the table this frame: LEFT is the geometric move into it (rule 5)
     /// rather than BACK (rule 9), and DOWN off the last row finds it (rule 2).
@@ -200,7 +200,7 @@ where
         Focusable::<H>::groups(&self.view(), cx, out);
         if let Some(g) = out.get_mut(n) {
             // [up, down, left, right]: up/down are the column's own (Geometric past the ends,
-            // which is how DOWN off the last row reaches a band beneath — rule 2); LEFT is BACK
+            // which is how DOWN off the last row reaches a band beneath - rule 2); LEFT is BACK
             // unless an edit is at stake (rule 9); RIGHT is the screen's to answer (rule 8).
             g.edge[2] = if self.has_band {
                 EdgeRule::Geometric
@@ -458,7 +458,7 @@ where
     }
 }
 
-/// A header beside a table — the Settings root and the Legal index (spec §10 `TableScreen`).
+/// A header beside a table - the Settings root and the Legal index (spec §10 `TableScreen`).
 pub struct TableScreen<'a> {
     pub header: Header<'a>,
     pub table: TablePart<'a>,
@@ -594,7 +594,7 @@ pub struct DocumentPart<'a> {
     pub entry: EntryId,
 }
 
-/// The document's FOCUS half over an immutable reader — what a page whose `Focusable` methods
+/// The document's FOCUS half over an immutable reader - what a page whose `Focusable` methods
 /// take `&self` builds per query, while its draw builds the `DocumentPart` over `&mut`.
 pub struct DocumentFocus<'a> {
     pub reader: &'a DocumentReader,
@@ -708,7 +708,7 @@ where
     }
 }
 
-/// A header beside a document — every Legal document, Privacy, About (spec §10
+/// A header beside a document - every Legal document, Privacy, About (spec §10
 /// `DocumentScreen`).
 pub struct DocumentScreen<'a> {
     pub header: Header<'a>,
@@ -804,7 +804,7 @@ mod tests {
 
     // The PARTS are asked directly rather than through `Composed` (`composed_groups` and its
     // siblings): `part()` materialises a `&dyn Part` vtable, whose `draw` reaches `TextView` and
-    // SDL2_ttf — which the host suite cannot LINK (`ui/CLAUDE.md`'s boundary). The composed fns
+    // SDL2_ttf - which the host suite cannot LINK (`ui/CLAUDE.md`'s boundary). The composed fns
     // are the fixture screen's subject already.
     fn cx<'a>(m: &'a dyn Measure, v: &'a FixtureView) -> Cx<'a, FixtureHost> {
         Cx {
@@ -836,7 +836,7 @@ mod tests {
 
     /// **A form-backed table's focus elements are its `RowKey`s, and every hook translates.** Keys
     /// deliberately unrelated to position (30, 10, 20 down the page): the same answers as the
-    /// index-addressed table over the same rows, spelled in keys — including the pointer path's
+    /// index-addressed table over the same rows, spelled in keys - including the pointer path's
     /// `place` and a key the map no longer holds.
     #[test]
     fn a_keyed_table_part_speaks_row_keys_through_all_five_hooks() {
@@ -894,7 +894,7 @@ mod tests {
         assert_eq!(Focusable::<H>::seat(&plain, G, from, &cx).elem, 2, "the plain table still speaks indices");
     }
 
-    /// Spec §10: the table screen's focus protocol AS DATA — one Column group, Seat::Remembered,
+    /// Spec §10: the table screen's focus protocol AS DATA - one Column group, Seat::Remembered,
     /// LEFT = BACK (rule 9) and RIGHT = the screen's (rule 8); with an uncommitted edit LEFT is a
     /// wall; the header contributes no group.
     #[test]
@@ -924,7 +924,7 @@ mod tests {
         assert_eq!(groups[0].edge[2], EdgeRule::Stop, "an edit at stake makes LEFT a wall");
     }
 
-    /// Spec §7.1: geometry IS `place` — a row's placement is the rect `TableView` draws it at,
+    /// Spec §7.1: geometry IS `place` - a row's placement is the rect `TableView` draws it at,
     /// and DOWN walks the rows to an edge.
     #[test]
     fn a_table_screen_places_rows_where_the_table_draws_them() {

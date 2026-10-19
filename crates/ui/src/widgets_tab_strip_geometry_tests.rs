@@ -108,7 +108,7 @@ fn continuous_document_rail_tracks_both_ends_and_disappears_when_content_fits() 
 /// Both halves matter and neither is visible in a diff. The hit test is what makes the chip
 /// clickable on all three screens that draw it (it was Home's alone, recorded at Home's draw),
 /// so it must address exactly the rect the draw uses. And the D-pad rule every one of those
-/// screens now adopts — ◀ off the FIRST pill reaches the chip, ▶ walks back — is only sane
+/// screens now adopts - ◀ off the FIRST pill reaches the chip, ▶ walks back - is only sane
 /// while the chip is genuinely the bar's leftmost thing: [`TAB_SIDE_CLEAR`] is the margin that
 /// keeps the CENTRED strip off it, and a strip that grew far enough left to overlap would make
 /// the walk cross two controls occupying one place.
@@ -127,7 +127,7 @@ fn the_profile_chip_is_hit_where_it_is_drawn_and_sits_left_of_the_pills() {
     // it shares the bar's line with the pills: one control height, one top edge
     assert_eq!(r.y, TOP_BAR_Y);
     // one control height with the pills, which is also what makes the focused chip's capsule
-    // the tab track's own band — the two read as one strip of chrome rather than as two
+    // the tab track's own band - the two read as one strip of chrome rather than as two
     // objects at different heights (see `CHIP_D`)
     assert_eq!(r.h, TAB_PILL_H);
 
@@ -145,7 +145,7 @@ fn the_profile_chip_is_hit_where_it_is_drawn_and_sits_left_of_the_pills() {
 
 /// The unit-10 invariant, stated the way the [`tab_count`] doc states it: EVERY pill can be
 /// drawn, because the strip scrolls to it. For any section count, and from any starting
-/// scroll, the target for pill `i` puts that whole pill inside the visible strip — so no
+/// scroll, the target for pill `i` puts that whole pill inside the visible strip - so no
 /// focusable index can lack a drawn rect, which is what the old `MAX_TABS` cap used to buy
 /// by refusing to focus the pills it could not reach.
 #[test]
@@ -172,7 +172,7 @@ fn every_pill_scrolls_fully_into_the_strips_viewport() {
     }
 }
 
-/// A row that fits must keep its centered, unscrolled tvOS look — the track IS the content and
+/// A row that fits must keep its centered, unscrolled tvOS look - the track IS the content and
 /// there is nowhere to scroll to. Past that the scroll is minimal, not eager: asking for a
 /// pill that is already on screen must leave the strip exactly where it is, wherever that is.
 #[test]
@@ -227,7 +227,7 @@ fn the_strip_scrolls_only_once_it_outgrows_the_row_and_only_as_far_as_it_must() 
 }
 
 /// A focus index left over from a bigger section table (the table is refetched on sign-in or
-/// a server switch) must clamp, not index out of bounds — the strip is drawn from these same
+/// a server switch) must clamp, not index out of bounds - the strip is drawn from these same
 /// widths every frame, so a panic here would be a panic in the frame loop. Graded on an
 /// OVERFLOWING row so the clamp has a non-zero range to be wrong about.
 #[test]

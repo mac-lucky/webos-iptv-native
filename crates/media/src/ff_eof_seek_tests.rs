@@ -1,4 +1,4 @@
-//! A seek to the END of the resource — `avio_seek(pb, size)` — is a position, not a request.
+//! A seek to the END of the resource - `avio_seek(pb, size)` - is a position, not a request.
 //!
 //! **The failure under test.** An MP4 laid out `ftyp`, `mdat` (64-bit size), `moov` at the end,
 //! with a QuickTime CHAPTER track whose text samples sit at the head of `mdat` (where FFmpeg's own
@@ -7,14 +7,14 @@
 //! `mov_read_chapters`, which records `cur_pos = avio_tell()` (= the file size), seeks back to the
 //! chapter samples, reads them, and RESTORES `avio_seek(pb, cur_pos)`. That restore reached
 //! `seek_cb` as a target equal to the size, and the socket arm reopened with
-//! `Range: bytes=<size>-` — which a server must answer `416 Range Not Satisfiable` (media servers do; RFC
+//! `Range: bytes=<size>-` - which a server must answer `416 Range Not Satisfiable` (media servers do; RFC
 //! 9110 §14.1.2: a first-byte-pos at or past the length is unsatisfiable). `seek_cb` had already
 //! `http_close`d the live stream, so the 416 left NO transport, while libavformat's buffer still
 //! sat on the chapter samples. The first video sample (0xa87 on the reported film) lies a few
-//! bytes past them — inside the buffer, so no `seek_cb` heals it — and the next `fill_buffer`
+//! bytes past them - inside the buffer, so no `seek_cb` heals it - and the next `fill_buffer`
 //! read a dead socket: `stream 0, offset 0xa87: partial file`, one 279-byte AU, `demux ended`,
-//! a player at t=0 forever. The device log, in order: `ff: open status=200`, `stream: GET … status=416`,
-//! `ff: container names …`, `ff: AU#0 size=279`, `ff: demux ended`.
+//! a player at t=0 forever. The device log, in order: `ff: open status=200`, `stream: GET ... status=416`,
+//! `ff: container names ...`, `ff: AU#0 size=279`, `ff: demux ended`.
 //!
 //! Nothing here is about 32 bits: the size is an `i64` all the way through and the 416 is for the
 //! correct offset. The host reproduces it with a 64-bit build at both 2.26 GB and 23 GB.
@@ -40,7 +40,7 @@ use std::time::{Duration, Instant};
 // -- a server that refuses an unsatisfiable Range the way a media server does ------------------------------
 
 /// A resource made of real bytes with a run of zeros spliced in: `head`, then `gap` zero bytes,
-/// then `tail`. That is how a 23 GB file is served from a few hundred KB of fixture — FFmpeg never
+/// then `tail`. That is how a 23 GB file is served from a few hundred KB of fixture - FFmpeg never
 /// reads the inside of `mdat` that no sample points at.
 #[derive(Clone)]
 struct Virtual {
@@ -216,7 +216,7 @@ fn avio_over(src: Src, size: i64, aq: *mut AuQueue) -> AvioState {
     }
 }
 
-/// The invariant on one opened source: what libavformat's `mov_read_chapters` does — read a
+/// The invariant on one opened source: what libavformat's `mov_read_chapters` does - read a
 /// little, seek to the size (or `SEEK_END` 0), read, then seek back into the file and read.
 fn seek_to_the_end_is_a_position(server: &StrictServer, st: &mut AvioState, body: &[u8]) {
     let op = st as *mut AvioState as *mut c_void;
@@ -584,8 +584,8 @@ fn top_level_boxes(file: &[u8]) -> Vec<([u8; 4], usize, usize)> {
 
 /// Re-lay the fixture as the reported film: `ftyp`, ONE `mdat` with a 64-bit size whose payload is
 /// the fixture's followed by zeros, `moov` starting at `moov_at`. FFmpeg's `free` (8) + `mdat`
-/// header (8) is exactly a 16-byte 64-bit `mdat` header — the same rewrite the muxer itself makes
-/// for an mdat over 4 GiB — so every chunk offset in `moov` stays right and nothing in it is edited.
+/// header (8) is exactly a 16-byte 64-bit `mdat` header - the same rewrite the muxer itself makes
+/// for an mdat over 4 GiB - so every chunk offset in `moov` stays right and nothing in it is edited.
 fn as_large_file(file: &[u8], moov_at: u64) -> Virtual {
     let boxes = top_level_boxes(file);
     let kinds: Vec<&[u8]> = boxes.iter().map(|b| &b.0[..]).collect();
@@ -754,7 +754,7 @@ fn a_23_gb_moov_at_end_mp4_with_chapters_opens_and_plays() {
     moov_at_end_with_chapters_plays("23gb", REPORTED_MOOV_AT);
 }
 
-/// The same layout under 4 GiB. Not a control for the fix — the defect never depended on the size —
+/// The same layout under 4 GiB. Not a control for the fix - the defect never depended on the size -
 /// but the evidence that it does not: before the fix this failed exactly like the 23 GB case.
 #[test]
 #[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]

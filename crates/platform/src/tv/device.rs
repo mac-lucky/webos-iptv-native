@@ -7,9 +7,9 @@ use std::sync::OnceLock;
 /// read from the render thread every frame the diagnostics panel is up.
 #[derive(Debug, Default, Clone)]
 pub struct Info {
-    /// e.g. "4.10.2" — empty when unknown
+    /// e.g. "4.10.2" - empty when unknown
     pub release: String,
-    /// e.g. "goldilocks2-grampians" — webosbrew buckets firmware by this
+    /// e.g. "goldilocks2-grampians" - webosbrew buckets firmware by this
     pub codename: String,
     /// e.g. "4.1.0"
     pub api: String,
@@ -28,7 +28,7 @@ static NO_INFO: Info = Info {
     major: 0,
 };
 
-/// What the set reported. All-empty with `major == 0` when the file could not be read — which is
+/// What the set reported. All-empty with `major == 0` when the file could not be read - which is
 /// the honest answer and is what the panel prints. A plain `get()` (never `get_or_init`), so a read
 /// that races ahead of the boot probe sees the empty answer for itself and leaves the cell open for
 /// [`publish_info`].
@@ -46,22 +46,22 @@ pub fn publish_info(info: Info) {
 /// [`Info`] answers "which firmware"; this answers "which SET". They are different questions and
 /// the second one has been unanswerable: a webOS 6 playback failure on an OLED and on an LCD of
 /// the same firmware are two bugs, and nothing in a log said which had been seen. The **board** is
-/// the SoC generation (`k8hp`, `o22`, …) and is the field a decode or plane failure actually
+/// the SoC generation (`k8hp`, `o22`, ...) and is the field a decode or plane failure actually
 /// correlates with.
 ///
-/// Every field is EMPTY when unknown, never a plausible default — same rule as [`Info`], for the
+/// Every field is EMPTY when unknown, never a plausible default - same rule as [`Info`], for the
 /// same reason: a snapshot that invents a model is worse than one that admits it does not know.
 #[derive(Debug, Default, Clone)]
 pub struct Hardware {
     /// e.g. "49SM9000PLA"
     pub model: String,
-    /// e.g. "HE_DTV_W19H_AFAAABAA" or the SoC name — whichever key this firmware carries
+    /// e.g. "HE_DTV_W19H_AFAAABAA" or the SoC name - whichever key this firmware carries
     pub board: String,
     pub hw_revision: String,
 }
 
 impl Hardware {
-    /// The set as one line — `model · board · hw` with the empty parts left out, and an EMPTY
+    /// The set as one line - `model · board · hw` with the empty parts left out, and an EMPTY
     /// string when nothing answered (the caller decides what "unknown" reads as on its surface).
     /// One definition for the two photographable surfaces that print it, the diagnostics panel's
     /// "Set" row and the failure read-out's support line, so they cannot drift.
@@ -116,7 +116,7 @@ pub enum NyxFile {
 }
 
 impl NyxFile {
-    /// The wire spelling — one of four fixed words, never free text.
+    /// The wire spelling - one of four fixed words, never free text.
     pub fn code(self) -> &'static str {
         match self {
             Self::Unprobed => "unprobed",
@@ -136,7 +136,7 @@ pub struct Probe {
 }
 
 impl Probe {
-    /// `<os_info>/<device_info>`, each one of [`NyxFile::code`]'s four words — e.g. `ok/ok`,
+    /// `<os_info>/<device_info>`, each one of [`NyxFile::code`]'s four words - e.g. `ok/ok`,
     /// `unreadable/no_keys`. The closed value the hardware context carries.
     pub fn code(self) -> String {
         format!("{}/{}", self.os_info.code(), self.device_info.code())

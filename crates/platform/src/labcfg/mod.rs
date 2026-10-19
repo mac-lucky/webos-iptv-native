@@ -1,6 +1,6 @@
 //! **The Lab Diagnostics configuration, and the two questions the lower layers ask of it.**
 //!
-//! The application's `lab` module is the bridge itself — the ring, the upload, the command long-poll, the toast —
+//! The application's `lab` module is the bridge itself - the ring, the upload, the command long-poll, the toast -
 //! and it names the whole application, so it lives in the top layer. Two of its answers are needed
 //! far below that: `ui::consts::is_bound` has to know whether a press is the configured trigger,
 //! and the account menu and the player overflow have to know whether to show the *Send
@@ -17,7 +17,7 @@
 pub mod config;
 
 /// Is this press the configured lab trigger? Consulted by `ui::consts::is_bound` so that pressing
-/// it does not ALSO wake the player HUD and abort an armed click — the unsupported-key invariant
+/// it does not ALSO wake the player HUD and abort an armed click - the unsupported-key invariant
 /// in `docs/remote-keys.md` §6, seen from the side of a key that is genuinely bound in this build.
 #[inline]
 pub fn is_trigger_key(_sym: u32, _wcode: u32) -> bool {

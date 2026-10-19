@@ -1,10 +1,10 @@
-//! Tiny shared display formatters — ONE home for the duration/clock strings so the same value
+//! Tiny shared display formatters - ONE home for the duration/clock strings so the same value
 //! can't render differently across screens (the "2 hr 15 min" vs "2h 15m" vs "0 hr 45 min"
 //! drift this replaces).
 
 pub fn converts_on_server() -> &'static str { tv_platform::i18n::msg::core_converts_on_server() }
 
-/// Compact duration for meta lines — "2h 15m" / "45m" (Info card tags, player HUD context).
+/// Compact duration for meta lines - "2h 15m" / "45m" (Info card tags, player HUD context).
 pub fn dur_short(ms: i64) -> String {
     let mins = (ms / 60_000).max(0);
     let (h, m) = (mins / 60, mins % 60);
@@ -15,12 +15,12 @@ pub fn dur_short(ms: i64) -> String {
     }
 }
 
-/// **Seconds-scale duration** — "4.5 s" / "12 s". The two formatters above are minute-scale and
+/// **Seconds-scale duration** - "4.5 s" / "12 s". The two formatters above are minute-scale and
 /// round a fifteen-second interval to "0m", which is a read-out saying nothing; this is for the
 /// short spans the diagnostics panel reports (an Original shortfall's elapsed time, N13).
 ///
 /// One decimal below ten seconds and none above, because the interesting distinctions are at the
-/// bottom of the range — the difference between 2 s and 4.5 s of shortfall is a decision, and the
+/// bottom of the range - the difference between 2 s and 4.5 s of shortfall is a decision, and the
 /// difference between 40 s and 41 s is not.
 pub fn secs_short(ms: i64) -> String {
     let ms = ms.max(0);
@@ -42,7 +42,7 @@ fn seconds_scale_durations_keep_the_distinctions_that_matter() {
     assert_eq!(secs_short(-1), "0.0 s");
 }
 
-/// Spelled-out duration — "2 hr 15 min" / "45 min" (detail hero + About "Run Time").
+/// Spelled-out duration - "2 hr 15 min" / "45 min" (detail hero + About "Run Time").
 pub fn dur_long(ms: i64) -> String {
     let mins = (ms / 60_000).max(0);
     let (h, m) = (mins / 60, mins % 60);
@@ -53,7 +53,7 @@ pub fn dur_long(ms: i64) -> String {
     }
 }
 
-/// Time-remaining for a Continue-Watching item — "8 min left" / "1 hr 2 min left" (rounded up to
+/// Time-remaining for a Continue-Watching item - "8 min left" / "1 hr 2 min left" (rounded up to
 /// the next whole minute, floored at 1). `remaining_ms` is duration − viewOffset.
 pub fn time_left(remaining_ms: i64) -> String {
     let mins = ((remaining_ms + 59_999) / 60_000).max(1);
@@ -65,7 +65,7 @@ pub fn time_left(remaining_ms: i64) -> String {
     }
 }
 
-/// Playback clock — "1:23:45" past the hour, else "3:45" (scrubber clocks, chapter stamps).
+/// Playback clock - "1:23:45" past the hour, else "3:45" (scrubber clocks, chapter stamps).
 pub fn clock(ms: i64) -> String {
     let s = (ms / 1000).max(0);
     let (h, m, sec) = (s / 3600, (s % 3600) / 60, s % 60);
@@ -76,20 +76,20 @@ pub fn clock(ms: i64) -> String {
     }
 }
 
-/// An episode's ADDRESS inside its show — `"S2, E3"`, with no title. The detail page's hero meta
+/// An episode's ADDRESS inside its show - `"S2, E3"`, with no title. The detail page's hero meta
 /// line draws it bare (the title band above it already IS the episode's name, so repeating it there
 /// would be the one line on the page that says nothing new), and [`episode_kicker`] is this plus the
 /// title. It lives here rather than as a `format!` beside its one caller because the two spellings
 /// have to stay one vocabulary: a page that said "S2, E3" while the HUD said "S2E3" for the same
 /// leaf is exactly the drift this module exists to prevent, and nothing but shared code enforces it.
-/// **An episode's ADDRESS — `S1 · E3`** — the identifier printed inside a still's artwork.
+/// **An episode's ADDRESS - `S1 · E3`** - the identifier printed inside a still's artwork.
 ///
 /// `Library Screens.dc.html` E is why it is the printed line rather than the episode's name: "four
 /// tiles of one show differ only by number, so the number cannot be the thing behind focus. The
 /// episode's *name* can: it distinguishes nothing until you have already picked a tile."
 ///
 /// **Both parts are optional and the separator comes from what is PRESENT**, because a server that
-/// sent no season or episode index is an ordinary answer here rather than a broken one — a specials
+/// sent no season or episode index is an ordinary answer here rather than a broken one - a specials
 /// folder, a date-numbered series, an item mid-scan. With neither it is empty and the caller draws
 /// nothing, not a line of leftover dots.
 ///
@@ -107,7 +107,7 @@ pub fn episode_address(season: i64, index: i64) -> String {
     parts.join(" \u{b7} ")
 }
 
-/// A collection's size — `"1 item"`, `"12 items"`. ONE formatter for the collection page's meta
+/// A collection's size - `"1 item"`, `"12 items"`. ONE formatter for the collection page's meta
 /// line and every collection tile's caption, so the two cannot count one collection two ways.
 pub fn item_count(n: i64) -> String {
     tv_platform::i18n::msg::browse_search_items(n)
@@ -117,14 +117,14 @@ pub fn episode_ordinal(season: i64, index: i64) -> String {
     tv_platform::i18n::msg::core_episode_ordinal(index, season)
 }
 
-/// The source attribution — `"Shared by friend"` — or `None` when there is nobody to credit.
+/// The source attribution - `"Shared by friend"` - or `None` when there is nobody to credit.
 ///
 /// **This is the WORDS and not the RULE.** `handle` arrives already decided:
 /// `plex::servers::owner_credit` is the one place that says whether a server is credited to
 /// anybody, `plex::ServerFacts::handle` is where its answer rests, and every caller here reads
-/// that field. So an empty handle does not mean "an owned server" — it means *our own server, or
+/// that field. So an empty handle does not mean "an owned server" - it means *our own server, or
 /// the household's server whichever Plex Home profile is watching, or a share plex.tv has not
-/// named* — and this function must never grow a second opinion about which of those it is. The
+/// named* - and this function must never grow a second opinion about which of those it is. The
 /// field it reads used to be plex.tv's raw `sourceTitle`, which is how the app came to tell a
 /// managed user that their own house's library was "Shared by" the person who pays for it.
 ///
@@ -134,12 +134,12 @@ pub fn episode_ordinal(season: i64, index: i64) -> String {
 /// ONE formatter for the same reason [`episode_kicker`] is one: this phrase is drawn by the hero's
 /// meta line, the detail page's facts row and (with a sentence after it) the Library's failure
 /// read-out. It was written twice with two different empty-handle behaviours and interpolated a
-/// third time inline — exactly the drift this module exists to prevent.
+/// third time inline - exactly the drift this module exists to prevent.
 pub fn shared_by(handle: &str) -> Option<String> {
     (!handle.is_empty()).then(|| tv_platform::i18n::msg::core_shared_by(handle))
 }
 
-/// The episode kicker — `"S2, E3 · Laura"`, the [`episode_ordinal`] with the episode's title after
+/// The episode kicker - `"S2, E3 · Laura"`, the [`episode_ordinal`] with the episode's title after
 /// it. ONE formatter, because this string is drawn by the transport HUD (the now-playing item), the
 /// route's pre-roll ctx line and the Up Next caption, and the whole point of the last two is that
 /// they read identically to the first. It was three separate literals before, with nothing keeping
@@ -148,12 +148,12 @@ pub fn episode_kicker(season: i64, index: i64, title: &str) -> String {
     format!("{} \u{b7} {title}", episode_ordinal(season, index))
 }
 
-/// The media badge for a video version — `"4K"` / `"1080p"` / `"SD"`, or None when the item has no
+/// The media badge for a video version - `"4K"` / `"1080p"` / `"SD"`, or None when the item has no
 /// video (a show container, a music item, an unparsed response).
 ///
 /// `res` is PMS's `Media.videoResolution` and is PREFERRED over the frame size, because the frame
 /// size is the STORED one: a 2.35:1 1080p film is 1918x802 on the dev server, and a height rule
-/// would badge it 720p. Verified values are `"4k"`, `"1080"`, `"720"`, `"576"`, `"sd"` — and PMS
+/// would badge it 720p. Verified values are `"4k"`, `"1080"`, `"720"`, `"576"`, `"sd"` - and PMS
 /// sends every one of them as a numeric-looking STRING, which is exactly the shape this maps.
 /// `width`/`height` are only the fallback for a version that omits the class.
 pub fn resolution(res: &str, width: i64, height: i64) -> Option<String> {
@@ -169,7 +169,7 @@ pub fn resolution(res: &str, width: i64, height: i64) -> Option<String> {
     // No class: fall back to the frame WIDTH, which (unlike height) is constant across aspect
     // ratios. Thresholds sit below each nominal width (3840/2560/1920/1280/1024) so a cropped or
     // anamorphic frame still lands in its own class, and the buckets are the SAME vocabulary the
-    // class path emits — the two paths must not disagree about the same file.
+    // class path emits - the two paths must not disagree about the same file.
     // saturating: these are wire values via the lenient `de_i64`, so a garbage 19-digit height
     // must not overflow (a debug-build panic, a silently wrapped badge in release)
     let w = if width > 0 {
@@ -192,7 +192,7 @@ pub fn resolution(res: &str, width: i64, height: i64) -> Option<String> {
 mod tests {
     use super::resolution;
 
-    /// The mapping is fed PMS's own values, and PMS string-encodes them — including the ones that
+    /// The mapping is fed PMS's own values, and PMS string-encodes them - including the ones that
     /// look like integers ("1080"), which is the case that must come out as "1080p" and not as a
     /// number or an empty badge.
     #[test]
@@ -206,7 +206,7 @@ mod tests {
         // whitespace/casing from the wire must not produce a second spelling of a badge
         assert_eq!(resolution(" 4K ", 0, 0).as_deref(), Some("4K"));
         // the class WINS over the frame size: a 2.35:1 1080p film is 1918x802 (a height rule
-        // would call it 720p, a width rule 1080p — either way the server's own answer decides)
+        // would call it 720p, a width rule 1080p - either way the server's own answer decides)
         assert_eq!(resolution("1080", 1918, 802).as_deref(), Some("1080p"));
     }
 
@@ -227,11 +227,11 @@ mod tests {
     }
 }
 
-/// A calendar date from a Plex `YYYY-MM-DD` — `"1 Feb 1921"`. ONE spelling, because the same value
+/// A calendar date from a Plex `YYYY-MM-DD` - `"1 Feb 1921"`. ONE spelling, because the same value
 /// is now drawn by two screens: detail's episode air dates and the person page's Born/Died line.
 /// `year` is the fallback when the item carries only a year (an episode with no `originallyAvailableAt`);
 /// pass 0 when there is none, and an unparseable date yields the empty string rather than a
-/// half-formatted one — every caller draws a date line only when it is non-empty.
+/// half-formatted one - every caller draws a date line only when it is non-empty.
 pub fn pretty_date(iso: &str, year: i64) -> String {
     let parts: Vec<&str> = iso.split('-').collect();
     if parts.len() == 3 {
@@ -252,19 +252,19 @@ pub fn pretty_date(iso: &str, year: i64) -> String {
     }
 }
 
-/// The units a review score is quoted in — the one thing about a provider the formatters need.
+/// The units a review score is quoted in - the one thing about a provider the formatters need.
 /// The caller maps its own notion of a provider onto this (`screens::detail` maps
 /// `metadata::RatingArt`), so the library names no provider and no application type.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RatingScale {
-    /// Out of ten, one decimal, with a trailing "/10" — IMDb ("7.4").
+    /// Out of ten, one decimal, with a trailing "/10" - IMDb ("7.4").
     OutOfTen,
-    /// A whole percentage — Rotten Tomatoes and TMDB ("91%").
+    /// A whole percentage - Rotten Tomatoes and TMDB ("91%").
     Percent,
 }
 
 /// A review score, in the shape its own provider publishes it. PMS normalises every provider onto
-/// one 0–10 scale, which is not how any of them are quoted: Rotten Tomatoes and TMDB are
+/// one 0-10 scale, which is not how any of them are quoted: Rotten Tomatoes and TMDB are
 /// PERCENTAGES (9.1 → "91%") and IMDb is out of ten ("7.4"). Printing the raw 9.1 beside a tomato
 /// would read as a 9.1% score, so the badge's number is put back into the provider's own units here.
 pub fn rating_score(scale: RatingScale, value: f64) -> String {
@@ -308,7 +308,7 @@ pub fn bitrate(kbps: i64) -> String {
     }
 }
 
-/// A byte count in binary units with the UI locale's numerals — `2.50 GB`, `12.3 MB`, `640 kB`.
+/// A byte count in binary units with the UI locale's numerals - `2.50 GB`, `12.3 MB`, `640 kB`.
 /// `scales` is the number of fractional digits for GB, MB and kB respectively; a count below a
 /// kilobyte is whole bytes (`B`).
 pub fn bytes(bytes: i64, scales: (i16, i16, i16)) -> String {
@@ -326,7 +326,7 @@ pub fn bytes(bytes: i64, scales: (i16, i16, i16)) -> String {
     }
 }
 
-/// The unit that trails a score, set a rung down in tertiary ink — see `widgets::RatingCell`.
+/// The unit that trails a score, set a rung down in tertiary ink - see `widgets::RatingCell`.
 ///
 /// Only an out-of-ten score (IMDb's) has one. A percentage carries its `%` inside [`rating_score`] because there the sign
 /// is part of the number, whereas "/10" is a note about the SCALE: it is what stops an 8.1 being

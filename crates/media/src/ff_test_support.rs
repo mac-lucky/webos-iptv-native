@@ -20,7 +20,7 @@ pub(super) fn to_annexb(buf: &[u8], is_hevc: bool, param: &[u8]) -> (bool, Vec<u
 
 // -- parse_dovi_conf: the Dolby Vision configuration record ---------------------------
 //
-// The record is nine plain bytes, so these fixtures ARE the wire format — no builder, no
+// The record is nine plain bytes, so these fixtures ARE the wire format - no builder, no
 // FFmpeg. That is the point: `dovi_conf`'s pointer walk cannot be host-tested (dlopen returns
 // None on Darwin, so a test naming it would pass without executing one line of it), but the
 // parse is where a field could be transposed, and the parse is pure.
@@ -37,7 +37,7 @@ pub(super) fn dovi_bytes(profile: u8, level: u8, rpu: u8, el: u8, bl: u8, compat
 // (an HttpStream, an AuQueue, two CStrings, three integers) is ordinary Rust. So long as a
 // test stays off `av_*`, the callbacks link and run here exactly as they do on the TV.
 
-/// A loopback media-server stand-in that COUNTS both accepted connections and requests served — the
+/// A loopback media-server stand-in that COUNTS both accepted connections and requests served - the
 /// observables that matter, since "did the callback go back to the server" is the whole
 /// question and no return value can answer it.
 ///
@@ -48,7 +48,7 @@ pub(super) fn dovi_bytes(profile: u8, level: u8, rpu: u8, el: u8, bl: u8, compat
 ///
 /// Each connection gets its own handler thread and is served keep-alive; the accept count is
 /// bumped BEFORE the reply is written, so it is already final by the time any `http_open`
-/// against this listener can return — every assertion below is causally ordered behind that,
+/// against this listener can return - every assertion below is causally ordered behind that,
 /// and needs no sleep and no timing margin.
 pub(super) fn with_counting_listener(
     body: impl FnOnce(u16, &std::sync::atomic::AtomicUsize, &std::sync::atomic::AtomicUsize),
@@ -70,7 +70,7 @@ pub(super) fn with_counting_listener(
                         let (rq, st) = (&requests, &stop);
                         sc.spawn(move || {
                             // Read each request head, count it, answer 200 with an 8-byte
-                            // body — small enough that it arrives inside the client's header
+                            // body - small enough that it arrives inside the client's header
                             // read, so `http_read` serves it from `HttpStream`'s buffer and
                             // never needs the socket again.
                             let _ =
@@ -218,7 +218,7 @@ pub(super) fn unopened_socket(hs: &mut HttpStream) -> Src {
     }
 }
 
-/// An open stream plus the aborted video lane behind its AVIO — the state teardown leaves:
+/// An open stream plus the aborted video lane behind its AVIO - the state teardown leaves:
 /// `engine::teardown` aborts both lanes, `http_shutdown`s this socket, then joins the demuxer.
 pub(super) fn opened_stream_with_aborted_lane(
     port: u16,
@@ -243,14 +243,14 @@ pub(super) fn opened_stream_with_aborted_lane(
 // -- the same two invariants, with libcurl under the AVIO instead of a socket ------------
 //
 // The guards above live in `read_cb`/`seek_cb`, ABOVE the dispatch, so they are transport
-// independent by construction — which is exactly the kind of claim that stops being true the
+// independent by construction - which is exactly the kind of claim that stops being true the
 // first time somebody moves a check into a branch. These pin it. The listener speaks plain
 // HTTP and curl speaks plain HTTP, so no TLS is needed to grade the abort path; what a host
 // cannot reach is a real handshake, which is why the PR carries a device recipe for aborting
 // during DNS and during TLS instead of pretending these cover it.
 
 /// libcurl bound and both tables live, with the crate-wide lock HELD for the caller's whole
-/// test — `curlio`'s one-source registry is a process-global these two contend on with
+/// test - `curlio`'s one-source registry is a process-global these two contend on with
 /// `curlio`'s own suite, in another module, which is exactly what `testlock` is for. `None`
 /// on a host with no libcurl at all, where these two would be grading nothing.
 pub(super) fn curl_gate() -> Option<tv_base::testlock::Serial> {

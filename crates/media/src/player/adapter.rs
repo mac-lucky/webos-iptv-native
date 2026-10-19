@@ -1,10 +1,10 @@
-//! **The Player ADAPTER** — the native session object and the main-thread token that confines it
+//! **The Player ADAPTER** - the native session object and the main-thread token that confines it
 //! (restructure spec §2.2, phase 9).
 //!
 //! An adapter holds OS/FFI resources and never logical state; the decisions live one field away in
-//! [`crate::player::machine::Player`]. What this one holds is the [`Engine`] — the Starfish/ACB
+//! [`crate::player::machine::Player`]. What this one holds is the [`Engine`] - the Starfish/ACB
 //! session, its HTTP stream box, its AU queues and the handles of the three worker threads that
-//! read raw pointers into all three — together with the [`MainThread`] token.
+//! read raw pointers into all three - together with the [`MainThread`] token.
 //!
 //! # Why the slot moved here, and what replaced the token argument
 //!
@@ -12,17 +12,17 @@
 //! accessors that each took a `&MainThread`. That argument was the enforcement: the accessor
 //! handed out a `&'static mut` to a `static mut`, a second caller on another thread is instant UB,
 //! and `static mut` carries no `Sync` bound to stop one (verified by compiling the counterexample
-//! — see `docs/async-model-decision.md`).
+//! - see `docs/async-model-decision.md`).
 //!
 //! The reasoning is unchanged and the enforcement is stronger. **The token is now CONSUMED at
 //! construction** ([`PlayerAdapter::new`] takes it by value, and the app's run loop is the only place that
-//! can mint one), so holding a `&mut PlayerAdapter` IS the proof the old argument stood in for —
+//! can mint one), so holding a `&mut PlayerAdapter` IS the proof the old argument stood in for -
 //! and it is a proof the borrow checker keeps rather than one a caller could satisfy twice. Two
 //! live `&mut` to the engine no longer requires a convention: it does not compile.
 //!
 //! The rest of `player/engine.rs` keeps its `mt: &MainThread` parameters unchanged. They gate a
-//! DIFFERENT thing — the ACB/Starfish seam (`tv::sink::VideoSink`'s methods, whose bind order is a
-//! sequence of calls with no locking behind it) — and that surface is not this module's.
+//! DIFFERENT thing - the ACB/Starfish seam (`tv::sink::VideoSink`'s methods, whose bind order is a
+//! sequence of calls with no locking behind it) - and that surface is not this module's.
 
 use super::engine::Engine;
 use tv_base::task::MainThread;
@@ -75,7 +75,7 @@ impl PlayerAdapter {
         self.probe.is_some()
     }
 
-    /// Once a frame (`pump`): the probe's answer — the URL it probed and its result — once there
+    /// Once a frame (`pump`): the probe's answer - the URL it probed and its result - once there
     /// is one (the probe is then released), `None` while it works. Never blocks.
     pub fn poll_probe(&mut self) -> Option<(String, Result<crate::stream::ProbedStreams, crate::stream::ProbeFailure>)> {
         let result = self.probe.as_mut()?.poll()?;
@@ -114,7 +114,7 @@ impl PlayerAdapter {
         super::engine::settle_release(&mut self.pending_release.borrow_mut(), &self.mt, false)
     }
 
-    /// Finish the off-frame release now, waiting for its `Unload` if it is still running — what a
+    /// Finish the off-frame release now, waiting for its `Unload` if it is still running - what a
     /// caller that is about to use the seam (a start, the exit) must do first.
     pub fn finish_release(&self) {
         super::engine::settle_release(&mut self.pending_release.borrow_mut(), &self.mt, true);
@@ -153,7 +153,7 @@ impl PlayerAdapter {
     }
 
     /// Is a session live? Distinct from [`engine`](Self::engine) because it answers without taking
-    /// the exclusive borrow — `start_bufferfeed`'s double-start guard only needs to ask.
+    /// the exclusive borrow - `start_bufferfeed`'s double-start guard only needs to ask.
     #[inline]
     pub fn is_live(&self) -> bool {
         self.engine.is_some()
@@ -194,7 +194,7 @@ impl PlayerAdapter {
         self.abandoned_load.take()
     }
 
-    /// The token, for the ACB/Starfish seam. `tv::sink::VideoSink`'s methods still take one — see the
+    /// The token, for the ACB/Starfish seam. `tv::sink::VideoSink`'s methods still take one - see the
     /// module doc for why that surface keeps its own argument.
     ///
     /// Finishes a pending off-frame release first ([`finish_release`](Self::finish_release)): a
@@ -208,8 +208,8 @@ impl PlayerAdapter {
 
     /// The session AND the token at once, borrowed from disjoint fields.
     ///
-    /// `pump` needs both for the whole of its body — it reads the live `Engine` and issues
-    /// `sf_pause`/`sf_flush` against the same session — and two separate accessor calls cannot
+    /// `pump` needs both for the whole of its body - it reads the live `Engine` and issues
+    /// `sf_pause`/`sf_flush` against the same session - and two separate accessor calls cannot
     /// give it that, `engine()` taking `&mut self` and [`mt`](Self::mt) `&self`. One `&mut self`
     /// split into two field borrows can, and the borrow checker still refuses to let either
     /// outlive a `reload_*` that replaces the slot: that is the `eng` dangles rule of `pump`,

@@ -195,7 +195,7 @@ pub fn enabled() -> bool {
 
 fn begin(name: &'static str) -> Option<c_uint> {
     // The page draws a second time as the direct path's blur source. Its own phases would then
-    // record twice per frame under one name — a quarter-resolution sample averaged into the
+    // record twice per frame under one name - a quarter-resolution sample averaged into the
     // full-resolution mean the experiment is priced by. `blur.scene` itself opens BEFORE the flag
     // is armed, so the source pass is still measurable as a whole.
     if !enabled() || crate::gfx::blur_source_pass() {
@@ -257,8 +257,8 @@ pub fn phase<R>(name: &'static str, draw: impl FnOnce() -> R) -> R {
     let result = draw();
     // Submit before closing the interval. Midgard defers a render target's fragment work until
     // that target's pass is flushed, so an interval closed with the pass still open contains no
-    // submitted job: measured on the television, `glass.composite` and `glass.frost` — both
-    // full-resolution quads into framebuffer 0 — reported 0.001 ms, while the frame containing
+    // submitted job: measured on the television, `glass.composite` and `glass.frost` - both
+    // full-resolution quads into framebuffer 0 - reported 0.001 ms, while the frame containing
     // them reported 21.7. `glFlush`, never `glFinish`: this path must not stall the CPU, and it
     // runs only for the ONE selected phase, so the production frame is untouched.
     crate::gfx::gl_flush();
@@ -270,8 +270,8 @@ pub fn phase<R>(name: &'static str, draw: impl FnOnce() -> R) -> R {
 /// Warn, in the log line itself, when a window's samples do not cluster.
 ///
 /// A mean is only a summary of a distribution that HAS a middle. This phase's samples can be
-/// bimodal — `blur.scene` on the direct backdrop path lands at either ~0.2 ms or ~2.0 ms with
-/// nothing between — and a mean then names a value that never occurred. Two opposite and equally
+/// bimodal - `blur.scene` on the direct backdrop path lands at either ~0.2 ms or ~2.0 ms with
+/// nothing between - and a mean then names a value that never occurred. Two opposite and equally
 /// wrong conclusions were drawn from single log lines of that shape before this existed, so the
 /// spread is printed beside the mean rather than left for whoever reads the JSONL later.
 fn spread_note(min_ns: u64, max_ns: u64) -> String {

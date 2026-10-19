@@ -97,7 +97,7 @@ fn an_unkeyed_control_never_samples_the_ambient_palette() {
 
 /// **A control row's pop animates BOTH ways**, which is the whole reason it is an array of
 /// springs and not one global scalar. Walking focus from control 0 to control 1 must leave 0
-/// still shrinking while 1 grows — a single spring could only snap the outgoing face to rest,
+/// still shrinking while 1 grows - a single spring could only snap the outgoing face to rest,
 /// which on a 60px disc is a visible 4px jump at the moment the eye is already on that control.
 #[test]
 fn a_control_leaving_focus_shrinks_while_its_neighbour_grows() {
@@ -112,7 +112,7 @@ fn a_control_leaving_focus_shrinks_while_its_neighbour_grows() {
     );
     assert_eq!(pop.scale(1), 1.0, "and its neighbour is at rest");
 
-    // focus moves — one frame later BOTH are in flight, neither at an endpoint
+    // focus moves - one frame later BOTH are in flight, neither at an endpoint
     pop.step(Some(1), 1.0 / 60.0);
     let (leaving, arriving) = (pop.scale(0), pop.scale(1));
     assert!(
@@ -126,7 +126,7 @@ fn a_control_leaving_focus_shrinks_while_its_neighbour_grows() {
 }
 
 /// **The SEASON STRIP's pop, driven exactly as `detail` drives it**: one control, open while
-/// section 1 holds focus. The half that matters is the PRESS — the design system says a plated
+/// section 1 holds focus. The half that matters is the PRESS - the design system says a plated
 /// pill takes "a Button's press, dip on the way down, ring on release"
 /// (`components/chrome/TabStrip.jsx`), and this row had neither the pop nor the dip until
 /// 2026-08-22 while `CTRL_FOCUS_SCALE`'s own doc claimed it had the pop.
@@ -151,8 +151,8 @@ fn the_season_strips_pop_takes_the_press_dip_only_while_the_row_holds_focus() {
         "a focused season pill settles on the control pop: {focused}"
     );
 
-    // OK goes down on the tab. The strip keeps a CARD's press — a hold here marks the whole
-    // season watched — so this is `begin`, not `begin_ctl`; the DIP is identical either way.
+    // OK goes down on the tab. The strip keeps a CARD's press - a hold here marks the whole
+    // season watched - so this is `begin`, not `begin_ctl`; the DIP is identical either way.
     p.begin(1000);
     let mut now = 1000u32;
     for _ in 0..8 {
@@ -166,7 +166,7 @@ fn the_season_strips_pop_takes_the_press_dip_only_while_the_row_holds_focus() {
         "the press must dip the focused pill inward: {pressed} vs {focused}"
     );
 
-    // …and the same press, with focus moved off the row, leaves this capsule alone.
+    // ...and the same press, with focus moved off the row, leaves this capsule alone.
     let mut away: CtlPop<1> = CtlPop::new();
     for _ in 0..60 {
         away.step(None, 1.0 / 60.0);
@@ -189,9 +189,9 @@ fn the_season_strips_pop_takes_the_press_dip_only_while_the_row_holds_focus() {
 }
 
 /// **The focus pop does NOT bounce**, and that is the whole assertion: it grows to its target and
-/// stops, exactly as a poster's does. The design system says so twice — `tokens/motion.css`'s
+/// stops, exactly as a poster's does. The design system says so twice - `tokens/motion.css`'s
 /// opening line ("focus ARRIVING is a calm grow, the CLICK is what rings") and the `--ease-bounce`
-/// token's own "never a focus pop" — and `Button.jsx` reaches for `--ease-bounce` only while
+/// token's own "never a focus pop" - and `Button.jsx` reaches for `--ease-bounce` only while
 /// `releasing`.
 ///
 /// It asserted the OPPOSITE until 2026-08-22, when the owner reported the bounce on screen. A
@@ -216,7 +216,7 @@ fn the_pop_grows_to_focus_without_ringing() {
     );
 }
 
-/// Nothing focused closes every pop, and `reset` gets there with no motion at all — the two
+/// Nothing focused closes every pop, and `reset` gets there with no motion at all - the two
 /// halves a page teardown needs (`detail::reset_view_state`), so a re-mounted page never opens
 /// with a control standing proud of its row.
 #[test]
@@ -289,7 +289,7 @@ fn the_unfurl_geometry_round_trips() {
                 "e={e}: recovered {back}, measured {label_w}"
             );
         }
-        // …and the budget is the same equation solved for the label: spending exactly it must
+        // ...and the budget is the same equation solved for the label: spending exactly it must
         // land the open capsule exactly `room` past the bare disc.
         let room = open - d;
         let budget = CircleButton::label_budget(d, room);
@@ -298,7 +298,7 @@ fn the_unfurl_geometry_round_trips() {
             "budget {budget} for a {label_w} label"
         );
     }
-    // a shut (or nearly shut) capsule carries no recoverable label — the range where the ramp
+    // a shut (or nearly shut) capsule carries no recoverable label - the range where the ramp
     // has nothing to fade in anyway
     assert_eq!(CircleButton::cap_label_w(d, 0.0, d), None);
     // "no label" collapses whatever the unfurl says, so a caller cannot animate a bare disc wide
@@ -325,12 +325,12 @@ fn the_danger_face_tints_when_idle_and_takes_the_whole_hue_when_focused() {
     let (idle_fill, idle_ink) = (idle.top, idle.ink);
     let (foc_fill, foc_ink) = (foc.top, foc.ink);
 
-    // FOCUSED: the hue is the face, under primary ink — the same substitution `Accent` makes
+    // FOCUSED: the hue is the face, under primary ink - the same substitution `Accent` makes
     // with its near-white, so focus reads identically across the whole control family.
     assert_eq!(foc_fill, theme::DANGER);
     assert_eq!(foc_ink, theme::TEXT_PRIMARY);
 
-    // IDLE: the neutral plate with the hue leaned into it, and the label in the hue itself —
+    // IDLE: the neutral plate with the hue leaned into it, and the label in the hue itself -
     // the action is NAMED before the remote reaches it.
     assert_eq!(
         idle_fill,
@@ -349,7 +349,7 @@ fn the_danger_face_tints_when_idle_and_takes_the_whole_hue_when_focused() {
         "…but it is the same MATERIAL — `mix` keeps the neutral's alpha, so the hue is the \
          only difference between the two idle plates"
     );
-    // …and it is a TINT, not the fill: 16% of the way over, so the plate is nearer the
+    // ...and it is a TINT, not the fill: 16% of the way over, so the plate is nearer the
     // neutral it is derived from than the hue it is announcing.
     for c in 0..3 {
         let leaned = (idle_fill[c] - neutral[c]).abs();
@@ -365,7 +365,7 @@ fn the_danger_face_tints_when_idle_and_takes_the_whole_hue_when_focused() {
     );
 }
 
-/// **No keyline on the danger face.** The knockout stroke is `Keyline`'s alone — a danger rim
+/// **No keyline on the danger face.** The knockout stroke is `Keyline`'s alone - a danger rim
 /// would be a third signal saying what the plate and the label already say, and the perimeter
 /// sheen every control wears (`control_rim`) is a card CONSTANT rather than a state.
 ///
@@ -426,13 +426,13 @@ fn the_unkeyed_ground_drops_the_ambient_contract_whole() {
     );
 }
 
-/// **Why the unkeyed idle face is a light FILM and not a darker plate** — the polarity argument,
+/// **Why the unkeyed idle face is a light FILM and not a darker plate** - the polarity argument,
 /// as arithmetic rather than as a paragraph.
 ///
 /// A control over video stands on the HUD's own black ramp, so its ground is `frame` darkened
-/// by that ramp — dark, but by an amount that depends on a picture nobody can read. The film
+/// by that ramp - dark, but by an amount that depends on a picture nobody can read. The film
 /// composites LIGHTER than that ground whatever the frame is doing, which is what lets it read
-/// as an object catching light; the keyed dark plate FLIPS — lighter than a night frame, and a
+/// as an object catching light; the keyed dark plate FLIPS - lighter than a night frame, and a
 /// hole punched in a snow one. Composited in the same non-linear space the blender works in,
 /// which is the space the decision was made in.
 #[test]
@@ -501,7 +501,7 @@ fn an_idle_control_over_video_keeps_a_visible_edge_below_focus() {
     assert_eq!(control_rim_spec(false, ControlGround::Keyed), constant);
 }
 
-/// **Every control face is KEYED until its caller says otherwise** — including
+/// **Every control face is KEYED until its caller says otherwise** - including
 /// [`TransportButton`], whose only caller today is the player HUD. A widget that defaulted to
 /// its one caller's ground would be the one control in the app whose look came from where it
 /// happened to be used rather than from what it was told, and the next screen to reach for it
@@ -527,7 +527,7 @@ fn a_control_face_is_keyed_until_it_is_told_otherwise() {
     );
 }
 
-/// **The HUD's standalone pill is a control FACE, so the ground reaches it too** — the owner's
+/// **The HUD's standalone pill is a control FACE, so the ground reaches it too** - the owner's
 /// rule for the player is one material, and the Info/Chapters pill sits in the same band as the
 /// transport discs. `TabPill::face` is a second implementation of the same choice `ControlStyle`
 /// makes, which is exactly why it is graded rather than assumed.
@@ -598,7 +598,7 @@ fn the_capsule_takes_the_blended_outline_and_the_disc_stays_a_circle() {
 /// **The drawn BOX is not the laid-out frame, and that is what keeps a capsule and a disc the
 /// same object.** The end circle is under half its box, so a box the size of the frame would
 /// draw a capsule's ends smaller than the disc beside it. The box carries the deficit; the
-/// frame — every layout number in the app — does not move.
+/// frame - every layout number in the app - does not move.
 #[test]
 fn a_capsules_box_carries_the_end_deficit_and_its_frame_does_not_move() {
     let f = Rect::new(100.0, 200.0, 260.0, 60.0);
@@ -621,7 +621,7 @@ fn a_capsules_box_carries_the_end_deficit_and_its_frame_does_not_move() {
         (ends - f.h).abs() < 0.01,
         "the drawn ends ARE the frame's height: {ends}"
     );
-    // a disc is handed back untouched — growing one would make it an ellipse
+    // a disc is handed back untouched - growing one would make it an ellipse
     let d = Rect::new(0.0, 0.0, 60.0, 60.0);
     assert_eq!((face_box(d).w, face_box(d).h), (d.w, d.h));
 }
@@ -629,7 +629,7 @@ fn a_capsules_box_carries_the_end_deficit_and_its_frame_does_not_move() {
 /// **The focus cast is two stops and the CSS numbers are doubled on the way in.** A
 /// `drop-shadow`'s third value is a standard deviation; this renderer's blur is a box-shadow's
 /// diameter. Transcribing the design's 16 and 3 literally would draw a shadow half the size it
-/// asks for — the kind of error that looks like taste from a couch, so it is pinned here.
+/// asks for - the kind of error that looks like taste from a couch, so it is pinned here.
 #[test]
 fn the_focus_cast_is_a_contact_and_a_pool_at_twice_the_css_blur() {
     let [pool, contact] = theme::CONTROL_CAST_FOCUS;

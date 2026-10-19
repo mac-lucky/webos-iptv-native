@@ -1,28 +1,28 @@
-//! **THE CAPSULE OUTLINE — three circular arcs per corner, blended.** The shape every control face
+//! **THE CAPSULE OUTLINE - three circular arcs per corner, blended.** The shape every control face
 //! in this app used to draw as a stadium.
 //!
 //! A stadium is two semicircles bolted to two straight sides: its sides have zero curvature and its
 //! ends maximum, and the switch happens in one pixel. That jump is what reads as the end bulging out
-//! of the side. The capsule solved here has no straight side and no ellipse — every part is a
+//! of the side. The capsule solved here has no straight side and no ellipse - every part is a
 //! circular arc, and consecutive arcs are joined by a BLEND arc tangent to both, the way a fillet
 //! joins two radii on a drawing. Per corner, from the middle outwards:
 //!
-//! * `big` — the arc carrying the top and bottom, its apex touching the box at the middle;
-//! * `blend` — `f = √(R·r)`, the GEOMETRIC MEAN, so the curvature falls by the same factor twice. A
+//! * `big` - the arc carrying the top and bottom, its apex touching the box at the middle;
+//! * `blend` - `f = √(R·r)`, the GEOMETRIC MEAN, so the curvature falls by the same factor twice. A
 //!   blend only reads as a blend if no step dominates: at `f = 2r` the first step was ×54 and the
 //!   second ×2, and the outline looked broken;
-//! * `end` — the end circle, `r = PILL_END_R × height`.
+//! * `end` - the end circle, `r = PILL_END_R × height`.
 //!
 //! Two numbers are free ([`theme::PILL_END_R`], [`theme::PILL_BLEND_SLACK`]) and everything else is
 //! solved; `tokens/shape.css` in the design project documents both and every consequence, and
 //! `components/core/pillPath.js` is the same solve for the web. This module is the port, and it is
-//! deliberately PURE — no painter, no GL — because the geometry is the half that can be graded on
+//! deliberately PURE - no painter, no GL - because the geometry is the half that can be graded on
 //! the host.
 //!
 //! **What it is worth at our sizes, measured rather than assumed.** The leftover band
 //! `B − r` is both how far the ends sit inside the box and how far the top and bottom bow, and at
 //! `PILL_END_R` .492 on a 61px box it is **0.488px**. So on this app's 60px controls the outline
-//! lands half a pixel off the stadium it replaces — which is exactly what the design says it should
+//! lands half a pixel off the stadium it replaces - which is exactly what the design says it should
 //! ("reads as almost a stadium"), and which means the visible difference is the CORNER's blended
 //! transition rather than a pillowed side. The dial between stadium and pillow is `PILL_END_R`, and
 //! lowering it is what would make the bow legible from a couch.
@@ -34,39 +34,39 @@ use crate::theme;
 /// symmetry make sufficient. Every centre below is stated in that frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Pill {
-    /// `R` — the big arc, centred at `(0, big_cy)` **below** the box centre, apex on the top edge.
+    /// `R` - the big arc, centred at `(0, big_cy)` **below** the box centre, apex on the top edge.
     pub big: f32,
     pub big_cy: f32,
-    /// `f = √(R·r)` — the blend, centred at `blend_c`, internally tangent to both neighbours.
+    /// `f = √(R·r)` - the blend, centred at `blend_c`, internally tangent to both neighbours.
     pub blend: f32,
     pub blend_c: (f32, f32),
-    /// `r` — the end circle, centred at `(end_cx, 0)`, apex on the right edge.
+    /// `r` - the end circle, centred at `(end_cx, 0)`, apex on the right edge.
     pub end: f32,
     pub end_cx: f32,
 }
 
-/// The BOX height that renders a wanted **optical** height — the end circle's diameter.
+/// The BOX height that renders a wanted **optical** height - the end circle's diameter.
 ///
 /// The end circle is under half the box ([`theme::PILL_END_R`] < .5, forced by tangency), so a box
 /// asked for `optical` tall would draw its ends `2 × PILL_END_R × optical` across and a capsule
 /// would stop matching a disc of the same stated height at the ends. The box carries the deficit
 /// instead: everything a caller lays out stays the size it always was, and only the middle of the
-/// top and bottom edges bows out past the frame — by half the band, a quarter of a pixel here.
+/// top and bottom edges bows out past the frame - by half the band, a quarter of a pixel here.
 ///
-/// **Not rounded, where the design project's `pillBox` rounds.** That rounding is CSS's — it sets an
-/// element's height in integer px — and taking it here would step the drawn plate by a whole pixel
+/// **Not rounded, where the design project's `pillBox` rounds.** That rounding is CSS's - it sets an
+/// element's height in integer px - and taking it here would step the drawn plate by a whole pixel
 /// somewhere in the middle of the focus pop, which scales the box continuously. Exact, the ends come
 /// out at the optical height to the bit; rounded, they land 0.02px off it and jitter.
 pub fn box_h(optical: f32) -> f32 {
     optical / (2.0 * theme::PILL_END_R)
 }
 
-/// Solve the outline for a `w × h` box. `None` is "this box cannot carry the shape" — a box that is
-/// not wider than its ends, or one whose band has vanished — and the caller's answer to that is the
+/// Solve the outline for a `w × h` box. `None` is "this box cannot carry the shape" - a box that is
+/// not wider than its ends, or one whose band has vanished - and the caller's answer to that is the
 /// stadium it already drew ([`theme::RADIUS_PILL`] is the design's own fallback for the same case).
 ///
 /// **Solved in `f64` and stored in `f32`, deliberately.** The big arc is enormous at this app's
-/// sizes — 73 000px on a 260×61 control — and the bisection's own bracket runs to `r + 1e9`, where
+/// sizes - 73 000px on a 260×61 control - and the bisection's own bracket runs to `r + 1e9`, where
 /// a 24-bit mantissa cannot tell `hypot(100, 1e9)` from `1e9`: in `f32` the closure test comes back
 /// negative at the top of the bracket and every capsule in the app silently falls back to a
 /// stadium. Nothing about that failure is visible in a screenshot, which is exactly why it is
@@ -83,7 +83,7 @@ pub fn solve(w: f32, h: f32) -> Option<Pill> {
     if !(half > r) || band <= 0.0 {
         return None;
     }
-    // The closure condition — the blend may eat `slack` of the band:
+    // The closure condition - the blend may eat `slack` of the band:
     //     (R − r) − hypot(half − r, R − B) = slack · band
     // `pillPath.js` BISECTS it, on the sound argument that the left side is monotone in R. It does
     // not have to be solved that way: squaring once cancels R² and leaves R linear, so
@@ -91,7 +91,7 @@ pub fn solve(w: f32, h: f32) -> Option<Pill> {
     // which agrees with that bisection to a part in 10⁶ (`it_reproduces_the_design_projects_own
     // _outline` grades this against numbers computed from the JS). Worth having as a formula rather
     // than as 120 iterations: this is solved per control per FRAME, the pop scales the box
-    // continuously so no cache would hold, and the television is **armv7 soft-float** — every f64
+    // continuously so no cache would hold, and the television is **armv7 soft-float** - every f64
     // operation here is a library call, and a bisection would put ~1200 of them in a frame that has
     // 16.7ms for everything.
     //
@@ -109,7 +109,7 @@ pub fn solve(w: f32, h: f32) -> Option<Pill> {
     }
     let blend = (big * r).sqrt();
     // The blend's centre: internally tangent to both neighbours, so it sits at `R − f` from the big
-    // arc's centre and `f − r` from the end's — one circle-circle intersection, and the branch taken
+    // arc's centre and `f − r` from the end's - one circle-circle intersection, and the branch taken
     // is the one inside this quadrant.
     let (cx, cy) = (0.0_f64, big - b); // big arc centre, centred frame
     let (ex, ey) = (half - r, 0.0_f64); // end circle centre
@@ -136,7 +136,7 @@ pub fn solve(w: f32, h: f32) -> Option<Pill> {
 }
 
 impl Pill {
-    /// The solved outline as `fs_src.frag` takes it — see [`tv_gfx::gfx::PillArgs`]. The trailing 1
+    /// The solved outline as `fs_src.frag` takes it - see [`tv_gfx::gfx::PillArgs`]. The trailing 1
     /// is the shader's switch, and it is part of the vector rather than a separate uniform so that
     /// "armed" and "the geometry" cannot be set apart from each other.
     pub fn args(&self) -> [f32; 8] {
@@ -152,8 +152,8 @@ impl Pill {
         ]
     }
 
-    /// The same outline `s` times the size. The shape is SIMILAR under a uniform scale — every
-    /// radius and every centre is homogeneous of degree one in the box — so the focus pop scales the
+    /// The same outline `s` times the size. The shape is SIMILAR under a uniform scale - every
+    /// radius and every centre is homogeneous of degree one in the box - so the focus pop scales the
     /// solved geometry instead of re-solving it, which is also what lets a caller solve once from
     /// the frame it laid out rather than once per frame from the popped one.
     pub fn scaled(self, s: f32) -> Self {
@@ -167,25 +167,25 @@ impl Pill {
         }
     }
 
-    /// The signed distance from `p` (centred frame, `y` down) to the outline — negative inside. The
+    /// The signed distance from `p` (centred frame, `y` down) to the outline - negative inside. The
     /// CPU twin of `fs_src.frag`'s `sdPill`, and the reason both can be trusted: the shader is the
     /// only copy that draws, and this one is the only copy that can be asserted about.
     ///
     /// The point is folded into the top-right quadrant and the governing arc chosen by the
-    /// TANGENCY DIRECTIONS — the outline is smooth, so at each hand-over the two arcs agree on both
+    /// TANGENCY DIRECTIONS - the outline is smooth, so at each hand-over the two arcs agree on both
     /// the distance and the normal, and there is no seam to place.
     pub fn sd(&self, p: (f32, f32)) -> f32 {
         let q = (p.0.abs(), -p.1.abs());
         let (c, rad) = self.arc(q);
         // f64 for the same reason `solve` uses it: this is `length(q − C) − R` with both terms at
         // 73 000 and an answer near zero. The SHADER does it in `highp` (fp32) and carries ~0.007px
-        // of error there, a hundredth of its own AA ramp — but a host test asserting a gradient
+        // of error there, a hundredth of its own AA ramp - but a host test asserting a gradient
         // over a 0.05px step cannot afford it.
         let (dx, dy) = (q.0 as f64 - c.0 as f64, q.1 as f64 - c.1 as f64);
         ((dx * dx + dy * dy).sqrt() - rad as f64) as f32
     }
 
-    /// Which arc governs a point already folded into the top-right quadrant — `(centre, radius)`.
+    /// Which arc governs a point already folded into the top-right quadrant - `(centre, radius)`.
     fn arc(&self, q: (f32, f32)) -> ((f32, f32), f32) {
         let dir = |from: (f32, f32), to: (f32, f32)| {
             let (dx, dy) = (to.0 - from.0, to.1 - from.1);
@@ -202,10 +202,10 @@ impl Pill {
         if v1.0 <= t1.0 {
             return (big_c, self.big);
         }
-        // …and seen from the end circle's centre, its span runs from the blend's tangency out to
+        // ...and seen from the end circle's centre, its span runs from the blend's tangency out to
         // straight RIGHT, so the same comparison runs the other way. The tangency direction points
-        // AWAY from the blend's centre — the blend contains the end circle and touches it from the
-        // inside, so the contact is on the far side of it — which is `C_end − C_blend`, and reading
+        // AWAY from the blend's centre - the blend contains the end circle and touches it from the
+        // inside, so the contact is on the far side of it - which is `C_end − C_blend`, and reading
         // it the other way round puts the hand-over a whole quadrant out.
         let t2 = dir(self.blend_c, end_c);
         let v2 = dir(end_c, q);
@@ -220,7 +220,7 @@ impl Pill {
 mod tests {
     use super::*;
 
-    /// The box a 60px control actually draws — [`box_h`]'s worked example, and the size every
+    /// The box a 60px control actually draws - [`box_h`]'s worked example, and the size every
     /// number below is taken at.
     const W: f32 = 260.0;
     const H: f32 = 61.0;
@@ -262,7 +262,7 @@ mod tests {
 
     /// **`box_h` is what keeps a capsule and a disc the same object.** The end circle is under half
     /// the box, so a 60px optical control is drawn in a 61px box and its ends come out 60.02 across
-    /// — the disc beside it on the HUD is 60. Getting this backwards is not a rounding error: it
+    /// - the disc beside it on the HUD is 60. Getting this backwards is not a rounding error: it
     /// makes every capsule in the app half a pixel shorter at the ends than every circle.
     #[test]
     fn the_box_carries_the_deficit_so_the_ends_are_the_stated_height() {
@@ -296,7 +296,7 @@ mod tests {
         }
     }
 
-    /// **A true distance field, across both hand-overs** — the property that catches a mis-chosen
+    /// **A true distance field, across both hand-overs** - the property that catches a mis-chosen
     /// arc, which nothing else does. The outline is smooth, so |∇sd| is 1 everywhere; a sector test
     /// that hands over to the wrong circle leaves the field continuous in VALUE at some angles and
     /// still bends the gradient, and the shape then draws with a kink no screenshot names.
@@ -319,7 +319,7 @@ mod tests {
 
     /// **The four apexes touch the box and nothing leaves it.** The ends are on the left and right
     /// edges, the big arc's apex on the top and bottom, and every other boundary point is strictly
-    /// inside — which is what makes the frame a caller lays out with also the frame that is drawn.
+    /// inside - which is what makes the frame a caller lays out with also the frame that is drawn.
     #[test]
     fn the_outline_touches_the_box_at_four_points_and_leaves_it_nowhere() {
         let p = solve(W, H).unwrap();
@@ -349,7 +349,7 @@ mod tests {
     /// because it is the number that decides whether this shape is worth its shader: `PILL_END_R`
     /// .492 leaves `B − r` = 0.488px, so the outline is 99.2% of the stadium it replaces and what
     /// actually reads is the blended corner. Lowering `PILL_END_R` is the dial that makes the side
-    /// visibly pillowed — this test is what will fail, loudly and with the new number, the day
+    /// visibly pillowed - this test is what will fail, loudly and with the new number, the day
     /// somebody turns it.
     #[test]
     fn the_side_bows_by_the_band_and_the_band_is_documented() {

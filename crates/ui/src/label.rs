@@ -1,15 +1,15 @@
-//! `Label` — text laid out by its **cap band**, painted as ink that is free to overflow.
+//! `Label` - text laid out by its **cap band**, painted as ink that is free to overflow.
 //!
 //! The one rule this encodes is **layout ≠ paint** (the UIKit frame-vs-drawn-content split, minus
 //! the retained view tree we don't need). A label's *layout box* is the `frame` you draw it into and
-//! the font's cap-top→baseline band inside it — a stable metric, identical for every string at a
+//! the font's cap-top→baseline band inside it - a stable metric, identical for every string at a
 //! size. Its *paint* is the actual glyph ink, which may spill past the box: descenders (g j y p q)
 //! hang below the baseline, tall ascenders/diacritics rise above the cap. That overflow is purely
 //! cosmetic and never enters any positioning maths, so "From Beginning" and "Go to Movie" align the
-//! same way. Alignment is therefore string-independent — the thing hand-rolled `y - sz*0.58` guesses
+//! same way. Alignment is therefore string-independent - the thing hand-rolled `y - sz*0.58` guesses
 //! kept getting subtly wrong.
 //!
-//! The same rule holds for the other things we paint outside a frame — the shader-baked focus
+//! The same rule holds for the other things we paint outside a frame - the shader-baked focus
 //! glow, the focus scale-pop (`Rect::scaled`), gradient scrims. They decorate; they are
 //! never measured. Layout only ever sees frames and cap bands.
 use crate::{Painter, Rect};
@@ -23,7 +23,7 @@ pub enum HAlign {
     Right,
 }
 
-/// Vertical placement — always by the font cap band, so descenders never shift the run.
+/// Vertical placement - always by the font cap band, so descenders never shift the run.
 #[derive(Clone, Copy)]
 pub enum VAlign {
     /// cap band centred on the frame's vertical centre (the usual case)
@@ -69,7 +69,7 @@ impl Label {
         self
     }
     /// Draw into `frame` (the layout box). Horizontal per `h`; vertical per `v`, always off the cap
-    /// band. Returns the painted width. The ink may extend outside `frame` — that is intended.
+    /// band. Returns the painted width. The ink may extend outside `frame` - that is intended.
     pub fn draw(&self, p: Painter, frame: Rect) -> f32 {
         let (x, code) = match self.h {
             HAlign::Left => (frame.x, 0),

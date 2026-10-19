@@ -1,4 +1,4 @@
-//! player::engine — the main-thread-confined session object (Engine) + lifecycle
+//! player::engine - the main-thread-confined session object (Engine) + lifecycle
 //! (acb_init / start_bufferfeed / stop_bufferfeed) + the feed loops. No worker
 //! thread ever names an Engine field: race-free by confinement (like the C
 //! main-thread-only flags). The Engine owns the HttpStream box + the AuQueue
@@ -7,7 +7,7 @@
 //! That confinement is **enforced, not just asserted**: the slot is `App.adapters.player`, a
 //! [`crate::player::adapter::PlayerAdapter`] that consumes a [`MainThread`] at construction, so a
 //! `&mut PlayerAdapter` borrow is what confines it now (see `player::adapter`). Which is also the
-//! rule for the rest of this file — a function here takes the token **iff** it reaches the slot
+//! rule for the rest of this file - a function here takes the token **iff** it reaches the slot
 //! or the ACB/Starfish seam, so the parameter carries information. `arm_seek` and `begin_resume`
 //! run on the main thread too and deliberately do not take one: they only publish to `SHARED`.
 use super::shared::{PlayCompletion, PrimeKind, Stage};
@@ -33,8 +33,8 @@ use std::sync::atomic::{AtomicI64, Ordering};
 // app ids this app sends travel different paths into different libraries:
 //
 //   * the ACB id (`acb_create` -> `AcbAPI_initialize`) has real evidence behind it. LG's own
-//     `libcbe` keys media metadata on `{"appId":…,"pipelineId":…}` — recovered from this
-//     television's binaries, `docs/dolby-vision.md` §3 — so the id reaches a subsystem that reads
+//     `libcbe` keys media metadata on `{"appId":...,"pipelineId":...}` - recovered from this
+//     television's binaries, `docs/dolby-vision.md` §3 - so the id reaches a subsystem that reads
 //     it. What it does with it there is still inferred, not traced.
 //   * `option.appId` in the Load payload, this key, has NOT been traced into `libpf` at all.
 //     `tools/fwcompat.py` is a symbol inventory and a JSON key path lives in `.rodata`, so no tool
@@ -42,14 +42,14 @@ use std::sync::atomic::{AtomicI64, Ordering};
 //     `docs/two-installs.md` §7 states the question rather than an answer.
 //
 // So: sending the true id is the conservative move on a field whose consumer is unknown, not a fix
-// for a mechanism anyone here has read. The failure it guards against — if it guards against one —
+// for a mechanism anyone here has read. The failure it guards against - if it guards against one -
 // is a black video plane with working audio and no error line anywhere, which is why it is worth
 // making correct by construction rather than finding out on a television.
 //
 // A placeholder rather than `format!`-ing the constant: `with_window_id` splices `option.windowId`
 // onto this exact key, and deriving both from one source is what makes it impossible for the
 // anchor and the payload to drift apart. For the shipped app the composed bytes and the key order
-// are identical to what every release so far sent — asserted in the tests below, because the
+// are identical to what every release so far sent - asserted in the tests below, because the
 // webOS 5+ splice path is one this project's 4.5 dev set cannot exercise.
 const PAYLOAD_V: &str = r#"{"args":[{"mediaTransportType":"BUFFERSTREAM","option":{"appId":"@APPID@","externalStreamingInfo":{"contents":{"codec":{"video":"H264"},"esInfo":{"pauseAtDecodeTime":false,"ptsToDecode":0,"seperatedPTS":true},"format":"RAW","provider":"webosiptv"},"streamQualityInfo":true,"streamQualityInfoNonFlushable":true,"audioSync":true,"restartStreaming":false,"bufferingCtrInfo":{"bufferMaxLevel":0,"bufferMinLevel":0,"preBufferByte":0,"qBufferLevelAudio":0,"qBufferLevelVideo":0,"srcBufferLevelAudio":{"minimum":1,"maximum":32768},"srcBufferLevelVideo":{"minimum":1,"maximum":8388608}}},"needAudio":false,"queryPosition":false,"lowDelayMode":true,"transmission":{"contentsType":"LIVE"},"adaptiveStreaming":{"audioOnly":false,"maxWidth":1920,"maxHeight":1080,"maxFrameRate":30}}}]}"#;
 // NB: pauseAtDecodeTime stays FALSE here. Kodi uses true, but only alongside its decode-time
@@ -58,7 +58,7 @@ const PAYLOAD_V: &str = r#"{"args":[{"mediaTransportType":"BUFFERSTREAM","option
 // (MAX_FEED_AHEAD_NS in feed_stream) is the anti-stall mechanism; the other Kodi payload
 // flags are being re-introduced one at a time.
 const PAYLOAD_AV: &str = r#"{"args":[{"mediaTransportType":"BUFFERSTREAM","option":{"appId":"@APPID@","externalStreamingInfo":{"contents":{"codec":{"video":"H264","audio":"AC3"},"esInfo":{"pauseAtDecodeTime":false,"ptsToDecode":0,"seperatedPTS":true},"format":"RAW","provider":"webosiptv"},"streamQualityInfo":true,"streamQualityInfoNonFlushable":true,"audioSync":true,"restartStreaming":false,"bufferingCtrInfo":{"bufferMaxLevel":0,"bufferMinLevel":0,"preBufferByte":0,"qBufferLevelAudio":0,"qBufferLevelVideo":0,"srcBufferLevelAudio":{"minimum":1,"maximum":1048576},"srcBufferLevelVideo":{"minimum":1,"maximum":8388608}}},"needAudio":true,"queryPosition":false,"lowDelayMode":false,"transmission":{"contentsType":"LIVE"},"adaptiveStreaming":{"audioOnly":false,"maxWidth":1920,"maxHeight":1080,"maxFrameRate":30}}}]}"#;
-// Phase 0 HEVC probe payload — identical to PAYLOAD_V but codec video "H265", to isolate
+// Phase 0 HEVC probe payload - identical to PAYLOAD_V but codec video "H265", to isolate
 // the single variable: does StarfishMediaAPIs BUFFERSTREAM decode HEVC on this panel?
 /// **`streamQualityInfoNonFlushable: true` is the presented-frame counter, and it is the only
 /// per-frame instrument this app has on a non-Dolby path.** Decompiled from libpf 2026-09-03
@@ -67,17 +67,17 @@ const PAYLOAD_AV: &str = r#"{"args":[{"mediaTransportType":"BUFFERSTREAM","optio
 /// forwards a non-zero count as callback type 46; with this second key it also reads
 /// `non-flushable-displayed-frames` and forwards it as type 47. Both arrive at `sf_on_event`
 /// and are logged as `smp_cb type=46/47 num=<count>`, so consecutive samples against the log's
-/// millisecond stamps ARE the presented cadence — the number the 5 Hz `vtick` and our GL `fps=`
+/// millisecond stamps ARE the presented cadence - the number the 5 Hz `vtick` and our GL `fps=`
 /// could never give. Whether this firmware's sink exposes the property is answered by the first
 /// run: libpf logs a pmlog error naming the property if it does not.
 const PAYLOAD_H265: &str = r#"{"args":[{"mediaTransportType":"BUFFERSTREAM","option":{"appId":"@APPID@","externalStreamingInfo":{"contents":{"codec":{"video":"H265"},"esInfo":{"pauseAtDecodeTime":false,"ptsToDecode":0,"seperatedPTS":true},"format":"RAW","provider":"webosiptv"},"streamQualityInfo":true,"streamQualityInfoNonFlushable":true,"audioSync":true,"restartStreaming":false,"bufferingCtrInfo":{"bufferMaxLevel":0,"bufferMinLevel":0,"preBufferByte":0,"qBufferLevelAudio":0,"qBufferLevelVideo":0,"srcBufferLevelAudio":{"minimum":1,"maximum":32768},"srcBufferLevelVideo":{"minimum":1,"maximum":8388608}}},"needAudio":false,"queryPosition":false,"lowDelayMode":true,"transmission":{"contentsType":"LIVE"},"adaptiveStreaming":{"audioOnly":false,"maxWidth":3840,"maxHeight":2160,"maxFrameRate":60}}}]}"#;
 
-// ACCEPTED AUs — what the pipeline took. This is what `app::diagnostics` reports, because a count of
+// ACCEPTED AUs - what the pipeline took. This is what `app::diagnostics` reports, because a count of
 // attempts reads as healthy throughput through a stall: a full sink retains the AU and it is
 // re-offered every tick.
 static VTOT: AtomicI64 = AtomicI64::new(0);
 static ATOT: AtomicI64 = AtomicI64::new(0);
-// ATTEMPTS — the log's own cadence, kept separate because its `reply=` field is the only record
+// ATTEMPTS - the log's own cadence, kept separate because its `reply=` field is the only record
 // of a REJECTED feed and `tests/run.py` greps `feed v#` / `feed a#`.
 static VATT: AtomicI64 = AtomicI64::new(0);
 
@@ -96,7 +96,7 @@ pub fn fed_totals() -> (i64, i64) {
     (VTOT.load(Ordering::Relaxed), ATOT.load(Ordering::Relaxed))
 }
 
-/// The AU queues' BASE byte caps — the denominators the read-out shows `dg_aq_*` against, so a viewer
+/// The AU queues' BASE byte caps - the denominators the read-out shows `dg_aq_*` against, so a viewer
 /// can see backpressure (a video lane pinned at its cap is the demuxer outrunning the decoder;
 /// both lanes empty while Stage is Playing is the opposite).
 ///
@@ -110,7 +110,7 @@ pub const fn aq_caps() -> (i64, i64) {
     (AQ_VIDEO_BYTES as i64, AQ_AUDIO_BYTES as i64)
 }
 
-/// **The feed-ahead throttle's two leads, milliseconds** — video, then audio.
+/// **The feed-ahead throttle's two leads, milliseconds** - video, then audio.
 ///
 /// The other half of the reachable-reserve geometry: `B_max = lead + queue_bytes/rate`, and
 /// `aq_caps` above exposes only the `queue_bytes`. Published as functions so a reader computes
@@ -129,13 +129,13 @@ pub const fn feed_leads_ms() -> (i64, i64) {
 // **The video cap is 48 MiB, and it stopped matching the Load payload's `srcBufferLevelVideo`
 // (8 MiB) on purpose.** Those are two different buffers: this one sits between our demux thread
 // and our pump, and that one is what Starfish will hold. They were equal because 8 MiB was copied
-// from the payload, not because anything requires it — feeding past Starfish's own level returns
+// from the payload, not because anything requires it - feeding past Starfish's own level returns
 // `'B'` and the pump retries, which is the backpressure path every playback already uses.
 //
 // **Why 48 MiB.** The reserve the pipeline can ever hold ahead of the playhead is
 // `B_max = feed_lead + queue_bytes*8 / R_elementary`, a queue term that falls as `1/R`. At the old
 // 10 MiB a 30 Mbit/s H.264 remux held ~2.8 s, and the beta log (2026-10-18) showed it run dry in
-// the last minute of an anime episode — the high-bitrate ending outran the debrid link, the lane
+// the last minute of an anime episode - the high-bitrate ending outran the debrid link, the lane
 // fell from 10.5 MB to 0.3 MB and the sink dropped 180 frames. 48 MiB is ~13 s at 30 Mbit/s and
 // ~27 s at 15 Mbit/s (a 4K HEVC web-dl); a 60-80 Mbit/s UHD remux still gets ~5-6 s.
 // ponytail: fixed bytes, not seconds; size it from the probed bitrate if RAM gets tight.
@@ -183,7 +183,7 @@ pub struct Engine {
     pub rebase_pending: bool, // g_rebase_pending
     // In-place seek only: keyframes this far AHEAD of the seek target are stale frames the demuxer
     // produced from its pre-flush read position before the reopen+av_seek won the race (playback
-    // drifts forward during a long scrub) — reject them so the rebase anchors on the REAL post-seek
+    // drifts forward during a long scrub) - reject them so the rebase anchors on the REAL post-seek
     // keyframe, not the drifted one. `rebase_drops` caps the rejections so a sparse-keyframe file or
     // a genuinely-failed av_seek can't hang the rebase.
     pub rebase_drops: i32,
@@ -197,8 +197,8 @@ pub struct Engine {
     pub presentation_rearm_pending: bool,
     pub max_fed_video_pts: i64, // high-water fed pts, VIDEO lane (g_max_fed_pts)
     pub max_fed_audio_pts: i64, // high-water fed pts, AUDIO lane (two-lane feed)
-    /// Fed pts of the AU that opened this timeline's audio — the one the demuxer marked as its
-    /// first since the open or seek (`SHARED.first_audio_pts`) — once Starfish accepted it.
+    /// Fed pts of the AU that opened this timeline's audio - the one the demuxer marked as its
+    /// first since the open or seek (`SHARED.first_audio_pts`) - once Starfish accepted it.
     /// `None` until then; reset with `max_fed_audio_pts`. See [`audio_lead_in`].
     pub audio_start_fp: Option<i64>,
     /// The feed-ahead throttle's reference position, run on between the pipeline's 5 Hz
@@ -221,7 +221,7 @@ pub struct Engine {
     pub aq_video: Option<Box<AuQueue>>, // g_aq (M owns; ptr handed to D)
     pub aq_audio: Option<Box<AuQueue>>, // audio lane
     // hs/payload are RAII: held alive for the workers (which hold raw ptrs into
-    // them) and freed only after join — never read back through the field.
+    // them) and freed only after join - never read back through the field.
     #[allow(dead_code)]
     pub hs: Box<HttpStream>, // demux socket (M owns; D uses via raw ptr)
     pub pending_video: Option<AuBox>, // bf_pending, VIDEO lane (held across BufferFull)
@@ -243,7 +243,7 @@ impl Engine {
     }
 }
 
-// The `ENGINE` slot is `App.adapters.player` since phase 9 — a field, reached as
+// The `ENGINE` slot is `App.adapters.player` since phase 9 - a field, reached as
 // `pa: &mut PlayerAdapter` from the loop. `player::adapter` carries the confinement argument the
 // four `static mut` accessors used to carry here, and says what the owned slot proves that the
 // `&MainThread` argument could only assert.
@@ -331,8 +331,8 @@ fn native_object_disposition(
 /// A native `Load` that teardown could not wait for.
 ///
 /// The D.1.4 budget turns a `Load` that never returns into a failure read-out, but the object that
-/// `Load` is running on cannot be touched until the call comes back — `Unload`/`Destroy` on it
-/// while the load thread is still inside is the issue #74 race — and joining the media thread on
+/// `Load` is running on cannot be touched until the call comes back - `Unload`/`Destroy` on it
+/// while the load thread is still inside is the issue #74 race - and joining the media thread on
 /// the SDL main thread froze the whole app on exactly the set where the Load was hung. So teardown
 /// parks the thread, the payload it reads and the epoch here instead, and
 /// [`reap_abandoned_load`] runs the ordinary native release (`Unload` → callback gate → epoch
@@ -584,7 +584,7 @@ fn finish_unloaded_object(mt: &MainThread, epoch: u32, sp: &mut TeardownSpans) {
 fn destroy_native_window(mt: &MainThread, sp: &mut TeardownSpans) {
     // The webOS 5+ counterpart of acb_unload, and the other half of `with_window_id`'s create.
     // Outside the sf_ready guard because readiness means dispatchable, not "object exists", and
-    // because the window is created BEFORE Load — a session that failed between the two would
+    // because the window is created BEFORE Load - a session that failed between the two would
     // otherwise leak it, and the next Load would ask for another. Unguarded because the seam
     // already no-ops in the other modes (see starfish.h).
     unsafe { sink().destroy_window(mt) };
@@ -638,14 +638,14 @@ pub fn take_window_steps_for_test() -> Vec<&'static str> {
 
 /// Bind the decoded video sink to the display plane, whichever way this television does it.
 ///
-/// **Boot-scoped.** Called once, from the app's run loop, and never again — which is why the webOS 5
+/// **Boot-scoped.** Called once, from the app's run loop, and never again - which is why the webOS 5
 /// exported window is NOT created here: that one is created per session in [`start_bufferfeed`],
 /// beside the payload it has to be spliced into, and destroyed by the matching `teardown`.
 ///
-///   - `VP_ACB` — create + initialize the ACB. We deliberately DON'T register our own
+///   - `VP_ACB` - create + initialize the ACB. We deliberately DON'T register our own
 ///     com.webos.media client; it collides with the pipeline's uMS connection. The handle lives
 ///     for the process; what teardown calls is `acb_unload`, a session-scoped state change.
-///   - `VP_EXPORTED` — nothing to do at boot. There is no handle, and no state mirroring:
+///   - `VP_EXPORTED` - nothing to do at boot. There is no handle, and no state mirroring:
 ///     webOS 5 deleted that sequence outright rather than replacing it.
 pub fn acb_init(mt: &MainThread) {
     match sink().window_mode() {
@@ -675,9 +675,9 @@ fn acb_init_acb(mt: &MainThread) {
     let pt = PTYPE.load(Ordering::Relaxed);
     log(&format!("ptype={pt}"));
     // Which app ACB is being initialized for. The third argument of `AcbAPI_initialize` is an app
-    // id — that much is certain, and both reference implementations pass one (Kodi's webOS port
+    // id - that much is certain, and both reference implementations pass one (Kodi's webOS port
     // passes `getenv("APPID")`; see docs/distribution.md). What ACB does with it has not been
-    // decompiled here, so the rule is simply that it must be the install SAM actually launched —
+    // decompiled here, so the rule is simply that it must be the install SAM actually launched -
     // and with a developer build able to sit beside the shipped one, "the id compiled in" and
     // "the id we were launched as" are no longer the same question.
     //
@@ -718,7 +718,7 @@ fn bf_split(data: &[u8], aud5: u8) -> Vec<usize> {
 /// video/audio codecs + a sink envelope. video = "H264"|"H265", audio = "AC3"|"AC3 PLUS"|"AAC"|"PCM".
 /// What the Load's `adaptiveStreaming` block declares: the sink the pipeline ALLOCATES for, on the
 /// firmwares that allocate against the declaration rather than the bitstream (webOS 10.3.1,
-/// measured — `docs/webos10-resource-allocation.md`).
+/// measured - `docs/webos10-resource-allocation.md`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SinkEnvelope {
     pub w: u32,
@@ -818,7 +818,7 @@ pub(crate) fn load_video_refused(lv: LoadVideo, caps: &tv_platform::devcaps::Cap
 /// * **HEVC keeps 4K60.** Dolby Vision P5/P8 and HDR10 are device-verified only under that
 ///   declaration, and nothing smaller has ever been declared for HEVC on any set.
 /// * **H.264 declares FHD60 when the declared raster fits FHD**, which is what the lab measured
-///   (a 1080p H.264 stream), and stays 4K60 otherwise — a real 4K H.264 file keeps the known
+///   (a 1080p H.264 stream), and stays 4K60 otherwise - a real 4K H.264 file keeps the known
 ///   refusal on 10.3.1. "Fits FHD" is width ≤ 1920 and height ≤ 1088: a 1080p H.264 stream's
 ///   CODED height is 1088 (16-aligned), and a probe reports coded sizes, so 1088 has to read as
 ///   1080 or every 1080p file would be promoted to the 4K declaration it was meant to escape.
@@ -826,13 +826,13 @@ pub(crate) fn load_video_refused(lv: LoadVideo, caps: &tv_platform::devcaps::Cap
 ///   under-declare a file that might be 4K.
 /// * **The device's own table clamps, per codec, only when it was actually READ.** On the dev set
 ///   and on 10.3.1 both rows claim ≥4K@60 and nothing changes; a set whose HEVC row says
-///   1920x1088 (a Full HD panel — issue #63's hypothesis) gets FHD60 for HEVC too. The assumed
+///   1920x1088 (a Full HD panel - issue #63's hypothesis) gets FHD60 for HEVC too. The assumed
 ///   fallback is never a clamp. A clamped 1088 is normalised to 1080 for the same reason as
 ///   above, and `fps` is never raised above 60 by the table (120 is a claim nobody has tested).
 ///
 /// `maxFrameRate`: **H.264 declares the stream's own rate class** (24/25/30/50/60, never below
 /// the stream beyond one 1 ms container-timebase tick per frame, so 30.303 declares 30, issue
-/// #665; 60 when the rate is unknown) — see the measurement inside; HEVC stays at 60, the
+/// #665; 60 when the rate is unknown) - see the measurement inside; HEVC stays at 60, the
 /// value every Dolby Vision verification was taken under. `/tmp/webosiptv-sinkmax=WxH@F`
 /// overrides the whole result so the remaining legs are an A/B with no rebuild. Pure; the
 /// wrappers feed it the route.
@@ -856,7 +856,7 @@ fn sink_envelope(
     // **H.264 declares the stream's own rate class, and this is device-measured, not guessed.**
     // On the dev set (webOS 4.10) a 4K H.264 24p direct play declared at 60 makes the pipeline
     // announce `frameRate:24` and then, about a second later, `frameRate:30` for the same stream
-    // — a 24p picture on a 30 fps lattice, i.e. pulldown judder the viewer can see. Declared at
+    // - a 24p picture on a 30 fps lattice, i.e. pulldown judder the viewer can see. Declared at
     // 24 or at 30 it announces 24 once and holds it (2026-09-03, `webosiptv-sinkmax` A/B, three
     // legs; 4K HEVC under 60 announces 24 and holds it, and 1080p H.264 under 60 does too, so
     // the rate is left at 60 for HEVC and for an unknown stream rate). **And the sink's own
@@ -892,7 +892,7 @@ fn sink_envelope(
 }
 
 /// The sink envelope for THIS Load, from the route (main thread), with the dev override applied.
-/// **What the two STATIC payloads declare**, as the numbers written into their strings — used on
+/// **What the two STATIC payloads declare**, as the numbers written into their strings - used on
 /// every arm that sends one (the local-sample feeds and the streamed `/tmp/webosiptv-noaudio`
 /// path), so the `load:` line's `max=` reports what was SENT rather than the streamed builder's
 /// initializer. The test below pins these to the strings themselves.
@@ -911,7 +911,7 @@ fn static_envelope(video: LoadVideo) -> SinkEnvelope {
 /// `PAYLOAD_H265`, its 4K60 envelope) or a VP8 one (from `PAYLOAD_V`, 1080p30, the most that
 /// decoder takes), keeping the template's envelope and transport.
 /// The Load payload for a stream with no audio to declare: the static template for its codec,
-/// plus the Dolby node for HEVC — a video-only Dolby Vision file (a test pattern) is otherwise
+/// plus the Dolby node for HEVC - a video-only Dolby Vision file (a test pattern) is otherwise
 /// engaged as HDR10.
 fn video_only_payload(video: LoadVideo, dv: crate::stream::DvPresentation) -> String {
     match video {
@@ -969,7 +969,7 @@ fn sink_envelope_now(decl: &crate::stream::StreamDeclaration, video: LoadVideo) 
     sink_envelope(video, decl.raster, decl.fps, tv_platform::devcaps::caps(), tv_platform::devcaps::measured())
 }
 
-/// `WxH@F` — three positive integers; anything else is `None`.
+/// `WxH@F` - three positive integers; anything else is `None`.
 fn parse_sinkmax(spec: &str) -> Option<SinkEnvelope> {
     let (wh, fps) = spec.trim().split_once('@')?;
     let (w, h) = wh.split_once('x')?;
@@ -1018,7 +1018,7 @@ fn build_av_payload(
     // the coded dims change. libpf parses videoFpsValue/videoFpsScale/adaptiveResolution (verified).
     // `/tmp/webosiptv-nofps` withholds the pair, for one experiment: the Dolby Vision display
     // -management lookup misses because the LUT ring is keyed ONE 90 kHz tick above what the
-    // display firmware asks for (measured 2026-08-21 — 38 of 40 misses, written key == requested
+    // display firmware asks for (measured 2026-08-21 - 38 of 40 misses, written key == requested
     // + 1, with LG's own level-2 KADP logging armed mid-playback). Neither derivation is ours: the
     // fed PTS provably does not move the outcome (nudge A/B, alternating unseeked legs, 163/164/165
     // misses regardless), and the pipeline timestamps by NEAREST-rounding on the 1001/24000 lattice
@@ -1045,9 +1045,9 @@ fn build_av_payload(
 }
 
 /// The `contents.aacInfo` node for an AAC feed: channels, profile 2, ADTS framing (the feed always
-/// is: raw AAC is reframed, ADTS passes through) and the frequency in kHz — the node Kodi and ss4s
+/// is: raw AAC is reframed, ADTS passes through) and the frequency in kHz - the node Kodi and ss4s
 /// send and libpf parses (`docs`: PlxNative's Kodi-parity notes, verified in `libpf-1.0.so`).
-/// Without it the TV reported a 5.1 AAC channel as `0.000000 0 … aac 0` and its audio stuttered.
+/// Without it the TV reported a 5.1 AAC channel as `0.000000 0 ... aac 0` and its audio stuttered.
 /// Spliced only when both numbers are known.
 fn with_aac_info(p: &str, audio: &str, channels: i64, sample_rate: i64) -> String {
     if audio != "AAC" || channels <= 0 || sample_rate <= 0 {
@@ -1062,7 +1062,7 @@ fn with_aac_info(p: &str, audio: &str, channels: i64, sample_rate: i64) -> Strin
     p.replace(anchor, &format!(r#"{anchor},"aacInfo":{{"channels":{channels},"profile":2,"format":"adts","frequency":{khz}}}"#))
 }
 
-/// The `contents.immersive` node — **the Dolby Atmos half of the same envelope**, and the reason
+/// The `contents.immersive` node - **the Dolby Atmos half of the same envelope**, and the reason
 /// the television's Atmos read-out never appeared while its Dolby Vision one did.
 ///
 /// PURE, so the splice is host-testable, and spliced at the same `provider` anchor and in the same
@@ -1073,14 +1073,14 @@ fn with_aac_info(p: &str, audio: &str, channels: i64, sample_rate: i64) -> Strin
 /// **The key and the value are both read off the television's own binaries** (2026-08-21), which
 /// matters because neither is guessable and a wrong one is silent:
 /// - `libpf-1.0.so.1.0.0` holds the literal key path `option.externalStreamingInfo.contents.immersive`,
-///   logs it as `PF_EXT_IMMERSIVE : %s`, and carries it onto the audio caps it builds —
-///   `audio mediaInfo … channels[%d] language[%s] … immersive[%s] role[%s]`. It is a `%s` all the
+///   logs it as `PF_EXT_IMMERSIVE : %s`, and carries it onto the audio caps it builds -
+///   `audio mediaInfo ... channels[%d] language[%s] ... immersive[%s] role[%s]`. It is a `%s` all the
 ///   way down: libpf validates nothing and passes the string through.
 /// - The VALUE therefore has to come from whoever fills it, and **the bare literal `ATMOS` exists in
-///   exactly one library on this device: `libcbe.so`** — Chromium's media backend, i.e. the path
+///   exactly one library on this device: `libcbe.so`** - Chromium's media backend, i.e. the path
 ///   LG's own web apps take. In its string pool that literal sits immediately
 ///   after `immersive` and in the same run as `externalStreamingInfo`, `esInfo`, `seperatedPTS`,
-///   `provider`, `DolbyHdrInfo`, `encryptionType`, `profileId` and `contents` — the payload we
+///   `provider`, `DolbyHdrInfo`, `encryptionType`, `profileId` and `contents` - the payload we
 ///   build, key for key. So `"ATMOS"` is not our invention; it is the value the working client
 ///   sends, recovered from the binary that sends it.
 ///
@@ -1117,7 +1117,7 @@ fn with_immersive(p: &str, audio: &str, atmos: bool) -> String {
 /// **Why this one node is the fix, from the television's own binaries** (decompiled 2026-08-21,
 /// webOS 4.10.2 `libpf`): `CustomPipeline::parseOptionStringSpi` builds the literal key
 /// `option.externalStreamingInfo.contents.DolbyHdrInfo`, asks `Options::checkKeyExistance` for it,
-/// and on a hit sets `hasDolbyHdrInfo` — unconditionally, before a single sub-field is read and
+/// and on a hit sets `hasDolbyHdrInfo` - unconditionally, before a single sub-field is read and
 /// with no platform gate. `getVideoCaps` then ends by adding `dolby-vision=TRUE` (plus
 /// `dolby-vision-profile` when `profileId != -1`) to the caps it was already building. Without the
 /// node, appsrc gets plain `video/x-h265` and nothing downstream can engage Dolby Vision. The
@@ -1136,7 +1136,7 @@ fn with_immersive(p: &str, audio: &str, atmos: bool) -> String {
 ///   the same public configd key independently and route policy requires an exact `true` before
 ///   this function can receive `Declare`.
 ///
-/// The anchor is `"provider":"webosiptv"` — the last key of `contents` and, by the test below,
+/// The anchor is `"provider":"webosiptv"` - the last key of `contents` and, by the test below,
 /// present exactly once in `PAYLOAD_AV`. A `replace` that finds nothing is a silent no-node, which
 /// is why the miss is logged rather than assumed away.
 fn with_dolby_hdr_info(p: &str, video: &str, dv: crate::stream::DvPresentation) -> String {
@@ -1152,8 +1152,8 @@ fn with_dolby_hdr_info(p: &str, video: &str, dv: crate::stream::DvPresentation) 
         return p.to_string();
     }
     if video != "H265" {
-        // Unreachable by construction — the session declares Dolby Vision for an HEVC stream
-        // only — so this is the guard that says so out loud rather than declaring Dolby Vision
+        // Unreachable by construction - the session declares Dolby Vision for an HEVC stream
+        // only - so this is the guard that says so out loud rather than declaring Dolby Vision
         // over an H264 elementary stream. A malformed sourceInfo does not fail loudly; it wedges
         // the sink.
         log(&format!(
@@ -1171,7 +1171,7 @@ fn with_dolby_hdr_info(p: &str, video: &str, dv: crate::stream::DvPresentation) 
         r#","DolbyHdrInfo":{{"trackType":"{}","encryptionType":"{}","profileId":{}}}"#,
         n.track_type, n.encryption_type, n.profile_id
     );
-    // ONE line, and it is the answer to "what did we actually send" — the only place the emitted
+    // ONE line, and it is the answer to "what did we actually send" - the only place the emitted
     // values exist as fact rather than as intent.
     log(&format!(
         "dv: sourceInfo contents.DolbyHdrInfo profileId={} trackType={} encryptionType={} (codec {video})",
@@ -1180,7 +1180,7 @@ fn with_dolby_hdr_info(p: &str, video: &str, dv: crate::stream::DvPresentation) 
     p.replace(anchor, &format!("{anchor}{node}"))
 }
 
-/// `"appId":"<this install's id>"` — the payload key, and the anchor `with_window_id` splices onto.
+/// `"appId":"<this install's id>"` - the payload key, and the anchor `with_window_id` splices onto.
 ///
 /// One expression, called from both places, so the two cannot disagree.
 fn app_id_key() -> String {
@@ -1192,13 +1192,13 @@ fn app_id_key() -> String {
 /// Exactly once per payload, asserted at build time: a `replace` that matched twice would leave a
 /// second `appId` key for `with_window_id` to splice a duplicate `windowId` onto, and one that
 /// matched nothing would hand LG's JSON parser the placeholder as a literal app id. Both are
-/// silent — the pipeline reports no error for either — which is why this is graded in the host
+/// silent - the pipeline reports no error for either - which is why this is graded in the host
 /// suite rather than left to be noticed on a television.
 fn with_app_id(p: &str) -> String {
     p.replace("@APPID@", tv_base::paths::app_id())
 }
 
-/// Create the exported window and splice its id into the Load payload — the webOS 5+ binding, in
+/// Create the exported window and splice its id into the Load payload - the webOS 5+ binding, in
 /// one place.
 ///
 /// **Session-scoped, and that is the point.** The window is created HERE rather than at boot
@@ -1209,12 +1209,12 @@ fn with_app_id(p: &str) -> String {
 ///
 /// On webOS 5 this one string IS the video-plane binding: the compositor assigned it to the window
 /// we just created, and the pipeline imports that window by name and punches through to it.
-/// Everything else about the BUFFERSTREAM payload is unchanged between the eras — which is what
+/// Everything else about the BUFFERSTREAM payload is unchanged between the eras - which is what
 /// both reference implementations show (ss4s compiles the same payload builder for webOS 3, 4 and
 /// 5 and swaps only the resource file; Kodi adds this key and nothing else).
 ///
-/// Inserted after `"appId":"…"` because that is a stable sibling inside `option` in every payload
-/// variant here — via [`app_id_key`], so the anchor cannot drift from what `with_app_id` composed.
+/// Inserted after `"appId":"..."` because that is a stable sibling inside `option` in every payload
+/// variant here - via [`app_id_key`], so the anchor cannot drift from what `with_app_id` composed.
 /// A no-op on every webOS 4.x set, where `vp_create_window` returns NULL.
 fn with_window_id(mt: &MainThread, p: &str) -> String {
     if sink().window_mode() != super::VP_EXPORTED {
@@ -1267,7 +1267,7 @@ pub enum BufferfeedStartOutcome {
     AlreadyRunning,
     Launched,
     /// The start had no declaration: the stream is being probed (`player::probe`), and `pump`
-    /// launches the native start when the probe resolves it — or refuses it.
+    /// launches the native start when the probe resolves it - or refuses it.
     Probing,
     Failed,
 }
@@ -1354,7 +1354,7 @@ struct StartFailed;
 
 fn start_bufferfeed_inner(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::PlayerAdapter) -> Result<(), StartFailed> {
     // The last real stop's object may still be inside its off-frame `Unload`: finish that release
-    // first (waiting for it if it has not returned — only a start within ~150 ms of a stop does),
+    // first (waiting for it if it has not returned - only a start within ~150 ms of a stop does),
     // so the epoch is retired and the object destroyed before this start constructs the next one.
     pa.finish_release();
     // A timed-out Load from an earlier Engine may still own the one native object the C seam
@@ -1453,8 +1453,8 @@ fn start_bufferfeed_inner(ps: &mut crate::session::PlaybackSession, pa: &mut sup
         _ => 0,
     });
     let stream_payload;
-    // Every arm below assigns this — the static payloads through `static_envelope`, the streamed
-    // one through `sink_envelope_now` — so a new arm that forgets it fails to compile.
+    // Every arm below assigns this - the static payloads through `static_envelope`, the streamed
+    // one through `sink_envelope_now` - so a new arm that forgets it fails to compile.
     let sink_env: SinkEnvelope;
     // The LG-side audio name the payload ended up carrying, for the `load:` line below. "-" is
     // the video-only case, where there is no audio ES to name.
@@ -1478,7 +1478,7 @@ fn start_bufferfeed_inner(ps: &mut crate::session::PlaybackSession, pa: &mut sup
             return Err(StartFailed);
         }
         video_declared = lv.payload_name();
-        // Record what the payload ACTUALLY says, for the diagnostics read-out — including the
+        // Record what the payload ACTUALLY says, for the diagnostics read-out - including the
         // video-only case, where `dg_load_a == 0` is the whole explanation for silence.
         SHARED.dg_load_v.store(lv.diag_code(), Ordering::Relaxed);
         match audio_payload.filter(|_| !no_audio) {
@@ -1492,7 +1492,7 @@ fn start_bufferfeed_inner(ps: &mut crate::session::PlaybackSession, pa: &mut sup
             Some((ac, diagnostic)) => {
                 SHARED.dg_load_a.store(diagnostic, Ordering::Relaxed);
                 audio_declared = ac;
-                // The sink envelope — `adaptiveStreaming`'s maxWidth/maxHeight/maxFrameRate. On
+                // The sink envelope - `adaptiveStreaming`'s maxWidth/maxHeight/maxFrameRate. On
                 // webOS 10.3.1 the pipeline allocates against the declaration, so `sink_envelope`
                 // is deliberately no wider than what was measured.
                 sink_env = sink_envelope_now(&decl, lv);
@@ -1508,7 +1508,7 @@ fn start_bufferfeed_inner(ps: &mut crate::session::PlaybackSession, pa: &mut sup
         PAYLOAD_V
     };
     // The windowId splice happens HERE, at the single point every payload variant passes through
-    // — three of the four variants are static strings that never see the builder. The appId
+    // - three of the four variants are static strings that never see the builder. The appId
     // substitution happens BEFORE the splice: `with_window_id`'s anchor is the composed
     // `"appId":"<id>"`.
     let payload_c = std::ffi::CString::new(with_window_id(pa.mt(), &with_app_id(payload_str))).unwrap();
@@ -1589,7 +1589,7 @@ fn start_bufferfeed_inner(ps: &mut crate::session::PlaybackSession, pa: &mut sup
             });
             if stream_th.is_none() {
                 // Nothing will ever fill the AU queues, so there is no session to start. `hs` is
-                // about to drop with this early return, so retract the pointer first — the pump
+                // about to drop with this early return, so retract the pointer first - the pump
                 // and teardown both read it straight off SHARED.
                 SHARED.hs_ptr.store(std::ptr::null_mut(), Ordering::Release);
                 return Err(StartFailed);
@@ -1609,7 +1609,7 @@ fn start_bufferfeed_inner(ps: &mut crate::session::PlaybackSession, pa: &mut sup
     if load_th.is_none() {
         // Without the media thread nothing is ever Loaded and nothing drains the AU queues, so the
         // demuxer would park in aq_push forever holding raw pointers into locals this return is
-        // about to drop. Stop it exactly the way teardown's stream branch does — abort both lanes,
+        // about to drop. Stop it exactly the way teardown's stream branch does - abort both lanes,
         // shutdown to wake the recv, join, and only then the real close.
         for q in [aqv_box.as_mut(), aqa_box.as_mut()].into_iter().flatten() {
             crate::aq::aq_abort(&mut **q);
@@ -1618,7 +1618,7 @@ fn start_bufferfeed_inner(ps: &mut crate::session::PlaybackSession, pa: &mut sup
         if !p.is_null() {
             tv_net::stream::http_shutdown(p);
         }
-        crate::curlio::abort_active(); // the https demuxer's equivalent — see teardown
+        crate::curlio::abort_active(); // the https demuxer's equivalent - see teardown
         if let Some(t) = stream_th.take() {
             tv_base::task::join("demux", t);
         }
@@ -1650,7 +1650,7 @@ fn start_bufferfeed_inner(ps: &mut crate::session::PlaybackSession, pa: &mut sup
         // post-seek keyframe to fed-pts 0 so the pipeline sees a 0-based timeline identical
         // to fresh play (disp_base carries the content offset). Plain fresh play leaves this
         // false (first keyframe is already ~0).
-        // …and a fresh start whose timeline starts far from 0 (a live channel joined mid-stream,
+        // ...and a fresh start whose timeline starts far from 0 (a live channel joined mid-stream,
         // `FRESH_REBASE`, set by the probe) is rebased the same way: the audio lane holds until
         // the first keyframe sets the shift both lanes then use.
         // ...and every HLS stream, so an HLS VOD (catch-up) position is in playlist time from its
@@ -1686,7 +1686,7 @@ fn start_bufferfeed_inner(ps: &mut crate::session::PlaybackSession, pa: &mut sup
     };
     // Select this session's seek mode (`SeekMode`, mod.rs). `feed_stream` can downgrade it to
     // `Reload` mid-session (the pipeline was unreachable, or LG refused a `Seek`), and that is a
-    // fact about the StarfishMediaAPIs object — constructed once per session — not about the TV,
+    // fact about the StarfishMediaAPIs object - constructed once per session - not about the TV,
     // so it is re-selected here for every session, after the already-running no-op above.
     let layout_known = inplace_layout_known(tv_platform::tv::device::info().major, sink().feed_abi_is_cow());
     let mode = session_seek_mode(layout_known, sink().window_mode(), dev_seek_mode());
@@ -1807,7 +1807,7 @@ pub fn stop_bufferfeed(ps: &mut crate::session::PlaybackSession, pa: &mut super:
 }
 
 /// Suspend for an app-switch: tear the pipeline down (webOS reclaims the video plane while we're
-/// backgrounded) but PRESERVE the playback session — keep the URL and its decisions, and don't
+/// backgrounded) but PRESERVE the playback session - keep the URL and its decisions, and don't
 /// tell the observer it stopped. The foreground restore is then a clean same-item reload
 /// (`arm_seek` at the saved position + `start_bufferfeed`).
 pub fn suspend_bufferfeed(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::PlayerAdapter) {
@@ -1869,14 +1869,14 @@ fn teardown(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
     let stream = matches!(eng.source, Source::Stream { .. });
 
     // **The one place a playback really ENDS.** `for_reload` covers a seek reload, an audio
-    // switch and an app-switch suspend — each of which destroys an ENGINE and keeps the
+    // switch and an app-switch suspend - each of which destroys an ENGINE and keeps the
     // playback. Read before the reset below zeroes position and duration.
     let final_report = (!for_reload).then(|| (threads::progress_now(), stop_reason_now()));
 
     sp.mark("begin");
     // 1. unblock every thread (abort queues, close the demux socket)
     if let Some(st) = eng.report_stop.take() {
-        st.stop(); // this reporter's own signal — unaffected by the reset_session below
+        st.stop(); // this reporter's own signal - unaffected by the reset_session below
     }
     if stream {
         // abort BOTH lanes: unblock the demux if it's parked in aq_push on a full lane
@@ -1890,8 +1890,8 @@ fn teardown(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
             // this one is still reading it. The real close happens after the join.
             tv_net::stream::http_shutdown(p);
         }
-        // …and the same interrupt for the OTHER transport. A curl demux is parked in
-        // `curl_multi_wait`, where no `shutdown(2)` of ours can reach it — this writes a byte to
+        // ...and the same interrupt for the OTHER transport. A curl demux is parked in
+        // `curl_multi_wait`, where no `shutdown(2)` of ours can reach it - this writes a byte to
         // the wake pipe it is polling. A no-op when the live source is a plaintext socket, or when
         // there is none; exactly one of these two lines ever has anything to do.
         crate::curlio::abort_active();
@@ -1919,7 +1919,7 @@ fn teardown(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
     };
     sp.mark("join_media");
     // 2b. every reader is now joined, so this thread is the sole owner: do the real close.
-    // (Before the join it could only shutdown — see step 1.)
+    // (Before the join it could only shutdown - see step 1.)
     if stream {
         let p = SHARED.hs_ptr.load(Ordering::Acquire);
         if !p.is_null() {
@@ -1934,7 +1934,7 @@ fn teardown(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
     }
     sp.mark("http_close");
     // 3. Release the native object (see `release_native_object` for the proof chain), unless its
-    // Load is still in flight — then hand it, its thread and its payload to the adapter.
+    // Load is still in flight - then hand it, its thread and its payload to the adapter.
     if let Some(load_th) = abandoned_load {
         if !SHARED.abandon_native_session(eng.native_epoch) {
             log(&format!(
@@ -1998,7 +1998,7 @@ fn teardown(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
                 _engine: eng,
             });
         }
-        // Engine (hs/aq boxes, payload) drops here — after all joins
+        // Engine (hs/aq boxes, payload) drops here - after all joins
         None => log("stop_bufferfeed: torn down"),
     }
 }
@@ -2031,7 +2031,7 @@ fn drain_one(q: Option<&mut Box<AuQueue>>) {
 /// prime-then-play buffer depth: how much of the post-seek stream to buffer (paused) before
 /// starting the clock. Enough to cover the pipeline's decode latency so the first frame is ready.
 pub(crate) const PRIME_NS: i64 = 700_000_000;
-// Prime the AUDIO lane too before starting the (audioSync master) clock — else a rapid-seek drain
+// Prime the AUDIO lane too before starting the (audioSync master) clock - else a rapid-seek drain
 // can start Play on an empty audio queue and leave audio silent until the next seek. Fallback:
 // start anyway once video buffers PRIME_VIDEO_MAX_NS without audio (audioless / briefly starved),
 // so a genuinely audioless region can't hang.
@@ -2057,7 +2057,7 @@ fn frame_ns_of(fps: f64) -> i64 {
 /// The most frames an H.264/HEVC decoder may hold before it outputs one (the largest DPB).
 const DPB_FRAMES: i64 = 16;
 
-/// A video-lane span in media time — the feed-ahead lead or the stale-backjump distance — never
+/// A video-lane span in media time - the feed-ahead lead or the stale-backjump distance - never
 /// shorter than [`DPB_FRAMES`] frames. The fixed spans are sized for film rates, where 16 frames
 /// are under 0.7 s; at 1 fps (a debrid "still downloading" clip) the B-pyramid alone reaches 4 s
 /// ahead in decode order, and a 1.6 s lead held the decoder at two frames, so it never output one.
@@ -2066,7 +2066,7 @@ fn video_span_ns(span_ns: i64, frame_ns: i64) -> i64 {
 }
 // In-place-seek rebase guard: a first-keyframe this far from the seek target is a stale pre-reopen
 // frame from the drifted read position, not the real post-seek keyframe. av_seek(BACKWARD) lands
-// AT/BEFORE the target, so a valid anchor is never ahead and is at most ~one GOP behind — hence a
+// AT/BEFORE the target, so a valid anchor is never ahead and is at most ~one GOP behind - hence a
 // tight AHEAD bound and a looser BEHIND bound (to tolerate sparse keyframes). Capped by MAX_REBASE_DROPS.
 const SEEK_STALE_AHEAD_NS: i64 = 6_000_000_000;
 const SEEK_STALE_BEHIND_NS: i64 = 30_000_000_000;
@@ -2076,14 +2076,14 @@ const MAX_REBASE_DROPS: i32 = 240;
 // max_fed_audio_pts (and then the backjump guard drops all LEGIT audio until the demux catches
 // up to the poisoned mark → seconds of silence). Legit audio lead is bounded by the throttle to
 // ~MAX_FEED_AHEAD+AUDIO_SLACK (3.6s), so 5s has margin. It was 15s, and a stuck-retry seek fed
-// stale audio 14.9s ahead — 13s of user-audible silence after a rapid 10s-back tap burst.
+// stale audio 14.9s ahead - 13s of user-audible silence after a rapid 10s-back tap burst.
 const AUDIO_STALE_AHEAD_NS: i64 = 5_000_000_000;
 /// How far past the start of its timeline the audio lane may feed whatever the clock says.
 ///
 /// **A track whose audio starts late must still reach Starfish before the clock can move.** An
 /// MKV audio `Delay` (an 11.008 s E-AC-3 track on a WEB-DL, 2026-10) puts the first audio AU
 /// seconds past the first video one. Starfish's clock waits for audio, so `pres_fed` sits at 0
-/// and the video lane stops [`MAX_FEED_AHEAD_NS`] in — and the audio AU, far past both, was
+/// and the video lane stops [`MAX_FEED_AHEAD_NS`] in - and the audio AU, far past both, was
 /// dropped as stale by [`AUDIO_STALE_AHEAD_NS`] and would have been held by the throttle anyway.
 /// Nothing moved again: the picture buffered forever, while a resume past the gap played. The
 /// AU the demuxer marked as its first since the open or seek is the real start, never stale
@@ -2101,7 +2101,7 @@ pub(crate) const AUDIO_LEAD_IN_NS: i64 = 2_000_000_000;
 // "ahead of the clock" would not be enough audio to start it).
 const _: () = assert!(AUDIO_LEAD_IN_NS < MAX_FEED_AHEAD_NS + AUDIO_SLACK_NS);
 const _: () = assert!(AUDIO_LEAD_IN_NS > PRIME_AUDIO_NS);
-// Sentinel for SHARED.pres_fed meaning "no post-seek frame has presented yet" — the feed-ahead
+// Sentinel for SHARED.pres_fed meaning "no post-seek frame has presented yet" - the feed-ahead
 // throttle treats it as feed-freely (don't compare the new fed pts against a stale pre-seek
 // presented position). Set on a seek; the first presented frame overwrites it with a real pts.
 pub const PRES_NONE: i64 = i64::MIN;
@@ -2117,8 +2117,8 @@ const FEED_PACE_CAP_MS: u32 = 250;
 /// `SHARED.pres_fed` moves in ~200 ms steps (the pipeline's 5 Hz position callback). Measured
 /// against that step function, the throttle stayed shut for eleven frames and then opened by
 /// 200 ms of media at once, so every fifth of a second one frame fed ~5 video and ~7 audio AUs to
-/// Starfish, and `Feed()` blocks: on the TV with the track menu open, `FRAMEDROP … results=14.6`
-/// with `feed:14.4` inside it, 4–15 ms on every 12th frame. Run on from the last report at 1x,
+/// Starfish, and `Feed()` blocks: on the TV with the track menu open, `FRAMEDROP ... results=14.6`
+/// with `feed:14.4` inside it, 4-15 ms on every 12th frame. Run on from the last report at 1x,
 /// the same budget opens a frame's worth of media per frame, so the same AUs reach
 /// Starfish one or two per frame. The bound is the same lead,
 /// `MAX_FEED_AHEAD_NS`, past the ESTIMATED playhead; the reserve can therefore exceed the raw
@@ -2153,10 +2153,10 @@ impl FeedPace {
 /// The most wall-clock time ONE lane may spend feeding in one tick, in µs, once it has fed an AU
 /// **and its lead is healthy** (see [`lane_starved`]).
 ///
-/// `Feed()` blocks on the frame thread, 0.3–0.7 ms per AU on the TV. In steady state a lane feeds
+/// `Feed()` blocks on the frame thread, 0.3-0.7 ms per AU on the TV. In steady state a lane feeds
 /// one or two AUs a frame and never comes near this. The throttle does not apply while priming,
 /// though, and a post-prime lane is a full lead behind, so on 2026-10-01 the first frames of
-/// every playback fed the whole demuxed backlog at once: `FRAMEDROP total=89.1 … sfvx62:19.4,
+/// every playback fed the whole demuxed backlog at once: `FRAMEDROP total=89.1 ... sfvx62:19.4,
 /// sfax120:50.8` (62 video and 120 audio AUs in one frame), then `sfax53:38.3` the frame after,
 /// with the player's HUD and track menu on screen. A seek re-primes the same way. Two lanes at
 /// this slice cost at most ~6 ms of a 16.7 ms frame plus one AU's overrun each.
@@ -2166,9 +2166,9 @@ impl FeedPace {
 ///
 /// **The slice spreads a BACKLOG; it must never throttle a lane that is short of media.** A
 /// lane below its low-water mark ([`lane_starved`]) is exempt: while priming, that is until the
-/// lane holds its prime depth ([`PRIME_NS`] / [`PRIME_AUDIO_NS`], 17–42 AUs) — otherwise a slow
+/// lane holds its prime depth ([`PRIME_NS`] / [`PRIME_AUDIO_NS`], 17-42 AUs) - otherwise a slow
 /// `Feed()` (3 ms or more, so one AU a lane a tick) stretches time-to-first-frame by that many
-/// ticks — and once playing, until it is [`FEED_LOW_WATER_NS`] ahead of the playhead — otherwise
+/// ticks - and once playing, until it is [`FEED_LOW_WATER_NS`] ahead of the playhead - otherwise
 /// at the 50 Hz present rate 60 fps content drains its lead. The exemption is bounded by the
 /// low-water mark itself, so the bulk of a backlog is still fed a slice a tick, and the prime
 /// finishes on the tick its depth is reached, one tick later at most than a greedy feed would.
@@ -2177,7 +2177,7 @@ const FEED_LANE_SLICE_US: u64 = 3_000;
 /// A playing lane whose lead over the presented position is below this is exempt from
 /// [`FEED_LANE_SLICE_US`]. 250 ms is [`FEED_PACE_CAP_MS`]: the position reports arrive every
 /// ~200 ms, so a lead under it can be gone before the next report says so, and it is ~6 AUs of
-/// 24 fps video — a handful of `Feed()` calls, bounded cost, never a backlog.
+/// 24 fps video - a handful of `Feed()` calls, bounded cost, never a backlog.
 const FEED_LOW_WATER_NS: i64 = 250_000_000;
 
 /// Whether a lane is short of media, and so must be fed past its slice.
@@ -2241,12 +2241,12 @@ impl FeedSlice {
 
 /// VIDEO lane feeder (aq_video is video-only). Owns the seek rebase + in-place-seek handshake + prime→Play, all of
 /// which key off the first post-seek VIDEO keyframe. A BufferFull/over-budget breaks THIS lane
-/// only — the audio lane (feed_audio_lane) keeps flowing so the audioSync master clock advances.
-/// Nanoseconds added to every fed VIDEO PTS — **a one-tick rounding repair for LG's Dolby Vision
+/// only - the audio lane (feed_audio_lane) keeps flowing so the audioSync master clock advances.
+/// Nanoseconds added to every fed VIDEO PTS - **a one-tick rounding repair for LG's Dolby Vision
 /// display-management lookup**, and inert everywhere else.
 ///
 /// The fault is arithmetic and it is entirely on the television's side; this is the only lever we
-/// have on it. `gstdualsequencer.c:606` (DWARF-confirmed, `libgstdualsequencer.so` 0x25b0–0x25e0)
+/// have on it. `gstdualsequencer.c:606` (DWARF-confirmed, `libgstdualsequencer.so` 0x25b0-0x25e0)
 /// keys the LUT entry it hands the display firmware with a DOUBLE truncation of the buffer's
 /// nanosecond PTS:
 ///
@@ -2255,22 +2255,22 @@ impl FeedSlice {
 /// ```
 ///
 /// and `DOVI_SWSync_SetDoviLUTnMap` (`libkadaptor` 0xe30e8) then scans all 95 slots for **exact
-/// 32-bit equality** — no tolerance, no nearest match. At 24000/1001 fps neither unit is exact:
+/// 32-bit equality** - no tolerance, no nearest match. At 24000/1001 fps neither unit is exact:
 /// a frame time is a whole number of nanoseconds only every **3rd** frame and a whole number of
-/// 90 kHz ticks only every **4th**, so on `n ≡ 4, 8 (mod 12)` — and on no other frame — the two
+/// 90 kHz ticks only every **4th**, so on `n ≡ 4, 8 (mod 12)` - and on no other frame - the two
 /// truncations disagree by exactly one tick, the lookup misses, and the panel reuses the previous
 /// frame's tone mapping. `lcm(3,4) = 12` frames is **0.5005 s**, which is the period of the
 /// stutter as seen.
 ///
 /// Measured on this set, uninstrumented, 85 s of Profile 5: 340 misses, and **340 of 340** equal
-/// the double-truncated key while **0 of 340** equal the exact tick value — residues `{4: 170,
+/// the double-truncated key while **0 of 340** equal the exact tick value - residues `{4: 170,
 /// 8: 170}` and nothing else. It is a derivation that reproduces the data with no free parameter,
 /// not a fit.
 ///
 /// The repair is to hand the pipeline a PTS whose truncation lands in the right bin. The loss is
 /// the fractional nanosecond FFmpeg's rescale already dropped, so it is strictly less than 1 ns,
-/// and **one** nanosecond recovers it. The upper bound is `100000/9 ≈ 11111 ns` — beyond that an
-/// already-correct frame would be pushed a tick the other way — so 1 sits at the safe end of a
+/// and **one** nanosecond recovers it. The upper bound is `100000/9 ≈ 11111 ns` - beyond that an
+/// already-correct frame would be pushed a tick the other way - so 1 sits at the safe end of a
 /// wide range. As an A/V offset it is nothing: 1 ns against a 41.7 ms frame.
 ///
 /// **Video only.** The key is computed from the video buffer's own PTS; the audio lane never
@@ -2289,7 +2289,7 @@ impl FeedSlice {
 /// ```
 ///
 /// Reproducible, 81:1, and the arithmetic that predicts −1 also predicted +1 would help; +1 was
-/// measured at 163/165 against 164 for zero — i.e. inert. **Trust the measurement here, not the
+/// measured at 163/165 against 164 for zero - i.e. inert. **Trust the measurement here, not the
 /// derivation**: our fed PTS is not passed through, the pipeline re-timestamps by NEAREST-rounding
 /// on the 1001/24000 lattice (measured: alternating −0.333/+0.333 ns against the exact rational),
 /// so exactly how one nanosecond on our side moves a tick on theirs is not something this comment
@@ -2303,14 +2303,14 @@ impl FeedSlice {
 /// moves with us. It does. Controlled A/B, same title, same seek to 900 s, same 45 s window, only
 /// this value differing: **nudge 0 → 118 misses, nudge 1 → 230**. Worse, not fixed. A constant
 /// offset cannot repair a *relative* truncation difference when both sides derive from the same
-/// fed timestamp — which is now measured rather than assumed, and which also retires the tidiest
+/// fed timestamp - which is now measured rather than assumed, and which also retires the tidiest
 /// explanation this investigation has produced.
 ///
 /// What survives the refutation is the arithmetic, and it is not small: 340 of 340 misses in the
 /// unseeked run equal the double-truncated key and 0 of 340 equal the exact tick value, residues
 /// `{4, 8}` mod 12 and nothing else. So the key IS computed that way and the comparison IS exact.
-/// What is now open is why the slot the firmware asks for — using, we measured, dualsequencer's
-/// own key — is not in the ring. That points at pairing or at slot lifetime, not at rounding.
+/// What is now open is why the slot the firmware asks for - using, we measured, dualsequencer's
+/// own key - is not in the ring. That points at pairing or at slot lifetime, not at rounding.
 ///
 /// `/tmp/webosiptv-ptsnudge=<ns>` is kept because it is the instrument that produced that result
 /// and the next candidate value is one run away. Anything from 1 to ~11110 is in range; beyond
@@ -2350,14 +2350,14 @@ pub fn arm_live_clock_prime(eng: &mut Engine) {
     eng.prime_play = true;
 }
 
-/// **Start the clock once both lanes are buffered past the seek base** — video to [`PRIME_NS`]
+/// **Start the clock once both lanes are buffered past the seek base** - video to [`PRIME_NS`]
 /// AND audio to [`PRIME_AUDIO_NS`], with a video-only escape at [`PRIME_VIDEO_MAX_NS`] so an
 /// audioless or briefly-starved stream still starts.
 ///
 /// **This is called from TWO places, and the second one is the whole point.** It used to live
 /// inline in [`feed_stream`]'s per-AU loop and nowhere else, which made it unreachable in exactly
 /// the case that matters. A pump tick runs the video lane and then the audio lane, so when a large
-/// burst of AUs lands at once the video lane drains all of it while `abuf` is still zero — the
+/// burst of AUs lands at once the video lane drains all of it while `abuf` is still zero - the
 /// `abuf` arm cannot be true yet, and a 2-second burst never reaches the 2500 ms video-only
 /// escape. The audio lane then fills, but evaluating nothing. On every later tick `aq_pop` returns
 /// null and the loop breaks before reaching the check, so Play ends up waiting on a video AU that
@@ -2365,7 +2365,7 @@ pub fn arm_live_clock_prime(eng: &mut Engine) {
 /// with both lanes holding a playable buffer the entire time.
 ///
 /// Calling it again at the end of [`feed_audio_lane`] closes that hole at the only moment both
-/// lanes' extents are known. It is idempotent — `prime_play` latches false on the first success —
+/// lanes' extents are known. It is idempotent - `prime_play` latches false on the first success -
 /// so the in-loop call is kept for the case it already served: a direct-play stream that reaches
 /// the threshold mid-lane should start on that AU, not a tick later.
 pub fn try_prime(mt: &MainThread, eng: &mut Engine) {
@@ -2434,7 +2434,7 @@ pub fn try_prime(mt: &MainThread, eng: &mut Engine) {
 
 /// **One tick's feeding, as a unit: video lane, audio lane, then the prime attempt.**
 ///
-/// The order is load-bearing and predates this function — the VIDEO lane owns the seek rebase, so
+/// The order is load-bearing and predates this function - the VIDEO lane owns the seek rebase, so
 /// it must clear `rebase_pending` and publish `pts_shift` before the audio lane reads them in the
 /// same tick. What is new is the third step.
 ///
@@ -2447,10 +2447,10 @@ pub fn try_prime(mt: &MainThread, eng: &mut Engine) {
 /// produced, so `aq_audio == None` is not a state a real stream reaches; and with no audio a
 /// 2-second segment cannot satisfy the `PRIME_VIDEO_MAX_NS` escape from this call either, so the
 /// placement neither helps nor harms it. The reason for the wrapper is that one function should
-/// own what a tick does to the lanes — not that it rescues a case it never sees.
+/// own what a tick does to the lanes - not that it rescues a case it never sees.
 /// **The two lane feeders are PRIVATE so that this is the only way in.** A review found the hole:
 /// with them `pub`, reverting `pump` to two separate lane calls restored the livelock while
-/// the regression test — which calls this wrapper — stayed green. Private, that revert does not
+/// the regression test - which calls this wrapper - stayed green. Private, that revert does not
 /// compile.
 pub fn feed_both_lanes(mt: &MainThread, eng: &mut Engine) {
     feed_stream(mt, eng);
@@ -2493,7 +2493,7 @@ fn feed_stream(mt: &MainThread, eng: &mut Engine) {
             if es == 1 && key != 0 {
                 let completing_in_place_seek = eng.flushed;
                 let mut segment_installed = false;
-                // In-place seek: drop a keyframe that landed well AHEAD of the target — it's a stale
+                // In-place seek: drop a keyframe that landed well AHEAD of the target - it's a stale
                 // frame from the pre-flush read position (the reopen+av_seek hasn't taken effect yet),
                 // not the real post-seek keyframe. Capped so a failed av_seek can't hang the rebase.
                 if eng.flushed {
@@ -2565,7 +2565,7 @@ fn feed_stream(mt: &MainThread, eng: &mut Engine) {
                     break;
                 } else if eng.flushed {
                     // Kodi IN-PLACE seek (exact): feed the REAL content PTS (no rebase), tell the
-                    // pipeline the real decode position, then inject a fresh GStreamer SEGMENT —
+                    // pipeline the real decode position, then inject a fresh GStreamer SEGMENT -
                     // this re-anchors the sink WITHOUT a reload/decoder re-init. disp_base=0 +
                     // pts_shift=0 → playpos = presented real pts = content time.
                     SHARED.pts_shift.store(0, Ordering::Relaxed);
@@ -2585,7 +2585,7 @@ fn feed_stream(mt: &MainThread, eng: &mut Engine) {
                     if seg == 0 {
                         // The pipeline ptr wasn't reachable, so NO fresh GStreamer segment was
                         // injected and THIS seek's buffers are scheduled against the pre-seek
-                        // segment — the stale-segment state that stops the sink draining and
+                        // segment - the stale-segment state that stops the sink draining and
                         // fills ~14.7 MB of upstream buffers in ~48 s (permanent BufferFull +
                         // "Playing error"; see reload_at's decompiled ground truth). So drop the
                         // rest of THIS SESSION's seeks to the reload path, which rebuilds the
@@ -2594,7 +2594,7 @@ fn feed_stream(mt: &MainThread, eng: &mut Engine) {
                         // Logged loudly because this is the single most consequential state
                         // change in the seek path and it used to be invisible: instant seeks
                         // silently became multi-second reloads with nothing in the event log
-                        // naming the cause — only the `sendSegment=0` above, whose consequence
+                        // naming the cause - only the `sendSegment=0` above, whose consequence
                         // was not stated anywhere.
                         super::set_seek_mode(SeekMode::Reload);
                         log(
@@ -2638,7 +2638,7 @@ fn feed_stream(mt: &MainThread, eng: &mut Engine) {
             fp = 0;
         }
         // Feed-ahead throttle: don't feed an AU that's already more than its lane's budget ahead
-        // of the presented position — keep it pending and retry once the pipeline presents more.
+        // of the presented position - keep it pending and retry once the pipeline presents more.
         // Skipped while priming (to reach PRIME_NS before Play; the per-tick slice below is waived
         // until the lane holds its prime depth, then spreads the rest). Each lane's queue is
         // pts-ordered, so if the head is over budget everything behind it is too; breaking is right.
@@ -2690,7 +2690,7 @@ fn feed_stream(mt: &MainThread, eng: &mut Engine) {
         // **Only an ACCEPTED feed advances the mark.** `max_fed_*_pts` is the high-water of what
         // the PIPELINE holds and `try_prime` starts the clock off it, so counting a rejected AU
         // primes against media the decoder never received. This advanced before the reply was read
-        // for as long as the check lived inside this loop — where it was video-only, and one
+        // for as long as the check lived inside this loop - where it was video-only, and one
         // frame early. `feed_both_lanes` made the same slip reachable from the AUDIO lane, which
         // the old check could not prime from at all, so the latent sloppiness became a defect.
         if (r as u8) == b'O' && fp > eng.max_fed_video_pts {
@@ -2706,7 +2706,7 @@ fn feed_stream(mt: &MainThread, eng: &mut Engine) {
         try_prime(mt, eng);
         // The log cadence counts ATTEMPTS (its `reply=` field is the only record of a rejected
         // feed, and tests/run.py greps `feed v#`), so it keeps its own counter. VTOT counts what
-        // was ACCEPTED — see below.
+        // was ACCEPTED - see below.
         if es == 1 {
             let v = VATT.fetch_add(1, Ordering::Relaxed) + 1;
             if v <= 4 || v % 100 == 0 {
@@ -2760,9 +2760,9 @@ fn audio_note(why: &str, fp: i64, video_fed: i64, pres: i64) {
 }
 
 /// AUDIO lane feeder (two-lane ff path only). Independent of the video lane: its own queue, its
-/// own fed-pts high-water, its own BufferFull retry — so a video BufferFull never starves audio.
+/// own fed-pts high-water, its own BufferFull retry - so a video BufferFull never starves audio.
 /// HOLDS while a seek rebase is pending (the VIDEO lane sets pts_shift on its first post-seek
-/// keyframe; feeding audio before that would use a stale shift → A/V desync). No prime/Play here —
+/// keyframe; feeding audio before that would use a stale shift → A/V desync). No prime/Play here -
 /// only the video lane starts the clock. Called AFTER feed_stream each tick, so a same-tick rebase
 /// is already visible.
 fn feed_audio_lane(mt: &MainThread, eng: &mut Engine) {
@@ -2828,7 +2828,7 @@ fn feed_audio_lane(mt: &MainThread, eng: &mut Engine) {
             break;
         }
         let r = tv_base::diag::spans::span("sfa", || unsafe { sink().feed(mt, data, len as u32, fp, es) });
-        // Accepted only — see the video lane's note.
+        // Accepted only - see the video lane's note.
         if (r as u8) == b'O' && fp > eng.max_fed_audio_pts {
             eng.max_fed_audio_pts = fp;
         }
@@ -2850,7 +2850,7 @@ fn feed_audio_lane(mt: &MainThread, eng: &mut Engine) {
             ));
         }
         if (r as u8) == b'O' {
-            ATOT.fetch_add(1, Ordering::Relaxed); // accepted, not attempted — see feed_stream
+            ATOT.fetch_add(1, Ordering::Relaxed); // accepted, not attempted - see feed_stream
         }
         if (r as u8) != b'O' {
             break; // 'B' BufferFull -> keep pending, retry next tick (AUDIO lane only)
@@ -2958,7 +2958,7 @@ mod feed_pace_tests {
     const MS: i64 = 1_000_000;
 
     /// Video AUs (24 fps, 41.7 ms apart) the throttle admits at each 60 Hz frame of a 1x clock
-    /// whose position reports arrive every 200 ms — with `reference` as the throttle's position.
+    /// whose position reports arrive every 200 ms - with `reference` as the throttle's position.
     fn admitted_per_frame(reference: impl Fn(&mut FeedPace, i64, u32) -> i64) -> Vec<u32> {
         let mut pace = FeedPace::default();
         let au_ns = 41_708_333i64;
@@ -3311,14 +3311,14 @@ mod payload_tests {
     }
 
     /// **Every Load payload must carry the `appId` placeholder, exactly once**, because that key
-    /// is what `with_window_id` splices the webOS 5+ `option.windowId` onto — without it the
-    /// decoded video has nowhere to bind on every set from 5.0 up — and because a second one would
+    /// is what `with_window_id` splices the webOS 5+ `option.windowId` onto - without it the
+    /// decoded video has nowhere to bind on every set from 5.0 up - and because a second one would
     /// splice a second `windowId`.
     ///
-    /// This replaces a panel row that was proposed and rejected: the "not spliced — no anchor" arm
+    /// This replaces a panel row that was proposed and rejected: the "not spliced - no anchor" arm
     /// is UNREACHABLE at runtime (the placeholder is in all three constants and `build_av_payload`
     /// never touches it), so a row reporting it would print the same constant on a working and a
-    /// broken television. The real risk is a payload edited a year from now that drops it — a
+    /// broken television. The real risk is a payload edited a year from now that drops it - a
     /// build-time risk, caught at build time. The placeholder is a strictly better witness than the
     /// literal id it replaced: an id can be spelled correctly by accident, `@APPID@` cannot.
     #[test]
@@ -3341,8 +3341,8 @@ mod payload_tests {
     ///
     /// This is the whole safety argument for making the id dynamic. The webOS 5+ `windowId` path
     /// cannot be exercised on this project's 4.5 dev set (`vp_mode()` returns `VP_ACB` there and
-    /// `with_window_id` returns early), so its failure — a black video plane with working audio,
-    /// and no error line — would not be seen until somebody else's television. Pinning the
+    /// `with_window_id` returns early), so its failure - a black video plane with working audio,
+    /// and no error line - would not be seen until somebody else's television. Pinning the
     /// composed bytes here is the only gate available for it.
     #[test]
     fn the_shipped_app_composes_the_payload_it_always_did() {
@@ -3374,13 +3374,13 @@ mod payload_tests {
     }
 
     /// The Dolby Vision node's anchor, with the same reasoning as the one above: `provider` is the
-    /// LAST key of `contents`, which is where `DolbyHdrInfo` has to land — the pipeline reads it at
+    /// LAST key of `contents`, which is where `DolbyHdrInfo` has to land - the pipeline reads it at
     /// `option.externalStreamingInfo.contents.DolbyHdrInfo` and nowhere else. Exactly once, or a
     /// `replace` would splice two nodes into one payload.
     #[test]
     fn the_av_payload_carries_exactly_one_dolby_hdr_info_anchor() {
         assert_eq!(PAYLOAD_AV.matches(r#""provider":"webosiptv""#).count(), 1);
-        // and it really is the last key of `contents` — the next character after it closes the
+        // and it really is the last key of `contents` - the next character after it closes the
         // object, so appending a key there stays INSIDE `contents`
         assert!(PAYLOAD_AV.contains(r#""provider":"webosiptv"},"streamQualityInfo""#));
     }
@@ -3396,12 +3396,12 @@ mod payload_tests {
     }
 
     /// **What we actually send for a Profile 5 direct play.** The three fields at the path the
-    /// television's own parser reads, `profileId` as a bare JSON integer (`getInt` — a quoted "5"
+    /// television's own parser reads, `profileId` as a bare JSON integer (`getInt` - a quoted "5"
     /// would leave the pipeline's -1 sentinel), and the whole node inside `contents`.
     #[test]
     fn a_declared_profile_5_splices_the_node_into_contents() {
         // what `build_av_payload` hands it: the AV template with the codec already set to H265,
-        // which is what a native HEVC direct play — the only kind that can be Dolby Vision — sends
+        // which is what a native HEVC direct play - the only kind that can be Dolby Vision - sends
         let base = PAYLOAD_AV.replace(r#""video":"H264""#, r#""video":"H265""#);
         let out = with_dolby_hdr_info(&base, "H265", p5().presentation(true, tv_platform::devcaps::dv::DvCapability::Supported, true));
         assert!(
@@ -3415,7 +3415,7 @@ mod payload_tests {
             !out.contains(r#""profileId":"5""#),
             "getInt wants an integer, not a string"
         );
-        // the codec string stays `H265` — `getVideoCaps` maps it to `video/x-h265` and falls
+        // the codec string stays `H265` - `getVideoCaps` maps it to `video/x-h265` and falls
         // THROUGH into its Dolby Vision tail; there is no DVHE/DVH1 entry in that table, and
         // inventing one would describe a stream the pipeline has no decoder row for
         assert!(out.contains(r#""video":"H265""#), "{out}");
@@ -3467,8 +3467,8 @@ mod payload_tests {
     }
 
     /// **What we actually send for a Dolby Atmos track**, at the key path `libpf` reads
-    /// (`option.externalStreamingInfo.contents.immersive`) and with the value `libcbe` — the
-    /// television's own working client — puts there. Same anchor and same shape as the Dolby
+    /// (`option.externalStreamingInfo.contents.immersive`) and with the value `libcbe` - the
+    /// television's own working client - puts there. Same anchor and same shape as the Dolby
     /// Vision node, which is the point: they are one envelope with two statements in it.
     #[test]
     fn an_atmos_track_splices_immersive_into_contents() {
@@ -3477,7 +3477,7 @@ mod payload_tests {
             out.contains(r#""provider":"webosiptv","immersive":"ATMOS"}"#),
             "{out}"
         );
-        // the trailing `}` is `contents` closing — the node is INSIDE it, not a sibling of
+        // the trailing `}` is `contents` closing - the node is INSIDE it, not a sibling of
         // `contents` in `externalStreamingInfo`, which is where libpf would never look
         assert!(
             out.contains(r#""immersive":"ATMOS"},"streamQualityInfo""#),
@@ -3509,7 +3509,7 @@ mod payload_tests {
         }
     }
 
-    /// **Both nodes at once**, which is the real case — the Profile 5 test item is Dolby Vision
+    /// **Both nodes at once**, which is the real case - the Profile 5 test item is Dolby Vision
     /// AND Dolby Atmos, and it is what the television shows two read-outs for. They are spliced by
     /// two independent functions at ONE anchor, so this is the test that says the second does not
     /// land inside the first: `immersive` must be a sibling KEY of `DolbyHdrInfo` inside
@@ -3528,7 +3528,7 @@ mod payload_tests {
             ),
             "{out}"
         );
-        // the DolbyHdrInfo object still has exactly its three fields — `immersive` did not get
+        // the DolbyHdrInfo object still has exactly its three fields - `immersive` did not get
         // swept inside it by an anchor both functions matched
         assert!(!out.contains(r#""profileId":5,"immersive""#), "{out}");
         assert_eq!(out.matches(r#""immersive":"ATMOS""#).count(), 1);
@@ -3536,8 +3536,8 @@ mod payload_tests {
     }
 
     /// The consistency guard: a Dolby Vision declaration only ever rides an HEVC elementary
-    /// stream, so a payload built for H264 must not carry one. Unreachable by construction — the
-    /// route records the DV record on the direct-play branch, whose codec is the file's own hevc —
+    /// stream, so a payload built for H264 must not carry one. Unreachable by construction - the
+    /// route records the DV record on the direct-play branch, whose codec is the file's own hevc -
     /// which is exactly why it is asserted rather than trusted: the `sourceInfo` envelope is
     /// parsed before anything decodes, and a malformed one wedges the sink instead of failing.
     #[test]
@@ -3570,30 +3570,30 @@ mod stream_open_log_line_tests {
 /// A viewer on a remote 4K Dolby Vision stream reloaded onto a source that delivered its media in
 /// 2-second bursts, and the picture then did not start for 94 seconds. The event log shows the reason plainly once you know where to look:
 /// `primed: v=1999ms a=1962ms -> Play` was eventually printed with EXACTLY the fed extents of the
-/// burst that had landed 94 seconds earlier — so the condition Play waits on had been satisfied
+/// burst that had landed 94 seconds earlier - so the condition Play waits on had been satisfied
 /// the whole time and was simply never EVALUATED.
 ///
 /// The evaluation lived in one place only: inside [`feed_stream`]'s per-AU loop, after each
-/// `sf_feed` — accepted or not, which was a second bug in the same lines. A pump tick runs the video lane and then the audio lane
+/// `sf_feed` - accepted or not, which was a second bug in the same lines. A pump tick runs the video lane and then the audio lane
 /// ([`super::pump::pump`]), so when a whole 2-second burst lands at once the video lane drains all of
-/// it with `abuf` still at zero — `vbuf` tops out below [`PRIME_VIDEO_MAX_NS`] and the
+/// it with `abuf` still at zero - `vbuf` tops out below [`PRIME_VIDEO_MAX_NS`] and the
 /// `abuf >= PRIME_AUDIO_NS` arm cannot be true yet. The audio lane then fills, but it deliberately
 /// carries no prime check. On every later tick `aq_pop` returns null and the loop breaks BEFORE
 /// the check is reached. Play is now waiting for a video AU that only the next burst can supply.
 ///
 /// That is why a trickling source is unaffected: it delivers AUs over many ticks, so audio keeps
 /// pace and the check passes on an ordinary tick. A burst arriving whole is the shape that breaks
-/// it — and since [`PRIME_VIDEO_MAX_NS`] is 2500 ms, a 2-second burst can never take the
+/// it - and since [`PRIME_VIDEO_MAX_NS`] is 2500 ms, a 2-second burst can never take the
 /// video-only escape, which makes this structural rather than a rare race.
 ///
 /// **This test drives the real [`feed_stream`] and [`feed_audio_lane`] against the real host feed
-/// seam** — it is not a restatement of the predicate, which is correct and would pass on the
+/// seam** - it is not a restatement of the predicate, which is correct and would pass on the
 /// broken build. What it grades is WHERE the predicate is evaluated.
 #[cfg(all(test, feature = "hostsim"))]
 mod prime_livelock_tests {
     use super::*;
 
-    /// One 2-second burst, as the device delivered it: 48 video AUs at 24 fps and 93 AAC frames —
+    /// One 2-second burst, as the device delivered it: 48 video AUs at 24 fps and 93 AAC frames -
     /// the counts the failing run recorded.
     const VIDEO_AUS: i64 = 48;
     const AUDIO_AUS: i64 = 93;
@@ -3640,7 +3640,7 @@ mod prime_livelock_tests {
         }
     }
 
-    /// Push one whole segment into both lanes before any tick runs — which is what a segmented
+    /// Push one whole segment into both lanes before any tick runs - which is what a segmented
     /// demux does, and the entire difference from direct play.
     fn push_one_segment(eng: &mut Engine) {
         push_segment_at(eng, 0);
@@ -3672,12 +3672,12 @@ mod prime_livelock_tests {
         }
     }
 
-    /// One pump tick — the real one. [`super::pump::pump`] calls exactly this.
+    /// One pump tick - the real one. [`super::pump::pump`] calls exactly this.
     ///
     /// **This comment used to claim the test therefore "cannot drift from the shipped ordering",
     /// and that was false**: the test calls the wrapper, so a `pump` reverted to two separate lane
     /// calls would have restored the bug with this test still green. What actually enforces it is
-    /// that [`feed_stream`] and [`feed_audio_lane`] are private — the revert no longer compiles.
+    /// that [`feed_stream`] and [`feed_audio_lane`] are private - the revert no longer compiles.
     /// The test pins the BEHAVIOUR; the visibility pins the dispatch.
     fn tick(mt: &tv_base::task::MainThread, eng: &mut Engine) {
         feed_both_lanes(mt, eng);
@@ -3707,7 +3707,7 @@ mod prime_livelock_tests {
         push_one_segment(&mut eng);
 
         // Tick 1: the segment is there in full. Tick 2: the next segment has not arrived, so both
-        // queues are empty — the state the device sat in for 94 seconds.
+        // queues are empty - the state the device sat in for 94 seconds.
         tick(&mt, &mut eng);
         tick(&mt, &mut eng);
 
@@ -4089,11 +4089,11 @@ pub(super) fn streaming_engine_for_test(native_epoch: u32) -> Engine {
 
 /// **BACK's frame does not pay for `Unload`** (`PendingRelease`). On the dev set
 /// `StarfishMediaAPIs::Unload` held the frame that handled BACK for 113-150 ms on every return
-/// (`teardown spans: … sf_unload:135.7`). The host sink is given a slow Unload of its own
+/// (`teardown spans: ... sf_unload:135.7`). The host sink is given a slow Unload of its own
 /// (`delay_unload_for_test`) and the contract is graded where the device's cannot be: the stop
 /// returns long before the Unload does, nothing the stopped object says reaches the state the next
 /// session owns, no native session can begin while the object is still being released, and a start
-/// issued meanwhile waits for the release instead of racing it — and the release still ends in a
+/// issued meanwhile waits for the release instead of racing it - and the release still ends in a
 /// D1 with complete evidence, not a quarantine.
 #[cfg(all(test, feature = "hostsim"))]
 mod off_frame_release_tests {
@@ -4321,7 +4321,7 @@ mod off_frame_release_tests {
 
 /// issue #74 D.1 regression tests. Real v0.6.0 dispatches every Starfish/ACB verb through
 /// `sf_ready_object()` alone (`src/starfish.c`), which went live at `SMP_SET_READY(1)` BEFORE the
-/// real, blocking `sf_load` call (`g_load_with_context`) returned — nothing waited for that
+/// real, blocking `sf_load` call (`g_load_with_context`) returned - nothing waited for that
 /// return. So the whole duration of a Load was a window in which `sf_is_load_completed`/
 /// `sf_play`/`sf_feed`/etc. could dispatch into an object whose LoadCommon ctor path was still
 /// running on the load thread: investigation.md's run A (a null-arg SIGSEGV on the priming path)
@@ -4330,7 +4330,7 @@ mod off_frame_release_tests {
 mod load_in_flight_tests {
     use super::*;
 
-    /// The Engine itself needs no cleanup — it lives in the test's own `PlayerAdapter`, which drops
+    /// The Engine itself needs no cleanup - it lives in the test's own `PlayerAdapter`, which drops
     /// with the test. What is still process-wide is `SHARED` and the native lifecycle test seams.
     struct Cleanup;
     impl Drop for Cleanup {
@@ -4360,7 +4360,7 @@ mod load_in_flight_tests {
         eng
     }
 
-    /// Waits (bounded — this is a HOST test, never the television) for the host seam's
+    /// Waits (bounded - this is a HOST test, never the television) for the host seam's
     /// `LOAD_IN_FLIGHT` window to actually open. This project's silent-instrument rule
     /// (AGENTS.md): a seam that never entered the in-flight window would score zero dispatches
     /// and prove nothing, so the precondition is its own assertion with its own message, kept
@@ -4397,7 +4397,7 @@ mod load_in_flight_tests {
         pa.install(engine_loading(epoch));
 
         // Push a whole segment's worth onto both lanes now, the way a demuxer already running
-        // ahead of Load would — enough to clear both
+        // ahead of Load would - enough to clear both
         // `PRIME_NS` (video) and `PRIME_AUDIO_NS` (audio), so the positive half below can reach a
         // real `sf_play` once the gate opens, not just an engine that primed and stalled.
         {
@@ -4461,7 +4461,7 @@ mod load_in_flight_tests {
         load_thread.join().expect("load_thread joins");
 
         // The positive half: the gate isn't just permanently closed. A few more ticks must now
-        // advance past Loading and reach Play — proving the fix doesn't just refuse forever.
+        // advance past Loading and reach Play - proving the fix doesn't just refuse forever.
         let mut advanced = false;
         for _ in 0..20 {
             crate::player::pump::pump(&mut ps, &mut pa, 1_000);
@@ -4487,10 +4487,10 @@ mod load_in_flight_tests {
 
     /// `load-budget-skipped-when-the-gate-can-never-open` (a fix-wave finding, not a P1a
     /// acceptance line): the D.1.4 budget below shares its precondition with the gate it exists
-    /// to bound — both `native_load_elapsed` and `native_load_returned` require the epoch to
+    /// to bound - both `native_load_elapsed` and `native_load_returned` require the epoch to
     /// still own `NativeSessionPhase::Active`. A synchronous UnloadCompleted callback for the
     /// live epoch (firmware type=23) flips the phase to `Unloaded` without `load_call` ever
-    /// having reached `Returned`, which — before this fix — left `pump.rs`'s loadCompleted arm
+    /// having reached `Returned`, which - before this fix - left `pump.rs`'s loadCompleted arm
     /// deferring forever with no deadline: exactly the permanent Connecting spinner D.1.4 exists
     /// to make impossible, on the one path where the gate can never open again.
     #[test]
@@ -4509,8 +4509,8 @@ mod load_in_flight_tests {
         pa.install(engine_loading(epoch));
 
         // `sf_ready(mt)` must already read nonzero (SMP_READY true) BEFORE the loadCompleted arm
-        // is even reached — pump.rs's own `sf_ready == 0 => Connecting` early return sits ahead
-        // of it — so this needs the same real held-Load rig as
+        // is even reached - pump.rs's own `sf_ready == 0 => Connecting` early return sits ahead
+        // of it - so this needs the same real held-Load rig as
         // `nothing_reaches_the_seam_while_load_is_still_in_flight`, not a bare phase flip.
         crate::player::ffi_host::hold_load_for_test();
         let payload = std::ffi::CString::new("{}").unwrap();
@@ -4528,7 +4528,7 @@ mod load_in_flight_tests {
 
         // Simulate the firmware's synchronous UnloadCompleted callback for this epoch while the
         // pump is still deferring loadCompleted (Load is genuinely still executing on the load
-        // thread) — the phase leaves Active for Unloaded without `load_call` ever reaching
+        // thread) - the phase leaves Active for Unloaded without `load_call` ever reaching
         // `Returned`.
         SHARED.with_native_session(
             epoch,
@@ -4558,8 +4558,8 @@ mod load_in_flight_tests {
 
     /// `load-budget-expiry-path-itself-has-no-test` (a fix-wave finding): of this arm's three
     /// match arms, `losing_the_active_phase_while_still_deferred_fires_the_budget_instead_of_hanging`
-    /// above pins the `None` arm, but `Some(elapsed) if elapsed >= NATIVE_LOAD_BUDGET` — the arm
-    /// the D.1.4 acceptance criterion is actually about — was reachable only by waiting a real 20s,
+    /// above pins the `None` arm, but `Some(elapsed) if elapsed >= NATIVE_LOAD_BUDGET` - the arm
+    /// the D.1.4 acceptance criterion is actually about - was reachable only by waiting a real 20s,
     /// so nothing drove it: inverting the comparison to `elapsed < NATIVE_LOAD_BUDGET` left the
     /// host suite green. `Shared::test_backdate_native_load_issued` (test-only) rewinds the
     /// recorded `load_issued_at` past the budget instead, so the same real held-Load rig as
@@ -4622,15 +4622,15 @@ mod load_in_flight_tests {
 
     /// `load-returned-log-is-conditional-on-loadcompleted-and-unbounded-after`: the OTHER half of
     /// D.1.4's budget. `native_load_budget_expiry_fires_load_failed` above pins "Load never
-    /// returns"; this pins "Load returns, but `loadCompleted` never arrives" — a wait that was
+    /// returns"; this pins "Load returns, but `loadCompleted` never arrives" - a wait that was
     /// completely unbounded before this fix, since `pump.rs`'s D.1.4 arm only runs while
     /// `!native_load_returned`, and stops being reachable the instant Load returns.
     ///
     /// Drives the gate by hand (like `the_gate_is_epoch_scoped` below): no real `sf_load` call is
-    /// made at all — the host stub's `sf_load` unconditionally emits the `loadCompleted` callback
+    /// made at all - the host stub's `sf_load` unconditionally emits the `loadCompleted` callback
     /// before it can return, so it cannot represent "Load returned but loadCompleted never
     /// arrived". `force_object_ready_for_test` gives `sf_ready()` its `true` without that call,
-    /// leaving `LOADED` (and so `sf_is_load_completed()`) at its default `false` — the "quiet
+    /// leaving `LOADED` (and so `sf_is_load_completed()`) at its default `false` - the "quiet
     /// pipeline" this fix is about.
     #[test]
     fn native_load_returned_loadcompleted_never_arrives_fires_load_failed() {
@@ -4706,7 +4706,7 @@ mod load_in_flight_tests {
     }
 
     /// A narrow SIMULATION of the epoch-scoping property, not a historical reproduction of the
-    /// crash — it drives both sides of the gate by hand (no real second thread, no real held
+    /// crash - it drives both sides of the gate by hand (no real second thread, no real held
     /// `sf_load`) to prove a mark for a DIFFERENT (superseded) epoch can never open the current
     /// one's gate. See `nothing_reaches_the_seam_while_load_is_still_in_flight` for the
     /// real-concurrency test that this one deliberately does not attempt to replace.
@@ -4726,11 +4726,11 @@ mod load_in_flight_tests {
         pa.install(engine_loading(epoch));
 
         // Get the host seam's OBJECT_READY (so `sf_ready(mt)` reads true and the pump reaches
-        // the loadCompleted arm at all) without arming HOLD_LOAD — this call returns at once.
+        // the loadCompleted arm at all) without arming HOLD_LOAD - this call returns at once.
         let payload = std::ffi::CString::new("{}").unwrap();
         assert_eq!(unsafe { crate::player::sink().load(payload.as_ptr(), epoch) }, 1);
         // Hand-set the in-flight window and publish loadCompleted via the existing sf_on_event
-        // path — simulating "Load has not returned" without a real second thread.
+        // path - simulating "Load has not returned" without a real second thread.
         crate::player::ffi_host::set_load_in_flight_for_test(true);
         super::super::sf_on_event(epoch, 2, 0, c"{\"loadCompleted\":true}".as_ptr());
 
@@ -4833,7 +4833,7 @@ mod load_in_flight_tests {
 
     /// PR #105 review finding: the D.1.4 budget turns a `Load` that never returns into a
     /// failure read-out, but BACK from that read-out ran `teardown`, which JOINED the media
-    /// thread on the SDL main thread before anything else — so a genuinely hung `sf_load` froze
+    /// thread on the SDL main thread before anything else - so a genuinely hung `sf_load` froze
     /// the whole app the moment the user tried to leave the screen that told them about it.
     ///
     /// The held host `sf_load` is the hang. A watchdog releases it after `WATCHDOG` so a broken
@@ -5135,7 +5135,7 @@ mod load_in_flight_tests {
 
 /// **The webOS 10.3.1 refusal, replayed.** `docs/webos10-lab-report.md` §3.2 records the exact
 /// callback order the pipeline produced when it refused the 4K60 H.264 envelope: `13/1`, `14/0`,
-/// the `type=5` sink echo, `15/0`, `8/0`, then `18/601 Resource Allocation Error` — with `Load()`
+/// the `type=5` sink echo, `15/0`, `8/0`, then `18/601 Resource Allocation Error` - with `Load()`
 /// itself having returned `ok=1`. §3.5 records what the app did about it: nothing. `load_failed`
 /// stayed false, the state machine sat in Connecting, and no failure read-out was ever reached.
 ///
@@ -5144,7 +5144,7 @@ mod load_in_flight_tests {
 /// log from. Under `hostsim` only because it borrows `prime_livelock_tests`' engine constructor.
 /// The envelope rule, cell by cell. Every value here is either a measured declaration
 /// (`ENVELOPE_UHD60`, `ENVELOPE_FHD60`) or today's behaviour; the test exists so the narrow rule
-/// stays narrow — a "smarter" envelope that changes HEVC or the unknown-raster case fails here.
+/// stays narrow - a "smarter" envelope that changes HEVC or the unknown-raster case fails here.
 #[cfg(test)]
 mod sink_envelope_tests {
     use super::*;
@@ -5268,7 +5268,7 @@ mod sink_envelope_tests {
     }
 
     /// A 5.1 AAC live channel was declared with no format at all, and the TV reported its audio
-    /// as `0.000000 0 … aac 0` and stuttered. The AAC node Kodi and ss4s send (and libpf parses).
+    /// as `0.000000 0 ... aac 0` and stuttered. The AAC node Kodi and ss4s send (and libpf parses).
     #[test]
     fn an_aac_payload_carries_the_tracks_format() {
         let decl = crate::stream::StreamDeclaration { audio_channels: 6, audio_sample_rate: 48_000, ..Default::default() };
@@ -5420,7 +5420,7 @@ mod load_refusal_tests {
         c"0 video/x-h264 (null) (null) 3840 2160 (null) 60.000000 0 0 0";
     const REFUSAL: &std::ffi::CStr = c"Resource Allocation Error";
 
-    /// The Engine itself needs no cleanup — it lives in the test's own `PlayerAdapter`, which drops
+    /// The Engine itself needs no cleanup - it lives in the test's own `PlayerAdapter`, which drops
     /// with the test. What is still process-wide is `SHARED`.
     struct Cleanup;
     impl Drop for Cleanup {
@@ -5443,7 +5443,7 @@ mod load_refusal_tests {
         eng.native_epoch = epoch;
         pa.install(eng);
 
-        // `Load()` returned ok=1 — nothing here says otherwise — and then the pipeline talked.
+        // `Load()` returned ok=1 - nothing here says otherwise - and then the pipeline talked.
         super::super::sf_on_event(epoch, 13, 1, c"".as_ptr());
         super::super::sf_on_event(epoch, 14, 0, c"1".as_ptr());
         super::super::sf_on_event(epoch, 5, 0, ECHO_SINK.as_ptr());
@@ -5580,7 +5580,7 @@ mod late_audio_start_tests {
             "the lead-in was fed ahead of the clock (audio to {}ns)",
             eng.max_fed_audio_pts
         );
-        // Past the lead-in the throttle holds the audio — held, not dropped as stale.
+        // Past the lead-in the throttle holds the audio - held, not dropped as stale.
         let next = eng.pending_audio.as_ref().map(|n| unsafe { crate::aq::au_fields(n.0) }.2);
         assert_eq!(next, Some(eng.max_fed_audio_pts + A_STEP_NS), "the next AU waits for the clock");
     }
@@ -5601,7 +5601,7 @@ mod late_audio_start_tests {
 
 /// **A 1 fps, video-only clip must reach the decoder past its reorder depth.** AIOStreams' "still
 /// downloading" placeholder (H.264, 1 fps, B-pyramid, no audio) arrives in decode order
-/// 0 4 2 1 3 8 6 5 7 …: the beta log fed `v#1 fed=0`, `v#2 fed=3999999999`, `primed`, and then
+/// 0 4 2 1 3 8 6 5 7 ...: the beta log fed `v#1 fed=0`, `v#2 fed=3999999999`, `primed`, and then
 /// nothing for a minute. Nothing has presented (`pres_fed` 0), so the throttle held B(2 s) at
 /// 1.6 s past the playhead, while the decoder, holding two frames, never output one. At 24 fps the
 /// same reorder fits in 170 ms. The lane must take the decoder's whole frame store, and a B-frame

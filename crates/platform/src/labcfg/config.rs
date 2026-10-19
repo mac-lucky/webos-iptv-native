@@ -1,11 +1,11 @@
-//! `lab.json` — the per-session configuration, read once from the **app directory**.
+//! `lab.json` - the per-session configuration, read once from the **app directory**.
 //!
 //! # Why the app directory and not `/tmp`
 //!
 //! Every other knob in this app arrives as a `/tmp/webosiptv-*` trigger written over ssh, and on a
 //! Cloud Test Lab set there is no ssh: the **.ipk is the only channel into the device**. So the
 //! session's endpoint, secret and certificate pin are staged into the package beside the binary
-//! (`make LAB=1 … ipk`, `ci/mkipk.py`) and resolved here through [`tv_base::paths::in_app_dir`] — the
+//! (`make LAB=1 ... ipk`, `ci/mkipk.py`) and resolved here through [`tv_base::paths::in_app_dir`] - the
 //! same `/proc/self/exe` resolution everything else in this app uses, so it is correct under both
 //! install prefixes and both jail profiles.
 //!
@@ -15,18 +15,18 @@
 //!
 //! # Why the trigger codes are configuration
 //!
-//! **The codes ARE known now** — BLUE is `wcode` **489** (486 RED / 487 GREEN / 488 YELLOW,
+//! **The codes ARE known now** - BLUE is `wcode` **489** (486 RED / 487 GREEN / 488 YELLOW,
 //! `sym` 0), measured on the dev set 2026-08-26 and recorded in `docs/remote-keys.md` §9. The
 //! trigger is a LIST in this file anyway, for two reasons that outlived the measurement.
 //!
 //! **One: the offline answer was WRONG, not merely missing.** The fork's evdev→scancode table maps
 //! `KEY_RED`/`KEY_YELLOW`/`KEY_BLUE` (evdev 398/400/401) to nothing at all, and `KEY_GREEN` (399)
-//! to a scancode 504 that this remote never sends — so the one colour key that looked derivable
+//! to a scancode 504 that this remote never sends - so the one colour key that looked derivable
 //! from a desk was derivable incorrectly. The real codes come from LG's private evdev range
-//! (289–292), which no table could have singled out.
+//! (289-292), which no table could have singled out.
 //!
 //! **Two: that is one remote on one firmware.** A Cloud Test Lab set may spell the buttons
-//! differently, or its virtual remote may not offer them at all — which is why the account-menu
+//! differently, or its virtual remote may not offer them at all - which is why the account-menu
 //! row reaches the same upload with the D-pad alone. And the app logs every press's raw bytes
 //! unconditionally, so the first successful upload by any route re-answers the question for
 //! whatever set it came from. `docs/lab-diagnostics.md` §7 is the full account.
@@ -34,7 +34,7 @@ use serde::Deserialize;
 use std::sync::OnceLock;
 
 /// The file's name in the app directory. Not under `/tmp`, so the application's `dev` rules do not
-/// apply to it and it cannot be armed by a co-resident process on a user's television — a build without the
+/// apply to it and it cannot be armed by a co-resident process on a user's television - a build without the
 /// feature never opens it whatever it contains.
 const FILE: &str = "lab.json";
 
@@ -50,7 +50,7 @@ pub struct Config {
     /// The bearer secret. 32 random bytes, base64url, generated per session. **Never logged.**
     #[serde(default)]
     pub secret: String,
-    /// `sha256//<base64>` — the receiver certificate's SPKI pin, handed to
+    /// `sha256//<base64>` - the receiver certificate's SPKI pin, handed to
     /// `CURLOPT_PINNEDPUBLICKEY`. Public by nature; it is a hash of a public key.
     #[serde(default)]
     pub pin: String,
@@ -62,8 +62,8 @@ pub struct Config {
     /// unmapped key arrives as, and a zero in this list would make every such press upload.
     #[serde(default)]
     pub trigger_wcodes: Vec<u32>,
-    /// …and which `sym`s, for a key that arrives in the other field (§1 of `docs/remote-keys.md`
-    /// — which of the two a code lands in is not predictable from the code).
+    /// ...and which `sym`s, for a key that arrives in the other field (§1 of `docs/remote-keys.md`
+    /// - which of the two a code lands in is not predictable from the code).
     #[serde(default)]
     pub trigger_syms: Vec<u32>,
 }
@@ -108,7 +108,7 @@ fn validate(c: Config) -> Result<Config, &'static str> {
     Ok(c)
 }
 
-/// The parse, as a pure function of the file's text — an unreadable file and an unparseable one
+/// The parse, as a pure function of the file's text - an unreadable file and an unparseable one
 /// land on the same value, and neither can keep the app from booting.
 fn parse(s: &str) -> Result<Config, &'static str> {
     let c: Config = serde_json::from_str(s).map_err(|_| "lab.json is not valid JSON")?;
@@ -168,7 +168,7 @@ mod tests {
         assert!(c.control);
     }
 
-    /// A zero in the trigger list would fire on every unmapped key — `wcode == 0` is exactly what
+    /// A zero in the trigger list would fire on every unmapped key - `wcode == 0` is exactly what
     /// a key the fork has no scancode for arrives as.
     #[test]
     fn a_zero_trigger_code_is_dropped_not_honoured() {
@@ -178,7 +178,7 @@ mod tests {
         assert!(!c.is_trigger(0, 0), "an unmapped key must not upload");
     }
 
-    /// Each field's absence is its own refusal, and each refusal is a phrase the boot log prints —
+    /// Each field's absence is its own refusal, and each refusal is a phrase the boot log prints -
     /// silence in a rented lab hour is the failure this exists to prevent.
     #[test]
     fn every_missing_field_names_itself() {

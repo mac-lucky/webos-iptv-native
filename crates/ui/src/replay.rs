@@ -1,11 +1,11 @@
 //! Replay (restructure spec §5.5): a recording is a REGRESSION ASSERTION pinned to the build
 //! lineage that recorded it. `--targets` mode feeds each recorded input with its recorded
 //! resolution and each recorded adapter result at its recorded frame, drives the dispatcher on
-//! the recorded ticks (`VirtualClock`), and grades the logical-state hash stream — every mismatch
+//! the recorded ticks (`VirtualClock`), and grades the logical-state hash stream - every mismatch
 //! is its own line, and replay CONTINUES, so a change reads as a list of pointwise diffs rather
 //! than an avalanche. `--resolve` (phase 3b) additionally runs the engine for real: every input
 //! resolves through the focus engine and the recorded `fo` (focus) record is compared after each
-//! frame — a mismatch is its own line and replay CONTINUES FROM THE RECORDED resolution, so one
+//! frame - a mismatch is its own line and replay CONTINUES FROM THE RECORDED resolution, so one
 //! weighting change is a list of pointwise diffs. `--targets` runs the same engine but takes
 //! the recording's answer silently: it grades the application's machines, not the engine.
 //!
@@ -120,7 +120,7 @@ impl Report {
     }
 }
 
-/// A tap that records nothing — the replay's own driver grades hashes itself.
+/// A tap that records nothing - the replay's own driver grades hashes itself.
 struct Silent;
 impl<H: Host> Tap<H> for Silent {}
 
@@ -206,7 +206,7 @@ where
             results.push(result);
         }
         let labels = inputs.iter().map(|input| input_label(&input.kind)).collect();
-        // Both modes run the engine — a screen hears the `FocusMoved` its recorded twin heard, so
+        // Both modes run the engine - a screen hears the `FocusMoved` its recorded twin heard, so
         // its own state stays comparable. They differ in what a mismatch IS: `Targets` takes the
         // recording's answer silently (the engine is not what is being graded); `Resolve`
         // reports it and then continues from the recording.

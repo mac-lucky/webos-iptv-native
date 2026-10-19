@@ -1,7 +1,7 @@
 //! The container tree (restructure spec §2.2, §6.2): `Navigation` = `TabContainer` → one shared
 //! `NavStack` → the shared `ModalStack`. It owns every `Entry` and `Instance`, mints every
 //! `EntryId` and `InstanceId`, is the sole owner of the live/inflight index behind
-//! `is_deliverable`, and resolves `input_owner()` — the shared modal stack first, then the top
+//! `is_deliverable`, and resolves `input_owner()` - the shared modal stack first, then the top
 //! page. Structural ops arrive as `NavOp`s at NAV COMMIT and come back out as [`Life`] steps the
 //! dispatcher executes; the container never calls a screen.
 //!
@@ -209,14 +209,14 @@ impl<H: Host> Navigation<H> {
 
     // ---- structural ops ----------------------------------------------------------------------
 
-    /// **Does this op move the PAGE stack?** The ONE classifier — [`request`](Self::request)
+    /// **Does this op move the PAGE stack?** The ONE classifier - [`request`](Self::request)
     /// routes by it, and the dispatcher's `has_pending_navigation` asks it of a parked op.
     ///
     /// The two questions have to be one answer. `sync_page` mirrors the legacy `app.route` onto
     /// the tree and skips a frame whose page op is already parked (the loop's own `Nav::Open`
     /// parks a `Push` and flips the route in the same breath, so a second op would duplicate the
-    /// page); a SURFACE op parked in that same breath — `exit_player`'s `NavOp::Dismiss` of the
-    /// panel that was up when the film ended — is not that, and reading it as one left the tree's
+    /// page); a SURFACE op parked in that same breath - `exit_player`'s `NavOp::Dismiss` of the
+    /// panel that was up when the film ended - is not that, and reading it as one left the tree's
     /// top page naming `player` under a route that already said `home`.
     ///
     /// `Dismiss(id)` is the ambiguous spelling: on a live or covered surface it is the modal
@@ -414,12 +414,12 @@ impl<H: Host> Navigation<H> {
             .collect()
     }
 
-    /// `NavEvent::ResetForProfile` (§6.1): every entry is dropped — surfaces first, then the
+    /// `NavEvent::ResetForProfile` (§6.1): every entry is dropped - surfaces first, then the
     /// page stack top-down. The next `Root` rebuilds the tree.
     ///
     /// **Also clears the page stack's own pending op and due flag.** A `Root`/`SelectTab`/`PopTo`
     /// parked before the reset (a per-frame follower's, say) would otherwise still be sitting
-    /// there, and apply — at its own transition's floor, some frames later — over the tree this
+    /// there, and apply - at its own transition's floor, some frames later - over the tree this
     /// just emptied, minting or restoring an entry the caller never asked for post-reset.
     pub fn reset_for_profile(&mut self) -> Vec<Life<H>> {
         self.tabs.stack.clear_pending();

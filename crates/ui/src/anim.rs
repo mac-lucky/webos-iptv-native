@@ -1,4 +1,4 @@
-//! Animation diagnostic — probe the critically-damped springs that drive the UI and, when enabled
+//! Animation diagnostic - probe the critically-damped springs that drive the UI and, when enabled
 //! (via /tmp/webosiptv-anim, or the ANIM overlay toggle), (a) log each spring's settle metrics (frames,
 //! ms, overshoot %) and (b) draw a live overlay with the approach curve. Instrument a spring by
 //! calling `anim::probe(name, pos, vel, target, dt)` right after `Spring::step`. Zero cost when off.
@@ -29,7 +29,7 @@ struct Entry {
     vel: f32,
     moving: bool,
     frames: u32,
-    /// Whole microseconds elapsed this episode, not a summed `f32` — `probe`'s `dt` argument comes
+    /// Whole microseconds elapsed this episode, not a summed `f32` - `probe`'s `dt` argument comes
     /// from the same real per-frame delta every `Spring::step` caller already has, and a realistic
     /// frame (tens of milliseconds) round-trips through `f32` exactly, so converting once and
     /// accumulating the integer is what keeps this diagnostic-only clock out of `check-deps.sh`'s
@@ -112,16 +112,16 @@ pub fn probe(name: &'static str, pos: f32, vel: f32, target: f32, dt: f32) {
     }
 }
 
-// Separate stream from the main event log — the per-settle (and, if extended, per-frame) trace can
+// Separate stream from the main event log - the per-settle (and, if extended, per-frame) trace can
 // get large, and it should never drown the primary /tmp/webosiptv-events.log debugging surface.
 //
-// Gated on `devtriggers` — like every other per-trigger diagnostic sink (`gpu_timer`'s
-// `webosiptv-gputime.jsonl`, `ui::profile`'s `webosiptv-hwcnt.jsonl`) — rather than left to
+// Gated on `devtriggers` - like every other per-trigger diagnostic sink (`gpu_timer`'s
+// `webosiptv-gputime.jsonl`, `ui::profile`'s `webosiptv-hwcnt.jsonl`) - rather than left to
 // `enabled()`'s runtime `false`: `ENABLED` is only ever flipped true from
 // `dev::scenarios::arm_anim`, which is itself compiled out without the feature, but a runtime
 // latch is not how this crate keeps a trigger's own NAME out of a release binary's bytes. Without
 // this gate the literal `webosiptv-anim.log` path stayed in `--no-default-features` release
-// binaries even though nothing could ever open it — exactly the class of leak
+// binaries even though nothing could ever open it - exactly the class of leak
 // `ci/check-package.py`'s dev-trigger-catalog check now audits for.
 #[cfg(feature = "devtriggers")]
 fn log(m: &str) {
@@ -141,7 +141,7 @@ impl Entry {
     fn cur(&self) -> f32 {
         self.hist[(self.hp + HN - 1) % HN]
     }
-    /// value range spanned by the history + start/target, padded — for the sparkline y-scale
+    /// value range spanned by the history + start/target, padded - for the sparkline y-scale
     fn range(&self) -> (f32, f32) {
         let mut lo = self.target.min(self.start);
         let mut hi = self.target.max(self.start);
@@ -155,7 +155,7 @@ impl Entry {
     }
 }
 
-/// Draw the debug overlay (top-left) when enabled: one panel per probed spring — a text line
+/// Draw the debug overlay (top-left) when enabled: one panel per probed spring - a text line
 /// (current pos → target, velocity, last settle metrics) and a sparkline of the approach with the
 /// target marked. Call once per frame, after the rest of the UI.
 pub fn draw_overlay() {

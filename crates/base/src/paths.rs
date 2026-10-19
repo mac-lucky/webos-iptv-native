@@ -1,4 +1,4 @@
-//! Where the app's own files live — resolved at runtime, never hardcoded.
+//! Where the app's own files live - resolved at runtime, never hardcoded.
 //!
 //! webOS installs a native app under ONE of two prefixes, and which one is not ours to choose:
 //!
@@ -13,14 +13,14 @@
 //! is correct under one install is missing under the other.
 //!
 //! Both failures used to be silent. Hardcoded font paths fell through to the system DroidSans
-//! while `init_text` still logged `ok=1` — the whole `theme::size` ladder rendered in a face with
+//! while `init_text` still logged `ok=1` - the whole `theme::size` ladder rendered in a face with
 //! no bold companion, so every bold rung became synthetic emboldening applied after grid-fitting.
 //! The session file's `open` returned ENOENT into a best-effort `save()` that dropped it, so the
 //! user re-did the QR sign-in on every boot with a fresh client id each time.
 //!
 //! `/proc/self/exe` is the answer, not `$HOME`: LG's own jail conf sets `HOME` **twice** (once to
 //! `$APPDIR`, once to `/media/developer`) and which one survives differs between the two profiles.
-//! `/proc` is `mount rw` in both, and read from inside the jail the link resolves jail-relative —
+//! `/proc` is `mount rw` in both, and read from inside the jail the link resolves jail-relative -
 //! exactly the path the app must use. Kodi's `CPlatformWebOS::GetHomePath()` does the same thing.
 
 use std::path::{Path, PathBuf};
@@ -28,13 +28,13 @@ use std::sync::OnceLock;
 
 /// May the ENVIRONMENT relocate this app's paths?
 ///
-/// Only in a build that is being steered from outside — the desktop simulator. A television
+/// Only in a build that is being steered from outside - the desktop simulator. A television
 /// binary, dev or release, resolves everything from the device, and this is a compile-time
 /// constant so that is not a policy but a guarantee.
 ///
 /// **The guarantee is load-bearing, and the reason is in `src/main.c`.** That file opens the event
 /// log, the crash log and the stderr capture before any Rust runs, and Rust's `log()` then appends
-/// to the first of those and the panic hook to the second — so on a television the two languages
+/// to the first of those and the panic hook to the second - so on a television the two languages
 /// MUST resolve to the same files. If the environment could move the Rust half, `main.c` would
 /// truncate the event log at one path while Rust wrote to another, and the log a crash report is
 /// built from would be missing whichever half you did not look at.
@@ -42,11 +42,11 @@ use std::sync::OnceLock;
 /// `main.c` used to name all three by ABSOLUTE LITERAL, and this constant was the whole guarantee
 /// on its own. It cannot be, now that the root varies per install ([`app_id`]): a second literal
 /// in C would be a second definition of a value that moves. So `main.c` calls
-/// [`wi_runtime_path`] instead — one resolver, asked from both languages — and this constant
+/// [`wi_runtime_path`] instead - one resolver, asked from both languages - and this constant
 /// keeps the other half of the promise, that the resolver's answer cannot be steered from outside
 /// on a television.
 ///
-/// This used to be two different gates for the same kind of override — `devtriggers` for the
+/// This used to be two different gates for the same kind of override - `devtriggers` for the
 /// runtime root, `hostsim` for the app dir. `devtriggers` is on in every dev TV build, so the
 /// split-brain above was reachable on the device; and a `--no-default-features --features hostsim`
 /// build had the opposite hole, writing its event log to a shared `/tmp` while the simulator
@@ -55,33 +55,33 @@ pub const ENV_STEERABLE: bool = cfg!(feature = "hostsim");
 
 /// The app id this project ships to users, and the one every install falls back to.
 ///
-/// It is a FALLBACK and a comparison value — never the answer on its own. See [`app_id`]: which
+/// It is a FALLBACK and a comparison value - never the answer on its own. See [`app_id`]: which
 /// app this process is depends on where it was installed, not on what it was compiled with.
 pub const STABLE_APP_ID: &str = "io.github.maclucky.webosiptv";
 
-/// The Developer Mode install dir. Only a last-resort fallback now — it is what the app used to
+/// The Developer Mode install dir. Only a last-resort fallback now - it is what the app used to
 /// hardcode, so it keeps the historical behaviour if `/proc` is somehow unreadable.
 const LEGACY_APP_DIR: &str = "/media/developer/apps/usr/palm/applications/io.github.maclucky.webosiptv";
 
-/// **Which install this process is** — `io.github.maclucky.webosiptv` for the app users get, or
+/// **Which install this process is** - `io.github.maclucky.webosiptv` for the app users get, or
 /// `io.github.maclucky.webosiptv.<flavour>` for a developer build sitting beside it on the same television.
 ///
 /// Read from the INSTALL DIRECTORY, not compiled in, and that is the whole design.
 ///
 /// The soundness argument is about OUR OWN package, not about firmware behaviour we cannot
 /// observe from a desk. `ci/mkipk.py` lays the payload down at `applications/<id>/` with the id
-/// taken from `appinfo.json`, and three independent gates assert the two agree — `mkipk.py` exits
+/// taken from `appinfo.json`, and three independent gates assert the two agree - `mkipk.py` exits
 /// if the staged directory does not match, `ci/check-package.py` re-derives the id FROM that
 /// directory and checks it against the staged descriptor and the control file, and `make deploy`
 /// checks it again before scp'ing. So the directory this binary is running from is the id its own
 /// package declared, which is the id webOS was asked to register. (Whether webOS additionally
-/// POLICES a mismatch — the usual claim, and a plausible one — is a firmware behaviour nothing in
+/// POLICES a mismatch - the usual claim, and a plausible one - is a firmware behaviour nothing in
 /// this repository can settle; `docs/two-installs.md` §6 keeps it on the device list rather than
 /// asserting it here.) Deriving the id here means:
 ///
 ///   * `pkg/webosiptv` stays ONE artifact. Nothing about the flavour reaches codegen, so there is
 ///     no second `--target-dir`, no second stamp, and no way for `make deploy` to ship a binary
-///     compiled for the other install — the identity comes from where it LANDS. That matters here
+///     compiled for the other install - the identity comes from where it LANDS. That matters here
 ///     specifically: this project's classic failure is the stale artifact that make thinks is
 ///     fresh (see the Makefile's `pkg/.build-config` comment), and a compiled-in id would have
 ///     added a fresh axis of it.
@@ -90,9 +90,9 @@ const LEGACY_APP_DIR: &str = "/media/developer/apps/usr/palm/applications/io.git
 ///
 /// The shape test is STRUCTURAL rather than name-based, exactly like [`macos_bundle_resources`]:
 /// the parent directory is the id only when ITS parent is literally `applications`. That is what
-/// makes both webOS prefixes answer (`/media/developer/apps/…` under Developer Mode and
-/// `/media/cryptofs/apps/…` under the Homebrew Channel) while a host build — where the binary sits
-/// in `target-sim/debug/` and the parent is named `debug` — falls through to the stable id instead
+/// makes both webOS prefixes answer (`/media/developer/apps/...` under Developer Mode and
+/// `/media/cryptofs/apps/...` under the Homebrew Channel) while a host build - where the binary sits
+/// in `target-sim/debug/` and the parent is named `debug` - falls through to the stable id instead
 /// of inventing an app called `debug`.
 ///
 /// **This function must never log, and nothing it calls may log.** `crate::eventlog::log` resolves the event
@@ -113,7 +113,7 @@ pub fn app_id() -> &'static str {
 
 /// The webOS app id implied by an executable path, or `None` when that path is not a webOS install.
 ///
-/// Split out from [`app_id`] purely so it is testable — `app_id` memoises into a process-wide
+/// Split out from [`app_id`] purely so it is testable - `app_id` memoises into a process-wide
 /// `OnceLock` and reads the real `current_exe`, neither of which a test can pin.
 fn installed_app_id(exe: &Path) -> Option<String> {
     let dir = exe.parent()?;
@@ -123,19 +123,19 @@ fn installed_app_id(exe: &Path) -> Option<String> {
     Some(dir.file_name()?.to_string_lossy().into_owned())
 }
 
-/// The flavour suffix of [`app_id`] — `None` for the app users get, `Some("debug")` for
+/// The flavour suffix of [`app_id`] - `None` for the app users get, `Some("debug")` for
 /// `io.github.maclucky.webosiptv.debug`.
 ///
 /// One definition, so no caller has to know how a flavour is spelled. Everything that must differ
-/// between two installs on one television — the runtime root, the session file, the plex.tv device
-/// name — asks this rather than parsing the id again.
+/// between two installs on one television - the runtime root, the session file, the plex.tv device
+/// name - asks this rather than parsing the id again.
 pub fn flavour() -> Option<&'static str> {
     app_id().strip_prefix(STABLE_APP_ID)?.strip_prefix('.')
 }
 
-/// The closed-enum sandbox fact for every telemetry event — `devmode` / `homebrew` / `unknown` —
+/// The closed-enum sandbox fact for every telemetry event - `devmode` / `homebrew` / `unknown` -
 /// derived from [`app_dir`]'s prefix rather than from a second read of `/proc/self/exe`. **Never
-/// the path itself**: the two real prefixes are `/media/developer/…` and `/media/cryptofs/…`, and
+/// the path itself**: the two real prefixes are `/media/developer/...` and `/media/cryptofs/...`, and
 /// a raw path is exactly the kind of value this app's telemetry never sends (see this module's own
 /// doc, and `diag::schema`'s "no field a caller can put a runtime string into"). `unknown` also
 /// covers the host build, where the binary sits under `target-sim/`.
@@ -150,16 +150,16 @@ pub fn install_kind() -> &'static str {
     }
 }
 
-/// The directory the running executable sits in — i.e. where the ipk's payload was installed.
+/// The directory the running executable sits in - i.e. where the ipk's payload was installed.
 ///
 /// `std::env::current_exe` IS the `/proc/self/exe` read on Linux, so this is the same syscall the
-/// reasoning above is about — it just also answers on a host build, where the simulator's fonts sit
+/// reasoning above is about - it just also answers on a host build, where the simulator's fonts sit
 /// next to the simulator binary rather than under a webOS install prefix.
 pub fn app_dir() -> &'static Path {
     &app_dir_resolved().0
 }
 
-/// Which rule [`app_dir`] took — the provenance the boot preamble's `appdir:` line names.
+/// Which rule [`app_dir`] took - the provenance the boot preamble's `appdir:` line names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AppDirSource {
     Env,
@@ -179,7 +179,7 @@ pub fn app_dir_line() -> String {
         AppDirSource::Env => format!("appdir: {} (WEBOSIPTV_APP_DIR)", dir.display()),
         AppDirSource::MacosBundle => format!("appdir: {} (macOS bundle)", dir.display()),
         AppDirSource::CurrentExe => format!("appdir: {} (from current_exe)", dir.display()),
-        // Not expected on device — worth a line in the log if it ever happens, because everything
+        // Not expected on device - worth a line in the log if it ever happens, because everything
         // that reads the payload from here on is reading a guess.
         AppDirSource::Fallback => format!("appdir: current_exe unreadable, falling back to {LEGACY_APP_DIR}"),
     }
@@ -189,7 +189,7 @@ fn app_dir_resolved() -> &'static (PathBuf, AppDirSource) {
     static DIR: OnceLock<(PathBuf, AppDirSource)> = OnceLock::new();
     DIR.get_or_init(|| {
         // The simulator's binary lives in `target/<profile>/`, which is not where `appfont.ttf`
-        // and the icons are — those ship in `pkg/`. Rather than copy assets around on every
+        // and the icons are - those ship in `pkg/`. Rather than copy assets around on every
         // build, the simulator is told where the payload is. Compile-time gated, so a television
         // build has no such override and resolves exactly as documented above.
         if ENV_STEERABLE {
@@ -202,7 +202,7 @@ fn app_dir_resolved() -> &'static (PathBuf, AppDirSource) {
         }
         if let Ok(exe) = std::env::current_exe() {
             // A macOS **application bundle** puts the executable in `Contents/MacOS/` and its
-            // payload in `Contents/Resources/` — the layout every Mac tool, `codesign` included,
+            // payload in `Contents/Resources/` - the layout every Mac tool, `codesign` included,
             // expects. So on that one platform "next to the binary" is the wrong answer by one
             // hop, and getting it wrong is the SILENT font failure this module's doc opens with:
             // `text.rs` would fall through to a system face and still log `ok=1`.
@@ -224,15 +224,15 @@ pub fn in_app_dir(name: &str) -> PathBuf {
     app_dir().join(name)
 }
 
-/// `…/Contents/Resources` when `exe` is the executable of a macOS **application bundle**, else
-/// `None` — the one platform where the app's payload is not the executable's own directory.
+/// `.../Contents/Resources` when `exe` is the executable of a macOS **application bundle**, else
+/// `None` - the one platform where the app's payload is not the executable's own directory.
 ///
 /// Structural, not name-based: it asks whether the two directories above the binary are literally
 /// `Contents/MacOS`, which is what makes something a bundle. A `WebosIptv.app` renamed by the
 /// person it was sent to still answers yes; a loose `webosiptv-sim` in `target-sim/debug` still
 /// answers no, so the dev loop is untouched.
 ///
-/// Must not log — [`runtime_dir`] calls the sibling below and that function's doc explains why a
+/// Must not log - [`runtime_dir`] calls the sibling below and that function's doc explains why a
 /// log there deadlocks the process. Cheap enough to keep both on the same rule.
 #[cfg(target_os = "macos")]
 fn macos_bundle_resources(exe: &Path) -> Option<PathBuf> {
@@ -259,7 +259,7 @@ fn macos_bundle_resources(_exe: &Path) -> Option<PathBuf> {
 /// The default runtime root is `/tmp`, which is right on the television and wrong for a Mac app
 /// somebody was sent: `auth.json` lives in this root (see [`session_candidates`]), and `/tmp` is
 /// swept, so the friend would re-do the QR sign-in every few days without ever learning why. The
-/// app bundle itself is not an option either — it may sit in a read-only `/Applications`, and on a
+/// app bundle itself is not an option either - it may sit in a read-only `/Applications`, and on a
 /// signed bundle writing inside `Contents/` invalidates the signature.
 ///
 /// `None` unless this really is a bundle: a plain `make sim-run` keeps taking `/tmp` (or its
@@ -310,26 +310,26 @@ fn resolve_user_data_dir(
     Some(base.join(name))
 }
 
-/// Where this instance's RUNTIME surfaces live — the `webosiptv-*` dev triggers, the remote FIFO,
+/// Where this instance's RUNTIME surfaces live - the `webosiptv-*` dev triggers, the remote FIFO,
 /// and the logs Rust itself writes (the event log and the panic hook's crash log). Not the app's
 /// own files; that is [`app_dir`].
 ///
 /// On the television `src/main.c` opens those same logs before any Rust runs, through
-/// [`wi_runtime_path`] — the same resolver, so the two languages cannot disagree — and
+/// [`wi_runtime_path`] - the same resolver, so the two languages cannot disagree - and
 /// [`ENV_STEERABLE`] guarantees that answer is not steerable from outside.
 ///
 /// `/tmp` on the television for the app users install, always; `/tmp/<app id>` for a developer
 /// build sitting beside it (see [`resolve_runtime_dir`]). Both jail profiles mount the shared
 /// system `/tmp`, and every tool, skill and harness recipe addresses those files by absolute path
-/// — which is why `make -s print-rundir` exists rather than a second copy of the rule.
+/// - which is why `make -s print-rundir` exists rather than a second copy of the rule.
 ///
 /// `WEBOSIPTV_RUNTIME_DIR` overrides it for exactly one reason: the television serializes the whole
 /// dev loop. There is one set, one app instance, and `tests/run.py` jobs kill each other's app if
-/// two run at once — so the single global `/tmp/webosiptv-*` namespace has never cost anything. A
+/// two run at once - so the single global `/tmp/webosiptv-*` namespace has never cost anything. A
 /// host build removes that constraint, and then the namespace becomes the constraint instead: two
 /// simulators booting different screens would read one `webosiptv-library` trigger and drain one
 /// FIFO. Pointing each instance at its own directory is what lets several run side by side, and
-/// keeps every existing recipe — the trigger names, the `ok`/`down`/`ck:X,Y` tokens — working
+/// keeps every existing recipe - the trigger names, the `ok`/`down`/`ck:X,Y` tokens - working
 /// verbatim inside it.
 ///
 /// The override is gated on [`ENV_STEERABLE`], so a television build of any feature set resolves
@@ -337,7 +337,7 @@ fn resolve_user_data_dir(
 ///
 /// **This function must never log, and nothing it calls may log.** `crate::eventlog::log` resolves the event
 /// log's path through this very `OnceLock`, so a `log()` inside the initializer re-enters
-/// `get_or_init` on the lock it is already holding and deadlocks the process — before the first
+/// `get_or_init` on the lock it is already holding and deadlocks the process - before the first
 /// line of output exists to explain why. That is not hypothetical: it is what the first version of
 /// this function did, and the simulator hung silently at startup with an empty log and no stderr.
 ///
@@ -362,7 +362,7 @@ pub fn runtime_dir() -> &'static Path {
 /// directory and neither can be made to go second: the app runs jailed under its own uid and
 /// creates its logs there, while `tests/run.py` and `tools/tv-session.sh` arm triggers there over
 /// ssh **as root, before the app has ever booted**. Whoever gets there first sets the mode, so any
-/// owner-only mode locks the other one out — and the Makefile already records what that failure
+/// owner-only mode locks the other one out - and the Makefile already records what that failure
 /// looks like from the other side: a root-owned event log the jailed app cannot write leaves the
 /// file at 0 bytes, which every tool in this repo reports as "no line found", i.e. exactly like a
 /// total regression. `/tmp` on the television is itself 1777 for this reason; a per-install root
@@ -375,7 +375,7 @@ pub fn runtime_dir() -> &'static Path {
 /// could not open, which is the same signal by a slower route.
 fn ensure_runtime_dir(d: &Path) {
     // Television builds only, and only for a flavoured root. A host build's root is created by
-    // `make sim` and written by exactly one uid, so there is nothing here to solve — and
+    // `make sim` and written by exactly one uid, so there is nothing here to solve - and
     // `WEBOSIPTV_RUNTIME_DIR` can point anywhere, including inside somebody's home directory,
     // which is not a thing to silently chmod 1777.
     if ENV_STEERABLE || d == Path::new(DEFAULT_RUNTIME_DIR) {
@@ -423,7 +423,7 @@ const DEFAULT_RUNTIME_DIR: &str = "/tmp";
 ///
 /// Split out solely so it is testable: `runtime_dir` memoises into a process-wide `OnceLock`, so a
 /// test that set the variable and called it would fix the value for every LATER test in the same
-/// binary — including the one asserting that an empty trigger reads as `Some("")`, which resolves
+/// binary - including the one asserting that an empty trigger reads as `Some("")`, which resolves
 /// its own write path through this same root. That is the crate-global-seam hazard `testlock`
 /// exists for, and here it is avoidable outright rather than lockable.
 ///
@@ -435,16 +435,16 @@ const DEFAULT_RUNTIME_DIR: &str = "/tmp";
 /// **A flavoured install gets its own root, and the app users get keeps `/tmp` byte for byte.**
 /// Two installs on one television otherwise share one event log (the launching one TRUNCATES it),
 /// one append-only crash log with nothing in it saying which binary faulted, one `webosiptv-remote`
-/// FIFO, one `:8910` capture listener and one trigger namespace — a set of collisions whose
+/// FIFO, one `:8910` capture listener and one trigger namespace - a set of collisions whose
 /// symptom is never an error, only evidence about the wrong process. Because every one of those
 /// surfaces already composes on [`in_runtime_dir`], moving the ROOT separates all of them at once,
 /// and leaves the ~40 trigger names, the `dev::DIAG` list and every existing recipe spelled
-/// exactly as they are — inside the new root.
+/// exactly as they are - inside the new root.
 ///
 /// **The separator is a DOT and that is load-bearing.** `dev::any_trigger_present` scans this
 /// directory for entries beginning `webosiptv-` to decide whether the boot is automated, so a
 /// sibling root spelled with a HYPHEN after `webosiptv` would itself read as an armed trigger and
-/// silently suppress the OTHER install's who's-watching picker — changing which screen it boots to,
+/// silently suppress the OTHER install's who's-watching picker - changing which screen it boots to,
 /// with no log line anywhere. The full app id contains no `webosiptv-`, so it cannot. (The bad name
 /// is deliberately not written out here: the trigger catalog this project publishes is a `grep` for
 /// that very prefix over these sources, so spelling it would mint a catalog entry for a trigger
@@ -463,7 +463,7 @@ fn resolve_runtime_dir(
                 return PathBuf::from(d);
             }
         }
-        // An explicit instance root still wins — `make sim-shot` and every parallel-simulator
+        // An explicit instance root still wins - `make sim-shot` and every parallel-simulator
         // recipe pass one, and a bundle handed a root must honour it.
         if let Some(p) = bundled {
             return p;
@@ -475,20 +475,20 @@ fn resolve_runtime_dir(
     Path::new(DEFAULT_RUNTIME_DIR).join(app_id)
 }
 
-/// **The runtime root, for `src/main.c`** — write `<root>/<name>` into `out`, and return 1 on
+/// **The runtime root, for `src/main.c`** - write `<root>/<name>` into `out`, and return 1 on
 /// success or 0 if it does not fit.
 ///
 /// This exists because of an ordering fact and a guarantee that used to be a promise. `main.c`
 /// opens the event log, the crash log and the stderr capture before a single line of Rust runs,
-/// and it cannot see this module — so until now it named all three by absolute literal, and
+/// and it cannot see this module - so until now it named all three by absolute literal, and
 /// [`ENV_STEERABLE`] existed to guarantee that Rust could never resolve them anywhere else. With a
 /// per-install runtime root that guarantee has to hold across a value that is no longer constant,
-/// and two definitions of it — one in C, one here — is precisely the split-brain that doc warns
+/// and two definitions of it - one in C, one here - is precisely the split-brain that doc warns
 /// about: `main.c` would truncate a log at `/tmp` while Rust appended to another, and the crash
 /// report you built afterwards would be missing whichever half you did not look at.
 ///
 /// So there is still exactly one resolver, and C asks it. Calling into the staticlib this early is
-/// safe — it touches no global beyond its own `OnceLock` and allocates — and it must stay that
+/// safe - it touches no global beyond its own `OnceLock` and allocates - and it must stay that
 /// way: like everything on this path it MUST NOT log, or it re-enters the lock it is initializing
 /// (see [`runtime_dir`]).
 ///
@@ -545,10 +545,10 @@ pub mod runtime_file {
     ];
 }
 
-/// A runtime surface inside [`runtime_dir`], addressed by its bare name (`webosiptv-…` included).
+/// A runtime surface inside [`runtime_dir`], addressed by its bare name (`webosiptv-...` included).
 ///
 /// Everything that opens one of these goes through here, so the instance root has a single
-/// definition. `dev.rs` is still the only module allowed to name a TRIGGER — this is the path
+/// definition. `dev.rs` is still the only module allowed to name a TRIGGER - this is the path
 /// arithmetic underneath it, shared with the remote FIFO.
 pub fn in_runtime_dir(name: &str) -> PathBuf {
     runtime_dir().join(name)
@@ -556,13 +556,13 @@ pub fn in_runtime_dir(name: &str) -> PathBuf {
 
 /// Candidate locations for the persisted session, best first.
 ///
-/// Ordering rationale — the first entry must stay first: `/media/developer/<id>-auth.json` is
+/// Ordering rationale - the first entry must stay first: `/media/developer/<id>-auth.json` is
 /// deliberately OUTSIDE the app directory because appinstalld replaces that directory wholesale on
 /// every (re)install, which silently signed the user out. It is writable in the Developer Mode
 /// jail and it survives a reinstall, so it remains the preferred home.
 ///
 /// Under the production jail that path does not exist, and the app dir itself is `root:5000 0755`
-/// — not writable by the jailed uid. `/media/internal` is `mount rw` in that profile and is the
+/// - not writable by the jailed uid. `/media/internal` is `mount rw` in that profile and is the
 /// only persistent writable location there, so it is the second candidate. The app dir is third
 /// on the theory that a future layout may make it writable; the legacy in-app-dir path comes next
 /// and is read-only in practice (migration).
@@ -570,12 +570,12 @@ pub fn in_runtime_dir(name: &str) -> PathBuf {
 /// **The runtime directory is the LAST candidate on a device install, after every durable path
 /// above, and that order is load-bearing.** A 2026-09-20 report from an unrooted webOS 4.4.3 set
 /// (Dev Mode, no ssh) signed in successfully and then hit `session: could not persist to ANY
-/// candidate path` — none of `/media/developer`, `/media/internal` or the app dir accepted the
+/// candidate path` - none of `/media/developer`, `/media/internal` or the app dir accepted the
 /// write on that jail. But the app's own event log was reaching
 /// `/tmp/<app id>/webosiptv-events.log` on that same television: `/tmp` is `mount rw, mode 1777`
 /// in both jail profiles and the per-install runtime root under it is app-owned (see
 /// [`runtime_dir`]), so it is the one thing this jail class guarantees is writable. It is offered
-/// last, never first, because `/tmp` is swept on reboot — a save that lands only here is NOT
+/// last, never first, because `/tmp` is swept on reboot - a save that lands only here is NOT
 /// durable, and every candidate ahead of it that DOES survive a reboot must keep winning exactly
 /// as before. (`session::save_legacy_fallback_locked`'s caller already reports a save this
 /// uncertain through the same non-durable/`Uncertain` class an unconfirmed canonical commit uses,
@@ -583,8 +583,8 @@ pub fn in_runtime_dir(name: &str) -> PathBuf {
 pub fn session_candidates() -> Vec<PathBuf> {
     let mut v = Vec::new();
     // A steerable build gets its own identity, first. Without this every concurrent simulator
-    // falls through the two `/media/…` candidates (absent off-device) into `in_app_dir`, i.e. the
-    // repo's own `pkg/auth.json` — so they SHARE one session file containing `account_token`,
+    // falls through the two `/media/...` candidates (absent off-device) into `in_app_dir`, i.e. the
+    // repo's own `pkg/auth.json` - so they SHARE one session file containing `account_token`,
     // `server.token` and `user.token`. That breaks the very concurrency the instance root exists
     // to provide (one simulator switching profile mutates another's), and it drops live
     // credentials into the payload directory of a public repository. The `.gitignore` entry for
@@ -594,7 +594,7 @@ pub fn session_candidates() -> Vec<PathBuf> {
     }
     // Named for THIS install, so two flavours on one television do not share one sign-in. The
     // file holds the client identifier, the account token, every per-(user, server) PMS token and
-    // the Plex Home roster — sharing it means a sign-out in the developer build signs you out of
+    // the Plex Home roster - sharing it means a sign-out in the developer build signs you out of
     // the build you watch with, a profile switch in one decides who the other resumes as, and two
     // processes race a file whose `save()` is best-effort. The two installs are genuinely two
     // devices; `plex::identity::device_name` is what keeps them distinguishable in the account's
@@ -607,7 +607,7 @@ pub fn session_candidates() -> Vec<PathBuf> {
     ]);
     // The legacy in-app-dir path is a MIGRATION source and it names the SHIPPED install's directory
     // by literal, so only the shipped install may offer it. `session::load` takes the first
-    // candidate that EXISTS — so on a flavoured install, whose own three files are all absent on
+    // candidate that EXISTS - so on a flavoured install, whose own three files are all absent on
     // first boot, this entry would hand a developer build the other install's account token, every
     // per-(user, server) PMS token and the Plex Home roster, which it would then write back under
     // its own name. Exactly the sharing the three lines above exist to prevent, arriving through
@@ -615,7 +615,7 @@ pub fn session_candidates() -> Vec<PathBuf> {
     if flavour().is_none() {
         v.push(PathBuf::from(LEGACY_APP_DIR).join("auth.json"));
     }
-    // A device install (never `ENV_STEERABLE`) gets the runtime directory too — but only here,
+    // A device install (never `ENV_STEERABLE`) gets the runtime directory too - but only here,
     // strictly after every candidate above, so an install whose durable jail path IS writable
     // (today's ordinary case) sees no change at all. A steerable build already has this same path
     // FIRST for a different reason (see above) and must not get it a second time, or two entries
@@ -628,7 +628,7 @@ pub fn session_candidates() -> Vec<PathBuf> {
     v
 }
 
-/// Candidate locations for the telemetry decision, best first — **the same tier as the session**,
+/// Candidate locations for the telemetry decision, best first - **the same tier as the session**,
 /// and that choice has a consequence worth stating rather than discovering.
 ///
 /// It goes here, not in [`runtime_dir`], because the runtime root on a television is `/tmp` and
@@ -636,17 +636,17 @@ pub fn session_candidates() -> Vec<PathBuf> {
 /// person who had already answered, which is both worse for them and the exact pattern that makes
 /// a consent prompt feel like nagging rather than a choice.
 ///
-/// **So it outlives an uninstall** — webOS gives a native app no uninstall hook, so nothing can
-/// clear this on the way out — **but not a sign-out**: the decision belongs to the account that
+/// **So it outlives an uninstall** - webOS gives a native app no uninstall hook, so nothing can
+/// clear this on the way out - **but not a sign-out**: the decision belongs to the account that
 /// gave it, and `auth::forget_account` unlinks every candidate here (through `telemetry::forget`)
 /// when that account signs out, so a change of owner IS a fresh question. That is also why the
 /// file holds a DECISION and, only after opt-in, one random identifier PER CHANNEL (the
-/// crash-report id and the analytics id, each owned by its own switch) — and why withdrawing a
+/// crash-report id and the analytics id, each owned by its own switch) - and why withdrawing a
 /// channel DELETES its identifier rather than merely disabling it. Recorded in `PRIVACY.md`,
 /// because a user cannot audit a file they cannot reach.
 ///
 /// Outside the `webosiptv-` trigger namespace by construction, since it is not in the runtime root
-/// at all — so it cannot suppress the who's-watching picker the way anything in `/tmp` would.
+/// at all - so it cannot suppress the who's-watching picker the way anything in `/tmp` would.
 /// Where the image cache may live (`imgcache`), best first: the session file's search
 /// order, as DIRECTORIES. `/media/developer` under the Developer Mode jail, `/media/internal`
 /// under the production one, the app dir as a theory, and a steerable build's instance root
@@ -796,7 +796,7 @@ pub fn private_file(
 
 /// The spool, beside the decision that authorised it.
 ///
-/// **Same directories, same search order, different file** — and not merged into
+/// **Same directories, same search order, different file** - and not merged into
 /// `telemetry.json` for one reason: the decision is small, rewritten rarely and must survive
 /// anything, while the spool is up to half a megabyte rewritten after every flush. Sharing one file
 /// would put the consent record itself at risk on every single upload, which is the one piece of
@@ -819,8 +819,8 @@ pub fn telemetry_spool_candidates() -> Vec<PathBuf> {
 /// How much of the append-only crash log has already been reported, beside the spool.
 ///
 /// **A watermark rather than a truncation, and that is the whole reason this file exists.**
-/// `webosiptv-crash.log` is append-only and survives a relaunch BY DESIGN — `docs/agent-reference.md` names it the
-/// thing to read after a crash-and-restart and `tools/crash-report.sh` parses it — so the telemetry
+/// `webosiptv-crash.log` is append-only and survives a relaunch BY DESIGN - `docs/agent-reference.md` names it the
+/// thing to read after a crash-and-restart and `tools/crash-report.sh` parses it - so the telemetry
 /// reader may not consume it. Recording a byte offset lets a human and this module read the same
 /// file without either disturbing the other.
 ///
@@ -858,7 +858,7 @@ pub fn telemetry_candidates() -> Vec<PathBuf> {
         in_app_dir("telemetry.json"),
     ]);
     // No legacy/migration entry, and no `flavour().is_none()` arm: there is no older location, and
-    // the two installs are two devices — a decision taken in one is not a decision about the other.
+    // the two installs are two devices - a decision taken in one is not a decision about the other.
     v
 }
 
@@ -925,7 +925,7 @@ mod tests {
     }
 
     /// The runtime root is a path in the shared, sticky `/tmp`, and `ensure_runtime_dir` chmods it
-    /// 1777 — so what stands at that name decides what gets widened. A co-resident app that can
+    /// 1777 - so what stands at that name decides what gets widened. A co-resident app that can
     /// create names in `/tmp` can plant a SYMLINK there to a directory this app owns (a plain
     /// `set_permissions` follows it and makes the TARGET 1777), or pre-create the directory under
     /// its own uid. Neither may be chmod'ed: only a real directory this uid owns is ours to widen.
@@ -1103,7 +1103,7 @@ mod tests {
     }
 
     /// The app id is the INSTALL DIRECTORY's name, and only when that directory really is a webOS
-    /// `applications/<id>` — which is what stops a host build from calling itself `debug`.
+    /// `applications/<id>` - which is what stops a host build from calling itself `debug`.
     ///
     /// Both install prefixes must answer, because which one a set uses is not ours to choose:
     /// Developer Mode unpacks under `/media/developer/apps`, the Homebrew Channel under
@@ -1127,7 +1127,7 @@ mod tests {
             super::installed_app_id(Path::new(beta)).as_deref(),
             Some("io.github.maclucky.webosiptv.beta")
         );
-        // A host build: the parent is `debug`, whose parent is `target-sim` — not `applications`.
+        // A host build: the parent is `debug`, whose parent is `target-sim` - not `applications`.
         // Without this arm the simulator would mint an app called `debug`, take `/tmp/debug` as its
         // runtime root and look for a session file named after it.
         assert!(super::installed_app_id(Path::new(
@@ -1139,7 +1139,7 @@ mod tests {
             "/A/WebosIptv.app/Contents/MacOS/webosiptv-sim"
         ))
         .is_none());
-        // …and the real process resolves to SOMETHING, on either platform, without panicking.
+        // ...and the real process resolves to SOMETHING, on either platform, without panicking.
         assert!(!super::app_id().is_empty());
     }
 
@@ -1175,7 +1175,7 @@ mod tests {
     }
 
     /// Two installs must not share a runtime namespace, and the app users get must keep `/tmp`
-    /// exactly — every skill recipe, harness glob and doc line addresses those paths absolutely.
+    /// exactly - every skill recipe, harness glob and doc line addresses those paths absolutely.
     ///
     /// The dot in the flavoured root is asserted on purpose: `dev::any_trigger_present` scans the
     /// root for entries starting `webosiptv-`, so a root spelled with a hyphen there would read as
@@ -1211,7 +1211,7 @@ mod tests {
 
     /// An absent or empty `WEBOSIPTV_RUNTIME_DIR` must resolve to the television's `/tmp`. Empty
     /// matters on its own: `FOO= cmd` sets the variable to an empty string rather than unsetting
-    /// it, and joining a name onto an empty root yields a RELATIVE path — trigger reads would then
+    /// it, and joining a name onto an empty root yields a RELATIVE path - trigger reads would then
     /// silently follow the process's working directory.
     #[test]
     fn absent_or_empty_runtime_root_is_the_television() {
@@ -1249,7 +1249,7 @@ mod tests {
         );
     }
 
-    /// The bundle detector must answer on SHAPE — `…/Contents/MacOS/<exe>` — and must not be
+    /// The bundle detector must answer on SHAPE - `.../Contents/MacOS/<exe>` - and must not be
     /// fooled by a binary that merely sits in a directory called `MacOS`, nor confused by the
     /// bundle having been renamed. Only meaningful where the function has a body.
     #[test]
@@ -1268,7 +1268,7 @@ mod tests {
         );
     }
 
-    /// Two instances given different roots must not share a namespace — the whole point of the
+    /// Two instances given different roots must not share a namespace - the whole point of the
     /// override. Asserted on the composed trigger path, not just the root, because that is what
     /// actually collides.
     #[test]
@@ -1284,7 +1284,7 @@ mod tests {
         assert!(a.is_absolute() && b.is_absolute());
     }
 
-    /// A television build must not be relocatable by the environment at all — `src/main.c` opens
+    /// A television build must not be relocatable by the environment at all - `src/main.c` opens
     /// the logs through [`super::wi_runtime_path`], i.e. through this very function, so an
     /// environment that could move one half would move only that half's later reads. Compile-time
     /// half of the [`super::ENV_STEERABLE`] guarantee.
@@ -1305,7 +1305,7 @@ mod tests {
 
     /// Two installs must not share one sign-in. The file holds the client identifier, the account
     /// token, every per-(user, server) PMS token and the Plex Home roster, so a shared one means a
-    /// sign-out in the developer build signs you out of the build you watch with — and two
+    /// sign-out in the developer build signs you out of the build you watch with - and two
     /// processes racing a best-effort `save()`.
     ///
     /// Asserted on the property (the two id's candidate lists are disjoint where it matters)
@@ -1324,7 +1324,7 @@ mod tests {
             a.iter().all(|p| !b.contains(p)),
             "{a:?} and {b:?} share a session file"
         );
-        // …and the real list really is built that way, whichever install this binary is.
+        // ...and the real list really is built that way, whichever install this binary is.
         let real = super::session_candidates();
         assert!(
             real.iter()
@@ -1334,7 +1334,7 @@ mod tests {
         );
         // The WHOLE list, not just the entries built from the id. The legacy in-app-dir candidate
         // is a literal naming the shipped install's directory, and `session::load` takes the first
-        // candidate that EXISTS — so on a flavoured install, whose own files are absent on first
+        // candidate that EXISTS - so on a flavoured install, whose own files are absent on first
         // boot, an ungated legacy entry silently adopts the other install's sign-in. Asserting only
         // the first two entries (which this test did) cannot see that.
         if super::flavour().is_some() {
@@ -1357,8 +1357,8 @@ mod tests {
             c.len() >= 2,
             "a single hardcoded path is the bug this list exists to fix"
         );
-        // Holds for both arms: the television's first candidate is `/media/developer/…`, and a
-        // steerable build's is the instance root — neither is inside the app dir.
+        // Holds for both arms: the television's first candidate is `/media/developer/...`, and a
+        // steerable build's is the instance root - neither is inside the app dir.
         assert!(
             !c[0].starts_with(super::app_dir()),
             "the preferred session path must not live inside the app dir ({})",
@@ -1368,7 +1368,7 @@ mod tests {
     }
 
     /// The runtime-dir fallback (2026-09-20 field report: every durable candidate refused the
-    /// write on an unrooted webOS 4.4.3 set) must be the LAST candidate on a device install — so
+    /// write on an unrooted webOS 4.4.3 set) must be the LAST candidate on a device install - so
     /// a set whose durable jail path IS writable, which is every set this list already served,
     /// keeps landing on that durable candidate first and sees no change in behaviour. A steerable
     /// build (the simulator) keeps its own copy of this same path FIRST instead, for the
@@ -1409,11 +1409,11 @@ mod tests {
     }
 
     /// `hostsim-suite-fails-on-polluted-canonical-root`: an un-redirected test must never resolve
-    /// the canonical store to the machine-wide `runtime_dir().join("state")` — that path is
+    /// the canonical store to the machine-wide `runtime_dir().join("state")` - that path is
     /// `/tmp/state` by default, shared across every worktree, every concurrent `cargo test`
     /// process and any running `make sim` on the same machine, and it is exactly where
     /// `async_persistence`'s own suite (and any other un-redirected test) used to leave a real
-    /// `session.json` behind for the *next* test run to read as a genuine signed-in record —
+    /// `session.json` behind for the *next* test run to read as a genuine signed-in record -
     /// which is what made `app::bridge::tests::account_to_settings_never_unfreezes_the_host` and
     /// `app::bridge::tests::the_settings_surface_owns_input_and_walks_its_own_stack` fail on a
     /// dirty machine while passing clean. Before the fix (reverting `persistent_state_root()` to
@@ -1422,7 +1422,7 @@ mod tests {
     #[test]
     fn an_unredirected_test_never_resolves_the_shared_runtime_state_dir() {
         let _serial = crate::testlock::serial();
-        // No `redirect_persistent_state_root_for_test` call here — this is the un-redirected path
+        // No `redirect_persistent_state_root_for_test` call here - this is the un-redirected path
         // every test takes unless it opts into its own directory.
         let root = super::persistent_state_root();
         assert_ne!(
@@ -1443,7 +1443,7 @@ mod tests {
 
     /// The scratch default is stable within one process (so a test that calls
     /// `persistent_state_root()` twice without redirecting sees the same directory), and it is
-    /// actually usable — created, not just named.
+    /// actually usable - created, not just named.
     #[test]
     fn the_scratch_default_is_stable_and_exists() {
         let _serial = crate::testlock::serial();
@@ -1459,16 +1459,16 @@ mod tests {
 ///
 /// **Test builds never resolve this to the machine-wide runtime dir by accident.** A test that
 /// calls [`redirect_persistent_state_root_for_test`] gets the directory it asked for; a test that
-/// does not gets [`test_default_persistent_state_root`] — a directory keyed by this process's pid,
+/// does not gets [`test_default_persistent_state_root`] - a directory keyed by this process's pid,
 /// the same idiom `session::fallback_file()` already uses for `auth.json`. Before this existed, an
 /// un-redirected test reached `runtime_dir().join("state")`, i.e. the real, shared `/tmp/state`
-/// (`ENV_STEERABLE` is `cfg!(feature = "hostsim")`, so this was every `hostsim` test) — writable by
+/// (`ENV_STEERABLE` is `cfg!(feature = "hostsim")`, so this was every `hostsim` test) - writable by
 /// every worktree, every concurrent `cargo test` run and any running `make sim` on the same
 /// machine, and readable by an unrelated test's `session::prepare_load`/`ReadState` mapping as a
 /// real signed-in record. That cross-run pollution is what made
 /// `app::bridge::tests::account_to_settings_never_unfreezes_the_host` and
 /// `app::bridge::tests::the_settings_surface_owns_input_and_walks_its_own_stack` fail on a machine
-/// whose `/tmp/state/session.json` happened to be dirty, while the exact same suite passed clean —
+/// whose `/tmp/state/session.json` happened to be dirty, while the exact same suite passed clean -
 /// neither test, nor anything in this module, was wrong.
 #[allow(dead_code)] // Stage A storage root; connected by Session/Consent integration.
 pub fn persistent_state_root() -> PathBuf {

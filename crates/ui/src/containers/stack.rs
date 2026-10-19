@@ -1,7 +1,7 @@
 //! `NavStack` (restructure spec §6.2): a stack of `Entry`s under one `Transition`. `request` captures
 //! the top's `ReturnState` NOW and parks the op; the op APPLIES at the transition's commit point
 //! (`Immediate`: the same commit; `PageDip`: the floor), producing the §3.4 lifecycle sequence as
-//! DATA — a list of [`Life`] steps the dispatcher executes (construct through the one `Mounter`,
+//! DATA - a list of [`Life`] steps the dispatcher executes (construct through the one `Mounter`,
 //! publish `Mount` and its effects in the post-commit drain, retire the bodies). A `PageDip` may
 //! construct its pending destination during the OUT half so a recording painter can warm text;
 //! the body remains staged, outside the live stack, and its lifecycle/effects still begin only at
@@ -11,7 +11,7 @@
 //! Identity: an `EntryId` is minted when the entry is created and survives body eviction; an
 //! `InstanceId` is minted at mount by the dispatcher (the `Minter` is `Navigation`'s). Eviction at
 //! `CAP` drops the oldest body below the top (its `Unmount` is delivered, its inflight retired);
-//! the entry stays, and a Pop that reaches it remounts from its `ReturnState` — which is what
+//! the entry stays, and a Pop that reaches it remounts from its `ReturnState` - which is what
 //! `an_evicted_entry_keeps_its_focus_identity_on_remount` grades.
 
 use tv_machine::machine::{EntryId, GroupId, Host, InstanceId, Leave, NavOp, RequestId, Stamped};
@@ -51,7 +51,7 @@ pub struct Entry<H: Host> {
 
 struct Pending<H: Host> {
     op: NavOp<H::Arg>,
-    /// The top at request time — `cancel(from)` withdraws only if the top has not moved.
+    /// The top at request time - `cancel(from)` withdraws only if the top has not moved.
     from: Option<EntryId>,
     /// A destination which did not already exist in the stack, constructed early solely so its
     /// text can be recorded. It becomes an ordinary entry at the transition floor.
@@ -116,7 +116,7 @@ impl<H: Host> NavStack<H> {
         self.pending.is_some()
     }
 
-    /// **Is the COMMITTED stack a settled `Root(arg)`** — one entry, that entry MOUNTED (a body,
+    /// **Is the COMMITTED stack a settled `Root(arg)`** - one entry, that entry MOUNTED (a body,
     /// not merely a bare `Entry` waiting for the apply arm's `Mount`), `same_instance` `arg`, and
     /// nothing pending? This is the one definition `is_inert`'s `Root` arm and
     /// `app/bridge.rs::top_settled_on` both answer from, so a caller asking "has the reset to
@@ -130,7 +130,7 @@ impl<H: Host> NavStack<H> {
             && self.entries[0].inst.is_some()
     }
 
-    /// Withdraw whatever is parked, unconditionally — for a reset that is about to empty the
+    /// Withdraw whatever is parked, unconditionally - for a reset that is about to empty the
     /// stack out from under it. A pending op that survived a reset would apply, at its own floor,
     /// over a tree the reset already emptied (`Navigation::reset_for_profile`'s own doc: "the next
     /// `Root` rebuilds the tree" is only true if nothing older is still queued to run first).
@@ -142,12 +142,12 @@ impl<H: Host> NavStack<H> {
     /// Queue an op (§6.2): the top's `ReturnState` is captured NOW, the transition is asked to
     /// run, and the newest request wins. `ret` is what the dispatcher read off the engine.
     ///
-    /// **A redundant request is inert** — dropped before it touches `pending` or the transition —
+    /// **A redundant request is inert** - dropped before it touches `pending` or the transition -
     /// which is what lets a per-frame caller simply ask for what it wants every frame without
     /// re-kicking a `PageDip` that has nothing left to do (`Popover`/`FirstRunConsent` mounting
     /// and unmounting forever behind a repeated `Root(Profiles)` was the shape of the bug this
     /// closes: the transition never reached `Idle`, so its own floor kept re-covering and
-    /// re-orphaning whatever was presented over it — TV 2026-09-17). See [`Self::is_inert`].
+    /// re-orphaning whatever was presented over it - TV 2026-09-17). See [`Self::is_inert`].
     pub fn request(&mut self, op: NavOp<H::Arg>, ret: ReturnState<H::Elem, H::Memory>) {
         if self.is_inert(&op) {
             return;
@@ -166,19 +166,19 @@ impl<H: Host> NavStack<H> {
 
     /// **Is `op` a no-op right now?** Two independent reasons, either enough on its own:
     ///
-    /// - Nothing is pending, and the COMMITTED stack already satisfies `op` — `Root(arg)` with the
-    ///   stack exactly `[arg]` AND THAT ENTRY MOUNTED ([`Self::root_settled`] — a bodyless single
+    /// - Nothing is pending, and the COMMITTED stack already satisfies `op` - `Root(arg)` with the
+    ///   stack exactly `[arg]` AND THAT ENTRY MOUNTED ([`Self::root_settled`] - a bodyless single
     ///   entry is not yet the `Mount` the apply arm would still owe it, so that request is NOT
     ///   inert), `SelectTab(arg)` with the top the root and the root `same_instance` `arg`, or
     ///   `PopTo(id)` naming the entry already on top.
-    /// - Something IS pending, and it is the same kind of op with a `same_instance` argument — a
+    /// - Something IS pending, and it is the same kind of op with a `same_instance` argument - a
     ///   third `Root(Profiles)` while a `Root(Profiles)` is already parked asks nothing new.
     ///
     /// A *different* pending op is never inert this way: the newest request still replaces it
     /// (sign-out and a profile switch depend on newest-wins over whatever the previous frame
     /// parked). `Root`/`SelectTab`/`PopTo` are the three the redundant per-frame followers in
     /// `app/run.rs` ask for. `Push`/`Replace` are the two that MINT a destination, and a repeat of
-    /// one while it is pending is a landing re-asking for the page it is already waiting on — the
+    /// one while it is pending is a landing re-asking for the page it is already waiting on - the
     /// player pushed by `start_playback`, then again by `update`'s plan landing while the route
     /// still names the page under the dip. Replacing the pending op there would drop the body the
     /// dip-out already prepared ([`Self::stage_pending_target`]) and prepare a fresh one, and the
@@ -367,7 +367,7 @@ impl<H: Host> NavStack<H> {
         Enter::Fresh {
             // A pushed page has never been seen: `FirstInGroup` ignores any cursor remembered
             // for this `(EntryId, GroupId)`, which a `ContainerGroup`'s `Seat::Remembered` would
-            // otherwise read back — a page that shares neither entry nor group with anything else
+            // otherwise read back - a page that shares neither entry nor group with anything else
             // does not need the distinction, but `Push` mints a fresh `EntryId` per page here, so
             // this arm cannot itself observe the leak `FocusTarget`'s doc on `machine.rs`
             // describes; it is fixed here anyway because `Enter::Fresh` means "never seen" for
@@ -378,8 +378,8 @@ impl<H: Host> NavStack<H> {
 
     /// Same as [`Self::fresh`], for the ONE mint that always arrives FROM the visible strip: a
     /// `SelectTab` cover-and-mint (a tab press with an existing root already up). Unlike a
-    /// `Push`/`Root` mint — which may land under a page-level slide that hides an instant focus
-    /// placement, or after a boot with no prior focus to glide from — this mint's origin is
+    /// `Push`/`Root` mint - which may land under a page-level slide that hides an instant focus
+    /// placement, or after a boot with no prior focus to glide from - this mint's origin is
     /// always the strip's own currently-focused pill, so `FocusTarget::FirstInGroupAnimated`
     /// reports the same seat as a deliberate directional move (`By::Dir`) rather than a restore
     /// snap. See the variant's doc on `machine.rs` for the bug this replaced.
@@ -450,7 +450,7 @@ impl<H: Host> NavStack<H> {
                     .map(|e| e.id)
                     .collect();
                 if above.is_empty() {
-                    // Already the top: nothing to unwind — but a target whose body was dropped
+                    // Already the top: nothing to unwind - but a target whose body was dropped
                     // still owes the same `Mount` the general path below gives it, or the op
                     // that named it (which `is_inert` deliberately did NOT drop, precisely
                     // because the entry is bodyless) would leave the page unmounted for good.
@@ -473,7 +473,7 @@ impl<H: Host> NavStack<H> {
                 out.push(Life::Ev(target, ScreenEvent::Enter(Enter::Restored)));
             }
             NavOp::Root(arg) => {
-                // A TRUE replace: every entry, including the root, leaves for good — unless the
+                // A TRUE replace: every entry, including the root, leaves for good - unless the
                 // stack is already exactly `[arg]`, which is the one case with nothing to replace
                 // (a `PopTo(root)` no-op, same as below). A Login/Profiles-shaped root that a
                 // later `Root` merely COVERED (the old shared `Root`/`SelectTab` arm's behaviour)
@@ -503,7 +503,7 @@ impl<H: Host> NavStack<H> {
                 // The strip's pill semantics: unwind to whatever the root already is (every entry
                 // ABOVE it leaves for good, top-down), then either restore that root (it is
                 // already `arg`) or cover-and-mint a fresh entry over it. The root itself is never
-                // retired — BACK off a pressed pill still returns to it.
+                // retired - BACK off a pressed pill still returns to it.
                 let root = self.root().map(|e| e.id);
                 let above: Vec<EntryId> = self
                     .entries
@@ -555,7 +555,7 @@ impl<H: Host> NavStack<H> {
             }
             NavOp::Present(_) => {
                 // a modal surface is the `ModalStack`'s to present; on a page stack it is a Push
-                // with no chrome argument — never reached, `Navigation` routes it
+                // with no chrome argument - never reached, `Navigation` routes it
             }
             NavOp::Cancel => {}
         }
@@ -596,7 +596,7 @@ impl<H: Host> NavStack<H> {
         }
     }
 
-    /// The entry a `NavOp::Pop` would reveal — what a BACK's chrome question is asked about.
+    /// The entry a `NavOp::Pop` would reveal - what a BACK's chrome question is asked about.
     pub fn under_top(&self) -> Option<&Entry<H>> {
         self.entries.iter().rev().nth(1)
     }

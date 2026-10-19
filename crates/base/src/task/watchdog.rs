@@ -169,8 +169,8 @@ pub(super) fn enter_label(label: &'static BlockingLabel) -> LabelScope {
 
 // Dedicated label-only entry points: neither asserts nor grants permission to block. The texts
 // are also how the fatal policy recognises a GPU phase (`runtime_check::Issue::Hang`): every
-// stretch of the frame whose cost is the GL implementation's — drawing, a framebuffer
-// readback, the swap — carries one of them, or a CPU rasterizer's time lands as `unlabeled`.
+// stretch of the frame whose cost is the GL implementation's - drawing, a framebuffer
+// readback, the swap - carries one of them, or a CPU rasterizer's time lands as `unlabeled`.
 #[cfg(feature = "threadcheck")]
 const DRAW_LABEL: &str = "frame draw";
 #[cfg(feature = "threadcheck")]

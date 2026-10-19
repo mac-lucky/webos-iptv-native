@@ -4,8 +4,8 @@
 //!
 //! Everything the app links names its library in `DT_NEEDED`, and the dynamic loader treats a
 //! missing entry as fatal: the process dies at `exec()`, before `main`, before the event log is
-//! open. That is exactly the failure a webOS 5 television gives today — `libAcbAPI.so.1` was
-//! deleted at 5.0 and every FFmpeg SONAME moved a major — and it presents to the user as "the
+//! open. That is exactly the failure a webOS 5 television gives today - `libAcbAPI.so.1` was
+//! deleted at 5.0 and every FFmpeg SONAME moved a major - and it presents to the user as "the
 //! app does nothing", with no log line to read and nothing to report.
 //!
 //! `DT_NEEDED` also cannot express "either of these". One binary cannot depend on
@@ -27,12 +27,12 @@
 //! [`dynlib!`] takes a block shaped exactly like the `extern "C"` block it replaces and emits an
 //! `unsafe fn` of the same name and signature for each entry, so call sites do not change. The
 //! generated `load()` is all-or-nothing: it resolves every symbol or it
-//! reports which are missing and leaves the table empty. Callers must gate on that result —
+//! reports which are missing and leaves the table empty. Callers must gate on that result -
 //! `ff::boot()` does, and `ff::demux()` refuses when it failed.
 //!
 //! Calling a wrapper whose symbol never resolved is a bug in that gating, not a recoverable
 //! condition, so it logs the symbol name and panics rather than jumping through a null pointer.
-//! The alternative — returning a per-signature sentinel — would let a missing symbol travel as a
+//! The alternative - returning a per-signature sentinel - would let a missing symbol travel as a
 //! plausible-looking value into the media pipeline, which is the harder failure to diagnose of
 //! the two, on a device where diagnosis means reading a log over ssh.
 #![allow(dead_code)]
@@ -45,16 +45,16 @@ use std::ptr::null_mut;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
 /// `RTLD_NOW | RTLD_GLOBAL`. NOW because a lazily-bound miss would surface as a jump into the
-/// resolver at an arbitrary later moment — the whole point here is to learn at load time. GLOBAL
+/// resolver at an arbitrary later moment - the whole point here is to learn at load time. GLOBAL
 /// because these libraries satisfy each other's imports (libavformat needs libavcodec needs
 /// libavutil) and because the ACB path wants its symbols visible to anything loaded after it.
 ///
 /// From `libc`, not hand-written: the flags are not the same numbers everywhere. `0x100` is
-/// RTLD_GLOBAL on glibc but RTLD_FIRST on Darwin — and this module's unit tests run on Darwin, so
+/// RTLD_GLOBAL on glibc but RTLD_FIRST on Darwin - and this module's unit tests run on Darwin, so
 /// a hardcoded constant would have meant the tests exercised a different mode than the device.
 const RTLD_NOW_GLOBAL: libc::c_int = RTLD_NOW | RTLD_GLOBAL;
 
-/// An opened library. Not `Drop` — nothing here is ever closed, deliberately: the media libraries
+/// An opened library. Not `Drop` - nothing here is ever closed, deliberately: the media libraries
 /// stay mapped for the life of the process, and `dlclose` on a library with live pipeline threads
 /// inside it is a way to unmap code that is executing.
 #[derive(Clone, Copy)]
@@ -66,13 +66,13 @@ impl Handle {
     /// Try each SONAME in order, returning the first that opens **and which one it was**.
     ///
     /// Order is by preference, not by age: put the SONAME you expect on the firmware you most
-    /// care about first. It matters only when a device carries both, which does happen —
+    /// care about first. It matters only when a device carries both, which does happen -
     /// releases 5.3.1 and 6.4.0 keep a `libcurl.so.5` compat alias beside the real
     /// `libcurl.so.4`, so a list that asked for `.so.4` first would still be answered on a set
     /// where `.so.5` also resolves.
     ///
     /// The name comes back with the handle rather than being recovered by a second pass, because
-    /// a second pass means calling `dlopen` again — which bumps the library's reference count and
+    /// a second pass means calling `dlopen` again - which bumps the library's reference count and
     /// costs a real open on every candidate that was skipped.
     pub fn open<'a>(candidates: &[&'a str]) -> Option<(Handle, &'a str)> {
         Self::open_in(None, candidates)
@@ -89,12 +89,12 @@ impl Handle {
     /// As [`open`], but resolving names inside `dir` when one is given.
     ///
     /// `dir` is how the BUNDLED FFmpeg is found: those libraries live beside the binary, which is
-    /// on no library search path, so a bare SONAME would either fail or — worse, on webOS 11,
-    /// which ships FFmpeg 6 itself — silently open the television's copy instead of ours. An
+    /// on no library search path, so a bare SONAME would either fail or - worse, on webOS 11,
+    /// which ships FFmpeg 6 itself - silently open the television's copy instead of ours. An
     /// absolute path makes "which library did we get" structural rather than a matter of search
     /// order. (The `-wi` build suffix is the second half of that guarantee.)
     /// `dir` is a `Path`, not a `&str`, because the caller's app directory comes from
-    /// `paths::app_dir()` and a `.to_str()` on the way in has a `None` branch — one that would
+    /// `paths::app_dir()` and a `.to_str()` on the way in has a `None` branch - one that would
     /// silently turn "our bundled FFmpeg" into "whatever the loader finds".
     pub fn open_in<'a>(dir: Option<&Path>, candidates: &[&'a str]) -> Option<(Handle, &'a str)> {
         for name in candidates {
@@ -117,7 +117,7 @@ impl Handle {
     /// As [`open`], but only a library that is **already mapped** into the process
     /// (`RTLD_NOLOAD`): the first candidate somebody else already loaded, never a fresh load.
     ///
-    /// For asking questions of the library another component is using — SDL `dlopen`s EGL
+    /// For asking questions of the library another component is using - SDL `dlopen`s EGL
     /// `RTLD_LOCAL`, so `RTLD_DEFAULT` cannot see it, and loading a second copy (or a different
     /// implementation under a candidate SONAME) would answer about state that library does not
     /// own. `RTLD_NOW` because glibc requires one of LAZY/NOW alongside NOLOAD; the mode of an
@@ -217,10 +217,10 @@ pub fn load_into(
 }
 
 /// The C symbol a wrapper resolves: its own name, or an explicit override. Two wrappers may name
-/// the SAME symbol — which is how a variadic C function is bound here: one wrapper per call shape,
+/// the SAME symbol - which is how a variadic C function is bound here: one wrapper per call shape,
 /// each naming the concrete types of its own trailing argument.
 ///
-/// **Concrete types, but still declared `...`** — see the macro's `$dots` note. Spelling the
+/// **Concrete types, but still declared `...`** - see the macro's `$dots` note. Spelling the
 /// trailing argument out is not the same as dropping the ellipsis, and on Apple ARM64 the
 /// difference is a SIGSEGV; this doc used to say the opposite in its last line and that is the bug
 /// it cost.
@@ -250,7 +250,7 @@ macro_rules! dynlib_sym {
 /// # A VARIADIC C function: put `...` where C puts it, and spell the rest
 ///
 /// Everything **after** the ellipsis is an argument this wrapper passes through the variadic part
-/// of the call — the trailing argument's type is fixed by the option id, which is how one C symbol
+/// of the call - the trailing argument's type is fixed by the option id, which is how one C symbol
 /// is bound as more than one wrapper:
 ///
 /// ```ignore
@@ -260,13 +260,13 @@ macro_rules! dynlib_sym {
 ///
 /// That reads oddly and it is deliberate: it mirrors `curl.h`, where `h` and `opt` are the only
 /// NAMED parameters and everything else arrives through `va_arg`. Getting this wrong is not a
-/// style matter — the ellipsis selects a calling convention. **Apple's ARM64 ABI passes variadic
+/// style matter - the ellipsis selects a calling convention. **Apple's ARM64 ABI passes variadic
 /// arguments on the STACK** while named ones go in registers, so declaring all three as named
 /// leaves libcurl reading whatever was on the stack and dereferencing it: `EXC_BAD_ACCESS` inside
 /// `_platform_strlen`, from a `dlopen`'d library, with nothing in the app's own log.
 ///
 /// It was latent for exactly as long as the desktop build could not open a libcurl at all, and it
-/// surfaced the moment one could — on the FIRST plex.tv call, i.e. sign-in, i.e. the first thing a
+/// surfaced the moment one could - on the FIRST plex.tv call, i.e. sign-in, i.e. the first thing a
 /// new user does. ARM32 (the television) and x86-64 pass these two ways identically, which is
 /// precisely why no amount of device testing could have found it.
 #[macro_export]
@@ -333,7 +333,7 @@ macro_rules! dynlib {
             $( $vis static $fname: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut()); )*
 
             /// Open the first candidate SONAME that exists and resolve every required symbol.
-            /// `dir` scopes the search to one directory — see `Handle::open_in`.
+            /// `dir` scopes the search to one directory - see `Handle::open_in`.
             $vis fn load(dir: Option<&std::path::Path>) -> $crate::dynlib::Loaded {
                 $crate::dynlib::load_into(
                     dir,
@@ -355,14 +355,14 @@ macro_rules! dynlib {
 }
 
 /// One dispatching wrapper, in the two shapes a C function comes in. Split out of [`dynlib!`]
-/// because the choice is per FUNCTION, and a `macro_rules` arm chooses per INVOCATION — so the
+/// because the choice is per FUNCTION, and a `macro_rules` arm chooses per INVOCATION - so the
 /// parameter list is handed over as tokens and matched again here.
 ///
 /// Both arms are the same three steps: load the resolved pointer, refuse loudly if the load gate
 /// was skipped, transmute to the C signature and call. They differ only in that signature.
 #[macro_export]
 macro_rules! dynlib_wrapper {
-    // C-VARIADIC — the `...` sits where `curl.h` puts it, and every argument after it is passed
+    // C-VARIADIC - the `...` sits where `curl.h` puts it, and every argument after it is passed
     // through the variadic part of the call. See `dynlib!`'s doc for why this is not cosmetic.
     (
         $(#[$fmeta:meta])*
@@ -389,13 +389,13 @@ macro_rules! dynlib_wrapper {
     ) => {
         $(#[$fmeta])*
         #[inline]
-        // The C symbol name IS the contract — `sws_getContext` cannot be spelled any other way.
+        // The C symbol name IS the contract - `sws_getContext` cannot be spelled any other way.
         // As an `extern` block these were exempt from the style lint; as generated Rust functions
         // they are not.
         #[allow(non_snake_case)]
         $vis unsafe fn $fname ( $($arg : $argty),* ) $(-> $ret)? {
             // Relaxed, not Acquire: an Acquire load emits a full `dmb ish` on this ARM core, on
-            // EVERY FFmpeg call. It buys nothing here — the table is published by `ff::boot()` on
+            // EVERY FFmpeg call. It buys nothing here - the table is published by `ff::boot()` on
             // the main thread before any pipeline thread exists, and `thread::spawn` is itself the
             // synchronising edge for the workers.
             let p = $modname::$fname.load(std::sync::atomic::Ordering::Relaxed);
@@ -413,7 +413,7 @@ mod tests {
     use super::*;
 
     /// The host's own C library, so these tests need no fixture and run wherever `cargo test`
-    /// does. They grade the LOADER, not FFmpeg — the dev machine has neither libavformat nor a
+    /// does. They grade the LOADER, not FFmpeg - the dev machine has neither libavformat nor a
     /// television, which is exactly why the loader is the part worth testing here.
     #[cfg(target_os = "macos")]
     static HOST_LIBC: &[&str] = &["libSystem.B.dylib"];
@@ -517,7 +517,7 @@ mod tests {
     ];
 
     /// The half that needs `RTLD_NOLOAD`: a library that EXISTS but nothing loaded is not
-    /// answered — and is still not mapped afterwards, so `open_loaded` did not load it either.
+    /// answered - and is still not mapped afterwards, so `open_loaded` did not load it either.
     /// Only then does a real `open` load it, after which `open_loaded` finds it.
     ///
     /// Grades the first candidate that is not mapped AND exists. Never skips: a host where none

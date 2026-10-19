@@ -13,7 +13,7 @@ fn close(a: [f32; 3], b: [f32; 3], eps: f32) -> bool {
     a.iter().zip(b).all(|(x, y)| (x - y).abs() <= eps)
 }
 
-/// The corner sources a ground has to survive — the same hostile set
+/// The corner sources a ground has to survive - the same hostile set
 /// `widgets_ambient_ground_tests.rs` grades the wash against.
 fn hostile() -> Vec<[f32; 3]> {
     vec![
@@ -28,7 +28,7 @@ fn hostile() -> Vec<[f32; 3]> {
     ]
 }
 
-/// A field whose cells are whatever the caller says, latched, with no texture — every case below
+/// A field whose cells are whatever the caller says, latched, with no texture - every case below
 /// that needs a live `UnderlayField` needs exactly this much of one.
 fn latched(cells: [[f32; 3]; N]) -> UnderlayField {
     let mut f = UnderlayField::new();
@@ -42,7 +42,7 @@ fn latched(cells: [[f32; 3]; N]) -> UnderlayField {
 /// This is the test that makes stage B's migration a change of SHAPE and not of palette: a ground
 /// built from 120 cells and a ground built from four corners must answer the same colour for the
 /// same source, or the same page would change hue the day it switched mechanism. It is exact, not
-/// approximate, because both sides call `AmbientWash::keyed_one` — a near-miss here would mean
+/// approximate, because both sides call `AmbientWash::keyed_one` - a near-miss here would mean
 /// somebody re-typed the cap or the lean.
 #[test]
 fn the_ground_grade_is_the_washs_own_grade_cell_for_cell() {
@@ -139,11 +139,11 @@ fn the_reconstruction_interpolates_the_cell_centres() {
 }
 
 /// **A cubic may not invent a colour the page does not contain.** Catmull-Rom overshoots a step,
-/// and an overshoot here is not ringing you squint at — it is a 128px band of a colour that is not
+/// and an overshoot here is not ringing you squint at - it is a 128px band of a colour that is not
 /// in the frame. The bracket clamp is what stops it, and this is the case that would notice if it
 /// were removed (it did, when the clamp was taken out to check).
 ///
-/// The input is a HARD EDGE in both axes — quadrants — and not a checkerboard, which is the
+/// The input is a HARD EDGE in both axes - quadrants - and not a checkerboard, which is the
 /// obvious worst case and the wrong one: alternating knots give every Catmull-Rom tangent a zero
 /// centred difference, and a Hermite segment with zero tangents is monotone. The overshoot lives
 /// in the flat segment NEXT TO a step, where one tangent sees the step and the other does not.
@@ -264,7 +264,7 @@ fn a_latch_is_idempotent_and_reset_re_arms_it() {
 
     f.latch_from_corners(b, Grade::Dim);
     assert_eq!(f.cells, first, "a second latch must not move a latched field");
-    // And the frame path takes the same early exit — which is also why this case can call it at
+    // And the frame path takes the same early exit - which is also why this case can call it at
     // all: `gfx::field_kick` is never reached, so no GL context is needed.
     assert_eq!(
         f.latch_from_frame(Grade::Ground, None),
@@ -316,7 +316,7 @@ fn the_field_samples_greener_where_the_green_is() {
 /// **A dim at weight zero is the scrim the app already draws, to the bit.**
 ///
 /// Not "close enough": a field tinted to black still runs `wi_dither`, which would put ±1 LSB of
-/// noise on a surface whose entire content is one code — visible as grain on a full-screen scrim,
+/// noise on a surface whose entire content is one code - visible as grain on a full-screen scrim,
 /// and bought for nothing. So weight 0 is a different DRAW, and so is an unlatched field, which is
 /// what every one of these surfaces is on its first frame.
 #[test]
@@ -343,7 +343,7 @@ fn a_dim_at_weight_zero_is_todays_flat_scrim_to_the_bit() {
     assert_eq!(plan(true, -1.0, 1.0), Draw::Flat(theme::scrim_black(1.0)));
 }
 
-/// The texture is the grid magnified 4x per axis and OPAQUE — coverage is the tint's business, so
+/// The texture is the grid magnified 4x per axis and OPAQUE - coverage is the tint's business, so
 /// an alpha in here would be a second, silent one.
 #[test]
 fn the_texture_is_sixty_by_thirty_two_and_opaque() {
@@ -352,7 +352,7 @@ fn the_texture_is_sixty_by_thirty_two_and_opaque() {
     let px = texture_rgba(&[[0.25f32, 0.5, 0.75]; N]);
     assert_eq!(px.len(), TEX_W * TEX_H * 4);
     assert!(px.chunks_exact(4).all(|p| p[3] == 255), "every texel is opaque");
-    // A flat field magnifies to a flat texture — the reconstruction adds no structure of its own.
+    // A flat field magnifies to a flat texture - the reconstruction adds no structure of its own.
     let first = &px[0..3];
     assert!(
         px.chunks_exact(4).all(|p| p[0..3] == *first),
@@ -360,7 +360,7 @@ fn the_texture_is_sixty_by_thirty_two_and_opaque() {
     );
 }
 
-/// The separable texture is [`reconstruct`] per texel TO THE BIT — the speed-up shares the x pass
+/// The separable texture is [`reconstruct`] per texel TO THE BIT - the speed-up shares the x pass
 /// between the texels of a column and may not move a single byte. Structured, steep and
 /// out-of-range cells, so the clamp, the edge extrapolation and every knot position all bind.
 #[test]
@@ -392,15 +392,15 @@ fn a_separable_texture_is_reconstruct_to_the_bit() {
 
 // ── The panel material (`draw_panel` / `panel_plan`) ─────────────────────────────────────────────
 
-/// A field latched through the REAL adopt path — cells, texture bytes and the luma table the
-/// panel's ceiling is solved against — from one flat display colour.
+/// A field latched through the REAL adopt path - cells, texture bytes and the luma table the
+/// panel's ceiling is solved against - from one flat display colour.
 fn latched_flat(rgb: [f32; 3]) -> UnderlayField {
     let mut f = UnderlayField::new();
     f.latch_sampled(&[rgb; N], Grade::Dim);
     f
 }
 
-/// **A panel's window into the field is its SCREEN rect over the screen size** — the only UV rect
+/// **A panel's window into the field is its SCREEN rect over the screen size** - the only UV rect
 /// under which the green at the page's bottom-left is still at the panel's bottom-left. Graded
 /// through a TRANSLATED painter as well, because the rect a panel is drawn at is the one its entry
 /// slide has moved, and a window keyed to the rest rect would slide the field WITH the panel.
@@ -445,7 +445,7 @@ fn an_unlatched_field_draws_the_flat_panel_material() {
 }
 
 /// **The ceiling is `ground_capped`'s rule, per panel**: a dark page keeps the full `PANEL_TINT`,
-/// a white one is lowered until its brightest texel under the panel lands on `PANEL_LUMA_MAX` —
+/// a white one is lowered until its brightest texel under the panel lands on `PANEL_LUMA_MAX` -
 /// and only the texels UNDER the panel count, so a bright edge elsewhere on the page does not dim
 /// a panel standing on dark ground.
 #[test]
@@ -485,7 +485,7 @@ fn the_panel_tint_is_capped_by_the_brightest_texel_under_the_panel() {
     assert!(tint(&edge, left)[0] < w, "light under the panel is");
 }
 
-/// WCAG relative luminance over display codes — `gfx::lin` is the same IEC transfer.
+/// WCAG relative luminance over display codes - `gfx::lin` is the same IEC transfer.
 fn rel(c: [f32; 3]) -> f32 {
     0.2126 * tv_gfx::gfx::lin(c[0]) + 0.7152 * tv_gfx::gfx::lin(c[1]) + 0.0722 * tv_gfx::gfx::lin(c[2])
 }

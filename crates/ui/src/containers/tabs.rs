@@ -1,5 +1,5 @@
 //! `TabContainer` (restructure spec §6.2): the shared top strip as a `Row` group the container
-//! contributes ABOVE the page's groups, over ONE shared `NavStack<PageDip>` — Home is the single
+//! contributes ABOVE the page's groups, over ONE shared `NavStack<PageDip>` - Home is the single
 //! root; a pill is `NavOp::SelectTab`, which covers-and-mints over the existing root rather than
 //! replacing it (`NavOp::Root` is the other half of that split: a true replace, root included,
 //! for a sign-in/sign-out/profile-switch reset rather than a peer press). The page declares
@@ -11,17 +11,17 @@
 //! geometry from the shared renderer. Removing a destination never renumbers another control.
 //!
 //! **A cover-and-mint's focus arrival always animates, whichever pill sent it** (issue #17,
-//! fixed 2026-09-28). `NavStack::apply`'s `SelectTab` "cover-and-mint" arm — a peer pill pressed
-//! while a DIFFERENT root is up, e.g. Home or Search → TV Shows — used `Self::fresh`
+//! fixed 2026-09-28). `NavStack::apply`'s `SelectTab` "cover-and-mint" arm - a peer pill pressed
+//! while a DIFFERENT root is up, e.g. Home or Search → TV Shows - used `Self::fresh`
 //! (`FocusTarget::FirstInGroup`, `By::Restore`) exactly like a `Push`/`Root` mint, which several
 //! screens (`library::LibraryScreen`'s `pop_from_rest`) treat as "restored to where it was" and
 //! do not animate. A tab press always arrives FROM the visible strip, so that read was never
 //! right the first time a tab is visited this session, and it produced a hard snap onto the
 //! first content tile with no transition. `Self::fresh_tab` (`FocusTarget::
 //! FirstInGroupAnimated`, `By::Dir`) is the fix: same seat, reported as a deliberate move, so the
-//! arrival animates the same as it already did for a Movies → TV Shows peer switch — which never
+//! arrival animates the same as it already did for a Movies → TV Shows peer switch - which never
 //! reaches `NavStack` at all (`app::bridge::nav_peer`'s early return: both are `AppArg::Library`,
-//! `same_instance` by `id()` alone regardless of section — see `registry.rs`), so its own
+//! `same_instance` by `id()` alone regardless of section - see `registry.rs`), so its own
 //! directional DOWN press into the grid was always `By::Dir` already. The fix is in the shared
 //! `SelectTab` mint path, not a TV Shows special case: it applies to every peer pill equally.
 //! See `machine.rs`'s doc on `FocusTarget::FirstInGroupAnimated` and the regression test
@@ -33,7 +33,7 @@ use super::super::Rect;
 use super::stack::NavStack;
 use super::transition::Transition;
 
-/// The strip's group id — a library constant so a page's `Link` can name it.
+/// The strip's group id - a library constant so a page's `Link` can name it.
 pub const STRIP: GroupId = GroupId(0xFFFF_0001);
 
 #[derive(Clone, Copy)]
@@ -75,7 +75,7 @@ impl<H: Host> TabContainer<H> {
         }
     }
 
-    /// The strip as a focus group — contributed above the page's when the page allows it.
+    /// The strip as a focus group - contributed above the page's when the page allows it.
     pub fn strip_group(&self) -> GroupSpec {
         let extent = self
             .strip
@@ -96,7 +96,7 @@ impl<H: Host> TabContainer<H> {
         }
     }
 
-    /// The entry the strip belongs to — the top page (the strip is chrome on the page).
+    /// The entry the strip belongs to - the top page (the strip is chrome on the page).
     pub fn strip_entry(&self) -> Option<EntryId> {
         self.stack.top().map(|e| e.id)
     }

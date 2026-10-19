@@ -1,7 +1,7 @@
 //! **The simulator's picture** (`webosiptv-simvideo`, with the clock sink armed): the video access
 //! units the clock sink already accepts are ALSO piped to a system `ffmpeg` child process, decoded
 //! there, and the frame whose presentation time the sink's clock has reached is composited UNDER
-//! the finished UI frame — exactly the arithmetic the television's compositor applies to its
+//! the finished UI frame - exactly the arithmetic the television's compositor applies to its
 //! hardware video plane and our transparent UI plane.
 //!
 //! **Why it exists.** The documentation's player figure has to show a real picture under the real
@@ -11,13 +11,13 @@
 //!
 //! **Why a child process, and why only in the simulator.** The host FFmpeg this crate links
 //! (`ci/build-ffmpeg.sh`) is built from the television's ONE component list, which has no video
-//! decoders — the TV decodes in hardware — and growing that list for a Mac would make the two
+//! decoders - the TV decodes in hardware - and growing that list for a Mac would make the two
 //! builds diverge. A system `ffmpeg` binary (`WEBOSIPTV_SIM_FFMPEG`, else `ffmpeg` on `PATH`) keeps
 //! the decode entirely outside this process and this crate's link line. `hostsim`-only: the
 //! television build does not contain this file.
 //!
 //! **What it costs, and the bound.** One 1920x1080 RGBA frame (8 MiB) crosses a pipe per decoded
-//! picture and is uploaded once when it becomes current — about what a poster upload costs, once
+//! picture and is uploaded once when it becomes current - about what a poster upload costs, once
 //! per video frame, on a Mac. The reader holds at most ONE frame ahead of the clock (it blocks
 //! until the clock reaches it), so a paused player holds a frozen picture and does no work, and
 //! the render thread only ever sees the latest frame.
@@ -37,7 +37,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// The decoded picture's size — the canvas. Letterboxed to it, whatever the stream's shape.
+/// The decoded picture's size - the canvas. Letterboxed to it, whatever the stream's shape.
 const W: usize = 1920;
 const H: usize = 1080;
 const FRAME_BYTES: usize = W * H * 4;
@@ -70,7 +70,7 @@ static SESSION: Mutex<Option<Session>> = Mutex::new(None);
 static GENERATION: AtomicU64 = AtomicU64::new(0);
 /// The container's codec as the Load payload named it: `true` = HEVC, else H.264.
 static HEVC: AtomicBool = AtomicBool::new(false);
-/// The clock the frames are presented against — the sink's `Clock::position_ns`.
+/// The clock the frames are presented against - the sink's `Clock::position_ns`.
 static CLOCK: OnceLock<fn() -> i64> = OnceLock::new();
 
 /// Every published frame's number, process-wide, so the render thread's texture cache can never

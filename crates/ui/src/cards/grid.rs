@@ -1,4 +1,4 @@
-//! [`Grid`] — the poster grid with a collapsing caption band under the focused row: six
+//! [`Grid`] - the poster grid with a collapsing caption band under the focused row: six
 //! `poster_grid::STYLE` columns by default, any column count / style / left edge through
 //! [`GridSpec`] (`poster_grid`'s `_in` functions are its geometry). The Collection page is its first
 //! adopter; [`ScrollMode::External`] serves a grid inside a document another owner scrolls.
@@ -345,7 +345,7 @@ impl Grid {
         self.reveal
     }
 
-    /// External mode: hand the grid the page it is drawn on — the first row's top in document
+    /// External mode: hand the grid the page it is drawn on - the first row's top in document
     /// space and the owner's document scroll. A no-op in [`ScrollMode::Own`].
     pub fn set_page(&mut self, top: f32, scroll: f32) {
         if self.spec.scroll == ScrollMode::External {

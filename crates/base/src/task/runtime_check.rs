@@ -25,7 +25,7 @@ pub(super) struct Policy {
 
 /// A blocking-call guard is fatal on every developer boot: a software renderer changes how long
 /// a frame takes, never whether a synchronous call belongs on the main thread. A two-second
-/// stall is fatal too, EXCEPT inside a GPU phase on a software renderer — there the time is the
+/// stall is fatal too, EXCEPT inside a GPU phase on a software renderer - there the time is the
 /// CPU rasterizer's (the CI simulator's first frames on Apple Software Renderer / llvmpipe),
 /// which says nothing about the television's Mali. A stall outside a GPU phase stays fatal.
 pub(super) fn fatal(dev: bool, policy: Policy, issue: Issue) -> bool {

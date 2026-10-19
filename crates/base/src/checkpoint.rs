@@ -2,7 +2,7 @@
 //!
 //! A transport (`stream`, `curlio`) knows how to wait for bytes; it does not
 //! know why its caller might stop wanting them. The ABR acquisition that owns a segment fetch does
-//! know — a playhead-funded reserve can run out, or the main thread can ask for a hold — but the
+//! know - a playhead-funded reserve can run out, or the main thread can ask for a hold - but the
 //! only instant it could hand a transport used to be one absolute deadline, fixed when the
 //! operation began. A wait already blocked in `poll`/`curl_multi_wait` could not learn that the
 //! answer had changed until that deadline, or bytes, arrived.

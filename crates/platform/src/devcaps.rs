@@ -1,19 +1,19 @@
-//! What this television can DECODE — the device's own codec table, read once at boot.
+//! What this television can DECODE - the device's own codec table, read once at boot.
 //!
 //! # Why the app asks the device instead of knowing
 //!
 //! The capability profile used to be a set of constants describing the author's television: HEVC
 //! yes, 4K yes, AAC/AC3/EAC3 yes. Every one of those claims is true on the 49SM9000PLA and was
 //! asserted to every server as if it were true of webOS. That is the bug class issue #22 named
-//! and `docs/plex-pass-audit.md` enumerates — **a claim true on the development environment,
-//! asserted as universal** — and the decode-capability assertion was its last standing member
+//! and `docs/plex-pass-audit.md` enumerates - **a claim true on the development environment,
+//! asserted as universal** - and the decode-capability assertion was its last standing member
 //! (the audit's closing section): a webOS set whose SoC lacks HEVC would be offered, and would
 //! direct-play, streams it cannot decode, and nothing here could catch it because the only
 //! device this project owns decodes everything the constants claimed.
 //!
 //! # Where it comes from
 //!
-//! `/etc/umediaserver/device_codec_capability_config.json` — published by the platform for its
+//! `/etc/umediaserver/device_codec_capability_config.json` - published by the platform for its
 //! own media stack, verified present on the dev set (webOS 4.5): per-codec rows with max
 //! width/height/framerate/bitrate for video, channel counts for audio. Read once at boot, the
 //! same shape as `webos::probe` (one file read, can never fail the boot, loud line either way).
@@ -21,21 +21,21 @@
 //! Two facts about the table shape the parse:
 //!
 //! * **Duplicate names are one codec.** The dev set lists BOTH `"H.265"` (4096x2304@120) and
-//!   `"HEVC"` (4096x2176@60) — same decoder, two rows, different numbers. Rows naming the same
+//!   `"HEVC"` (4096x2176@60) - same decoder, two rows, different numbers. Rows naming the same
 //!   codec are merged by MIN on every axis we consume, because over-claiming is the exact
 //!   failure mode this module exists to end.
 //! * **It cannot express bit depth.** No row carries one, so the profile's `bitDepth=10` claim
-//!   stays the constant it always was (see `plex/transcoder.rs::profile_for`) — the table can
+//!   stays the constant it always was (see `plex/transcoder.rs::profile_for`) - the table can
 //!   neither confirm nor deny it.
 //!
 //! Parsed with serde_json (already a dependency of the plex layer) rather than `webos.rs`'s
 //! hand scanner: this file is nested arrays of objects, not a flat string map. Any parse
-//! failure — or a shape we misread — lands on [`Caps::assumed`], never on a refused boot.
+//! failure - or a shape we misread - lands on [`Caps::assumed`], never on a refused boot.
 //!
 //! # The fallback is the old behavior, verbatim
 //!
 //! When the file is unreadable or unparseable, [`Caps::assumed`] restores EXACTLY the constants
-//! that shipped before this module existed — the 49SM9000PLA values, the only set ever measured
+//! that shipped before this module existed - the 49SM9000PLA values, the only set ever measured
 //! before this module. Misreading the table must degrade to yesterday's behavior, not invent a
 //! weaker television: the issue-#22 lesson cuts both ways, and a client that suddenly transcodes
 //! everything on a healthy 4K panel is as wrong as one that direct-plays HEVC to a SoC without it.
@@ -44,7 +44,7 @@ use std::sync::OnceLock;
 pub mod dv;
 
 /// The AUDIO codec set the buffer-feed PIPELINE decodes. This is the software half of a
-/// two-sided test — what our demuxer/payload path can feed, before asking whether this
+/// two-sided test - what our demuxer/payload path can feed, before asking whether this
 /// particular SoC can decode it. The live set is [`Caps::audio`] (this list ∩ the device's own
 /// codec table), and the ONE-definition rule lives with it: the Normal routing uses
 /// `plex::is_dp_audio_track` for membership and channel bounds, shared with the device profile.
@@ -63,23 +63,23 @@ const CAPS_TABLE: &str = "/etc/umediaserver/device_codec_capability_config.json"
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Caps {
     /// The SoC decodes HEVC. Gates the `hevc` arm of route.rs's direct-play test and the
-    /// hevc entries in BOTH profile codec lists (h264 needs no flag — every webOS SoC has it).
+    /// hevc entries in BOTH profile codec lists (h264 needs no flag - every webOS SoC has it).
     pub hevc: bool,
-    /// The video width/height upper bound — the per-axis MIN across the merged H.264 and HEVC
+    /// The video width/height upper bound - the per-axis MIN across the merged H.264 and HEVC
     /// rows, because both consumers apply one bound to EVERY codec at once: the profile's
     /// `*`-scoped limitation (a 1080p-only SoC must tell PMS 1920x1088 so 4K sources transcode
     /// down) and route.rs's local direct-play resolution gate. Taking the HEVC row alone
-    /// whenever one existed — as this first shipped — assumed the dev set's shape ("HEVC is the
+    /// whenever one existed - as this first shipped - assumed the dev set's shape ("HEVC is the
     /// tighter of the two decoders") as if it were universal: on a SoC with a 4K HEVC decoder
     /// beside 1080p-limited AVC (a real SoC shape) it advertised a 4K bound for h264, and PMS
-    /// would direct-play 4K H.264 onto a decoder that cannot handle it — issue #22's over-claim
+    /// would direct-play 4K H.264 onto a decoder that cannot handle it - issue #22's over-claim
     /// class, reintroduced by the module built to end it. The dev set's bound is unchanged:
     /// min((4096,2304), (4096,2176)) = (4096,2176).
     pub hevc_max: (u32, u32),
     /// **Per-codec `(maxWidth, maxHeight, maxFrameRate)` as the table states them**, H.264 and HEVC
     /// respectively, duplicate rows MIN-merged per axis, `0` on any axis the table did not say.
-    /// Added 2026-09-03 for ONE consumer — `engine::sink_envelope`, the Starfish Load's
-    /// `adaptiveStreaming` ceiling — and clamped there only when [`measured`] is true: the assumed
+    /// Added 2026-09-03 for ONE consumer - `engine::sink_envelope`, the Starfish Load's
+    /// `adaptiveStreaming` ceiling - and clamped there only when [`measured`] is true: the assumed
     /// fallback is `(0, 0, 0)` on purpose, so an unreadable table never clamps anything. The
     /// frame rate is the axis `docs/webos10-resource-allocation.md` names as the likely
     /// discriminator on webOS 10 (the raster was not: that set's own table claims 4096x2176 for
@@ -124,7 +124,7 @@ pub struct Caps {
 }
 
 impl Caps {
-    /// The 49SM9000PLA values — the only set ever measured before this module. Byte-for-byte,
+    /// The 49SM9000PLA values - the only set ever measured before this module. Byte-for-byte,
     /// these reproduce the profile the app has always sent (the transcoder test pins that), so
     /// an unreadable table changes nothing for any device that was working yesterday.
     pub fn assumed() -> Caps {
@@ -146,7 +146,7 @@ impl Caps {
         }
     }
 
-    /// Membership test on [`Caps::audio`] — `codec` already lowercase (PMS codec ids are).
+    /// Membership test on [`Caps::audio`] - `codec` already lowercase (PMS codec ids are).
     pub fn audio_has(&self, codec: &str) -> bool {
         self.audio.split(',').any(|c| c == codec)
     }
@@ -162,12 +162,12 @@ impl Caps {
         }
     }
 
-    /// The transcode-target chain's HEAD — the codec the profile asks PMS to ENCODE when a
+    /// The transcode-target chain's HEAD - the codec the profile asks PMS to ENCODE when a
     /// source must re-encode: `hevc` where the SoC decodes it (keeps 4K + HDR10 through a
     /// transcode), else `h264`. ONE definition on purpose: route.rs's /decision-unreachable
     /// Load-payload guess and retranscode's codec record must name the codec the profile
     /// actually asked the server to produce, and as three hand-copied `if caps().hevc`
-    /// expressions they could drift — a Load payload naming a codec the profile never requested
+    /// expressions they could drift - a Load payload naming a codec the profile never requested
     /// is exactly the payload/output mismatch of docs/plex-pass-audit.md row 1 (issue #22).
     /// `transcoder.rs::profile_for` builds the target list's head from this, and its test pins
     /// the agreement.
@@ -183,19 +183,19 @@ impl Caps {
 static CAPS: OnceLock<Caps> = OnceLock::new();
 /// Did [`probe`] READ the table, or is [`caps`] returning [`Caps::assumed`]?
 ///
-/// The two are indistinguishable from the values alone — on the 49SM9000PLA they are equal by
+/// The two are indistinguishable from the values alone - on the 49SM9000PLA they are equal by
 /// construction, and on every other set the fallback silently claims that set's profile. The event
 /// log says which happened, in one line at boot, and that was enough while a log was the only
 /// consumer. It stopped being enough when the diagnostics read-out started printing these values:
 /// its output format is a PHOTOGRAPH, from a television nobody here owns, and a panel that prints
 /// the dev set's decoder profile as if it had measured the reporter's is the [[silent-instrument-
-/// trap]] shape exactly — an instrument that cannot say it did not measure.
+/// trap]] shape exactly - an instrument that cannot say it did not measure.
 ///
 /// **`false` when `probe` has not run**, which covers host tests as well as a boot that never got
 /// here: "not measured" is the honest reading of both.
 static MEASURED: OnceLock<bool> = OnceLock::new();
 
-/// What this device decodes. Falls back to [`Caps::assumed`] if [`probe`] has not run — the
+/// What this device decodes. Falls back to [`Caps::assumed`] if [`probe`] has not run - the
 /// boot calls it first, so that path exists for host tests, not the TV.
 pub fn caps() -> &'static Caps {
     CAPS.get_or_init(Caps::assumed)
@@ -253,16 +253,16 @@ struct AudioRow {
     channels: u32,
 }
 
-/// Everything [`probe`] extracts, as a pure function of the file's text — testable without a
-/// filesystem. `None` means "this is not a codec table we understand" — bad JSON, no video rows,
-/// no H.264 row (every webOS SoC decodes it), or no stated width/height bound — and the caller
+/// Everything [`probe`] extracts, as a pure function of the file's text - testable without a
+/// filesystem. `None` means "this is not a codec table we understand" - bad JSON, no video rows,
+/// no H.264 row (every webOS SoC decodes it), or no stated width/height bound - and the caller
 /// falls back to [`Caps::assumed`] WHOLE: a misread must never splice assumed numbers into
 /// table-derived ones (that is how "(device table)" once logged invented values).
 fn parse(s: &str) -> Option<Caps> {
     let t: Table = serde_json::from_str(s).ok()?;
     if t.video_codecs.is_empty() {
         // A table that names no video codec is a shape we misread, not a TV that decodes
-        // nothing — fall back whole rather than deriving a client that transcodes everything.
+        // nothing - fall back whole rather than deriving a client that transcodes everything.
         return None;
     }
     let (mut h264, mut hevc, mut vp9, mut av1) = (false, false, false, false);
@@ -283,7 +283,7 @@ fn parse(s: &str) -> Option<Caps> {
             0
         };
         match canon(&row.name).as_str() {
-            // "H.265" and "HEVC" are duplicate rows for one decoder — MIN on every axis.
+            // "H.265" and "HEVC" are duplicate rows for one decoder - MIN on every axis.
             "h265" | "hevc" => {
                 hevc = true;
                 hevc_wh = (min_nz(hevc_wh.0, wh.0), min_nz(hevc_wh.1, wh.1));
@@ -312,18 +312,18 @@ fn parse(s: &str) -> Option<Caps> {
         }
     }
     // Every webOS SoC decodes H.264, so a table without the row (VP9-only, say) is a misread of
-    // the file, not a TV without the codec — and the reject must be WHOLE, like the empty-list
+    // the file, not a TV without the codec - and the reject must be WHOLE, like the empty-list
     // guard above: `transcoder.rs`'s profile doc promises exactly that, yet this used to splice
     // `assumed` axes into table-derived ones instead, so probe() logged invented numbers under
     // the "(device table)" provenance tag.
     if !h264 {
         return None;
     }
-    // The bound BOTH consumers apply to every codec at once — the per-axis MIN across the two
+    // The bound BOTH consumers apply to every codec at once - the per-axis MIN across the two
     // decoders' merged rows, so neither decoder is over-claimed (see the field doc).
     let hevc_max = (min_nz(h264_wh.0, hevc_wh.0), min_nz(h264_wh.1, hevc_wh.1));
     if hevc_max.0 == 0 || hevc_max.1 == 0 {
-        // Rows present but no stated bound on some axis: the same misread rule — fall back
+        // Rows present but no stated bound on some axis: the same misread rule - fall back
         // whole rather than publish half a table's numbers as the device's.
         return None;
     }
@@ -502,7 +502,7 @@ pub(crate) fn probed() -> bool {
     MEASURED.get().is_some()
 }
 
-/// Whether [`caps`] reflects THIS set's table or the assumed profile — see [`MEASURED`].
+/// Whether [`caps`] reflects THIS set's table or the assumed profile - see [`MEASURED`].
 pub fn measured() -> bool {
     *MEASURED.get().unwrap_or(&false)
 }
@@ -605,7 +605,7 @@ mod tests {
         assert!(c.hevc && c.vp9);
         // the dev set's VP9 row is its own bound, not folded into the shared one
         assert_eq!(c.vp9_row, (4096, 2304, 60));
-        // H.265 (4096x2304) merged with HEVC (4096x2176) by min — NOT either row verbatim.
+        // H.265 (4096x2304) merged with HEVC (4096x2176) by min - NOT either row verbatim.
         assert_eq!(c.hevc_max, (4096, 2176));
         // the per-codec rows, frame rate included: H.264 is one row; "H.265"+"HEVC" MIN-merge
         // to 4096x2176@60 (the 120 on the H.265 row loses to the HEVC row's 60)
@@ -647,7 +647,7 @@ mod tests {
 
     /// The merge is per-AXIS min, not a pick of the smaller row: a table whose duplicate rows
     /// each win one axis must combine into the bound neither row states alone. (The roomier
-    /// H.264 row is there because an h264-less table is rejected whole — and it must not win
+    /// H.264 row is there because an h264-less table is rejected whole - and it must not win
     /// an axis back from the hevc merge.)
     #[test]
     fn duplicate_rows_merge_by_min_on_every_axis() {
@@ -663,7 +663,7 @@ mod tests {
     }
 
     /// The issue-#22 shape the first cut of this module REINTRODUCED: a 4K HEVC decoder beside
-    /// 1080p-limited AVC. Bounding at the HEVC rows alone ("HEVC is the tighter decoder" — a
+    /// 1080p-limited AVC. Bounding at the HEVC rows alone ("HEVC is the tighter decoder" - a
     /// dev-set fact asserted as universal) advertised a `*`-scoped 3840x2160, and PMS would
     /// direct-play 4K H.264 onto the 1080p decoder. The bound is the min across BOTH.
     #[test]
@@ -679,7 +679,7 @@ mod tests {
         assert_eq!(c.hevc_max, (1920, 1088));
     }
 
-    /// A row that omits its dimensions says nothing — it must not zero out the rows that spoke.
+    /// A row that omits its dimensions says nothing - it must not zero out the rows that spoke.
     #[test]
     fn a_dimensionless_duplicate_does_not_erase_the_stated_bound() {
         let c = parse(
@@ -694,7 +694,7 @@ mod tests {
     }
 
     /// The issue-#22 case this module exists for: a SoC whose table has no HEVC row. The width/
-    /// height bound must then come from the H.264 row — telling PMS 3840 wide on a 1080p-only
+    /// height bound must then come from the H.264 row - telling PMS 3840 wide on a 1080p-only
     /// decoder would direct-play 4K H.264 onto hardware that cannot play it.
     #[test]
     fn a_soc_without_hevc_bounds_at_its_h264_row() {
@@ -723,7 +723,7 @@ mod tests {
     }
 
     /// Garbage in must not panic AND must not half-parse: every unusable input lands on None so
-    /// probe() falls back to the assumed profile whole — never spliced with it, which is how a
+    /// probe() falls back to the assumed profile whole - never spliced with it, which is how a
     /// misread once logged assumed numbers under the "(device table)" provenance tag. This runs
     /// during boot.
     #[test]
@@ -735,9 +735,9 @@ mod tests {
             "{}",
             r#"{"videoCodecs":[]}"#,
             r#"{"videoCodecs":"nope"}"#,
-            // no H.264 row (every webOS SoC decodes it — a misread, not a VP9-only television)
+            // no H.264 row (every webOS SoC decodes it - a misread, not a VP9-only television)
             r#"{"videoCodecs":[{"name":"VP9","maxWidth":3840,"maxHeight":2160}]}"#,
-            // rows, but no stated bound on an axis — half a table is not a device profile
+            // rows, but no stated bound on an axis - half a table is not a device profile
             r#"{"videoCodecs":[{"name":"H.264"}]}"#,
             r#"{"videoCodecs":[{"name":"H.264","maxWidth":1920}]}"#,
         ] {
@@ -758,7 +758,7 @@ mod tests {
         assert_eq!(c.audio, "aac,ac3,eac3");
     }
 
-    /// The fallback IS yesterday's constants — the values the app asserted for every device
+    /// The fallback IS yesterday's constants - the values the app asserted for every device
     /// before this module existed (the profile-string pin in plex/transcoder.rs is the other
     /// half of this contract).
     #[test]

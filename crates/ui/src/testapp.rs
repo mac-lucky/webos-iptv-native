@@ -1,5 +1,5 @@
 //! `TestApp` (restructure spec §15.1 `a_new_screen_is_unit_tested_with_no_sdl`): a screen under
-//! test with no SDL, no GL and no television — the dispatcher over the fixture rig (its stub
+//! test with no SDL, no GL and no television - the dispatcher over the fixture rig (its stub
 //! adapters and `FixtureMeasure`) on a `VirtualClock`. Every migrated screen ships one test
 //! through this: boot it, press keys, read what it did.
 #![cfg(any(test, feature = "test-support"))]
@@ -75,8 +75,8 @@ impl TestApp {
     }
 }
 
-/// Spec §15.1: a screen is driven through the whole contract — mount, input, structural ops,
-/// prepare, draw, the hit map — with nothing linked but the library.
+/// Spec §15.1: a screen is driven through the whole contract - mount, input, structural ops,
+/// prepare, draw, the hit map - with nothing linked but the library.
 #[test]
 fn a_new_screen_is_unit_tested_with_no_sdl() {
     let mut app = TestApp::boot();

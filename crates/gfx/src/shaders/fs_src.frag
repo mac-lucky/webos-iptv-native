@@ -32,31 +32,31 @@ uniform float u_rgb_cap;
 uniform highp float u_radR;
 uniform float u_rimw;
 uniform vec4 u_rimcol;
-// Extra rim weight on the side FACING THE LIGHT — straight up. 0 disables it and the branch below
+// Extra rim weight on the side FACING THE LIGHT - straight up. 0 disables it and the branch below
 // costs nothing. It exists because a container's top edge carries a brighter line than its
 // perimeter (the design system's `--glass-rim-light` over `--glass-rim`), and the honest way to
 // stop that line is to let it FADE where the surface turns away, not to scissor it: a hard cut
 // lands at the widest point of a cap and reads as the outline breaking off mid-air.
 uniform float u_rimtop;
-// THE CAPSULE OUTLINE — three circular arcs per corner, blended, and NOT a stadium. `w` of the
+// THE CAPSULE OUTLINE - three circular arcs per corner, blended, and NOT a stadium. `w` of the
 // second vector is the switch: 0 leaves every capsule in this app exactly the rounded rect it has
 // always been. The numbers are solved on the CPU (`ui::pill`, the port of the design project's
-// `pillPath.js`) because the big arc's radius comes out of a bisection — 73 000px on a 260x61
-// control — and a shader is the wrong place for it.
+// `pillPath.js`) because the big arc's radius comes out of a bisection - 73 000px on a 260x61
+// control - and a shader is the wrong place for it.
 //   u_pill1 = (big radius R, blend radius f, end radius r, big arc's centre y)
 //   u_pill2 = (end circle's centre x, blend centre x, blend centre y, enabled)
 // Both centres are in the box's own CENTRED frame, folded into the top-right quadrant, which the
 // shape's two axes of symmetry make sufficient.
 uniform highp vec4 u_pill1;
 uniform highp vec4 u_pill2;
-// THE INNER GLOW — `(top depth px, top weight, bottom depth px, bottom weight)`, 0 disables it and
+// THE INNER GLOW - `(top depth px, top weight, bottom depth px, bottom weight)`, 0 disables it and
 // the branch below costs nothing. The design states the focused control's edge over VIDEO as a
 // perimeter line plus two soft inset shadows, a strong one along the top and a .55 one along the
 // bottom: light spilling INWARD off the edge, which is what stops a near-white capsule reading as a
 // flat chip when the frame behind it is unknown. It is the same lamp as u_rimcol, so it takes that
 // colour and only the falloff is its own.
 uniform vec4 u_glow;
-// Which arc governs a point already folded into that quadrant — `(centre, radius)`. The outline is
+// Which arc governs a point already folded into that quadrant - `(centre, radius)`. The outline is
 // SMOOTH, so at each hand-over the two arcs agree on the distance and on the normal both, and there
 // is no seam to place: the test is simply which side of the tangency direction the point falls on,
 // and the direction's x is monotone across each arc's own span.
@@ -85,7 +85,7 @@ highp float sdBox(highp vec2 p, highp vec2 b, highp float r){
   highp vec2 q = abs(p) - b + vec2(r);
   return length(max(q,0.0)) + min(max(q.x,q.y),0.0) - r;
 }
-// The gradient of that field — the outward normal. Two cases, exactly the two terms of sdBox: the
+// The gradient of that field - the outward normal. Two cases, exactly the two terms of sdBox: the
 // rounded corner (either component of q positive) and the flat sides. Same construction as
 // fs_glass.frag's, and evaluated only on rim fragments of a surface that asked for a top line.
 highp vec2 sdBoxNormal(highp vec2 p, highp vec2 b, highp float r){
@@ -98,11 +98,11 @@ highp vec2 sdBoxNormal(highp vec2 p, highp vec2 b, highp float r){
 void main(){
   float vy = v_uv.y;
   if (u_radius < 0.5 && u_radR < 0.5 && u_focus < 0.001) {
-    // The flat fast path — full-screen scrims and backdrops. Undithered ON PURPOSE: this program
+    // The flat fast path - full-screen scrims and backdrops. Undithered ON PURPOSE: this program
     // runs on more fragments than any other (every rect, scrim, pill and row highlight), and the
     // shared dither's uniform branch alone was measured at +4M shader words a frame across the
     // hero paging scene (`docs/backdrop-blur-profiling.md`, 2026-09-04). The slow fields that band
-    // — the ambient wash, the glass blur, the underlay field — carry `dither.glsl`; a rect does not.
+    // - the ambient wash, the glass blur, the underlay field - carry `dither.glsl`; a rect does not.
     gl_FragColor = mix(u_colTop, u_colBot, vy);
     return;
   }
@@ -125,7 +125,7 @@ void main(){
   highp float radm = max(u_radius, u_radR);
   highp vec2 inner = hsz - vec2(radm + u_rimw + 2.0);
   if (abs(p.x) < inner.x && abs(p.y) < inner.y) {
-    // The interior of a rounded panel — most of its fragments, and the ones a viewer stares at.
+    // The interior of a rounded panel - most of its fragments, and the ones a viewer stares at.
     gl_FragColor = mix(u_colTop, u_colBot, vy);
     return;
   }
@@ -135,22 +135,22 @@ void main(){
   vec4 fill = mix(u_colTop, u_colBot, vy);
   float aFill = 1.0 - smoothstep(-1.0, 1.0, d);
   // COVERAGE GOES IN THE ALPHA AND NOWHERE ELSE. This blends with straight alpha
-  // (GL_SRC_ALPHA), so `rgb` is a colour and `a` is how much of it lands — multiplying the colour
+  // (GL_SRC_ALPHA), so `rgb` is a colour and `a` is how much of it lands - multiplying the colour
   // by the coverage too spends it twice, and the fragment arrives at `fill.rgb * aFill^2 * fill.a`.
   // On a DARK fill that is invisible, because black times anything is black, which is why it
   // survived every scrim, card and capsule this app has ever drawn. The moment a fill is LIGHT it
   // is a one-pixel BLACK RING around every rounded corner: measured on the light tab track over
-  // bright artwork, the boundary pixel read 158 between a ground of 220 and a face of 229 — darker
+  // bright artwork, the boundary pixel read 158 between a ground of 220 and a face of 229 - darker
   // than either side of it, which is not an edge any lamp in this design could cast. Reported as
   // "black outlines on the bar's roundings"; it was never the antialiasing.
   vec3 rgb = fill.rgb;
   float a = aFill * fill.a;
   // THE RIM, and the division is the whole of it. This fragment is blended with straight alpha
-  // (GL_SRC_ALPHA), so what reaches the screen is `rgb * a` — and adding the rim to `rgb` therefore
+  // (GL_SRC_ALPHA), so what reaches the screen is `rgb * a` - and adding the rim to `rgb` therefore
   // draws it at `rim * a`, not at `rim`. With an OPAQUE fill a is 1 and the two are the same, which
   // is why every tile's edge-sheen has always looked right and why this went unnoticed. Over a
   // TRANSLUCENT fill it silently under-delivers (the flat tab track's .22 sheen was landing at
-  // .10), and over a HOLLOW one — `Painter::rring`, and a container's rim drawn on its own — it
+  // .10), and over a HOLLOW one - `Painter::rring`, and a container's rim drawn on its own - it
   // inverts: `rgb` is `rimcol * rim` and `a` is `rim`, so the line arrives at `rim` squared while
   // still darkening the destination by `1 - rim`. A translucent stroke was drawing a shadow.
   //
@@ -165,8 +165,8 @@ void main(){
     highp vec2 nrm = pill ? pillNormal(p) : sdBoxNormal(p, hsz, rad);
     rim += rimShape * u_rimtop * max(-nrm.y, 0.0);
   }
-  // …and the glow, which is the same light one step further in: a falloff from the edge INWARD,
-  // weighted by the surface normal so each side dies out where the face turns away — the reason the
+  // ...and the glow, which is the same light one step further in: a falloff from the edge INWARD,
+  // weighted by the surface normal so each side dies out where the face turns away - the reason the
   // rim's own top boost is built that way, and for the same reason (a hard cut lands mid-arc and
   // reads as the outline breaking off). It lives ON the face, so it is scaled by the fill's own
   // coverage rather than by the rim's shape.

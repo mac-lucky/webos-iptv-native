@@ -14,8 +14,8 @@ static LAST_REQUEST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::M
 /// **Claim the root press.** `true` when this one is live; `false` when a recent one still speaks
 /// for it, and then the WHOLE press must do nothing.
 ///
-/// A HELD back never gets here — a hardware auto-repeat carries `state & 0x100` and goes to
-/// `app.rs`'s `on_auto_repeat`, which has no BACK action — but five separate taps are five separate
+/// A HELD back never gets here - a hardware auto-repeat carries `state & 0x100` and goes to
+/// `app.rs`'s `on_auto_repeat`, which has no BACK action - but five separate taps are five separate
 /// fresh presses. Two things make that expensive: on the failing path each one spends the
 /// platform's 600 ms bus budget on the SDL main thread, and on the sign-in screen each one runs
 /// `auth::cancel`, which is destructive whatever it answers. So the claim is what `app.rs` takes
@@ -24,7 +24,7 @@ pub fn take_root_press() -> bool {
     take_root_press_at(std::time::Instant::now())
 }
 
-/// [`take_root_press`] with the clock passed in — the whole of the expiry rule, so the boundary is
+/// [`take_root_press`] with the clock passed in - the whole of the expiry rule, so the boundary is
 /// gradeable without sleeping through it.
 fn take_root_press_at(now: std::time::Instant) -> bool {
     let mut last = LAST_REQUEST.lock().unwrap_or_else(|e| e.into_inner());
@@ -41,7 +41,7 @@ fn take_root_press_at(now: std::time::Instant) -> bool {
     true
 }
 
-/// **Hand a claim back**, for the press that turned out not to be a root press after all — the one
+/// **Hand a claim back**, for the press that turned out not to be a root press after all - the one
 /// on the sign-in screen or the picker that DID have somewhere to go inside the app. Without this
 /// the cooldown would swallow the real root BACK the user presses a moment later on the Home they
 /// were just returned to.
@@ -52,7 +52,7 @@ pub fn release_root_press() {
 #[cfg(any(test, feature = "test-support"))]
 static HOME_REQUESTS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
-/// How many root presses [`go_home`] has actually ACTED on, this process — a press swallowed by
+/// How many root presses [`go_home`] has actually ACTED on, this process - a press swallowed by
 /// the cooldown does not count. **Test-only**, and the only way a host test can grade a call whose
 /// whole effect is on a television.
 #[cfg(any(test, feature = "test-support"))]
@@ -60,7 +60,7 @@ pub fn home_requests() -> u32 {
     HOME_REQUESTS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-/// **Show the television's own Home, and keep running** — the port's request, which is not a quit:
+/// **Show the television's own Home, and keep running** - the port's request, which is not a quit:
 /// the process stays alive and comes back as the same live process. Not rate-limited here;
 /// [`take_root_press`] is, so call this only having claimed a press.
 pub fn go_home() {

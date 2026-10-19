@@ -1052,7 +1052,7 @@ mod tests {
     fn publication_is_0640_even_under_a_restrictive_umask() {
         const CHILD_ENV: &str = "WEBOSIPTV_DIAGNOSTICS_UMASK_CHILD";
         if std::env::var_os(CHILD_ENV).is_none() {
-            // libtest names a test without its crate: `storage::diagnostics::tests::…`.
+            // libtest names a test without its crate: `storage::diagnostics::tests::...`.
             let name = format!(
                 "{}::publication_is_0640_even_under_a_restrictive_umask",
                 module_path!().split_once("::").unwrap().1

@@ -166,7 +166,7 @@ fn continue_slices_neither_end_an_open_early_nor_spin() {
     );
     let took = started.elapsed();
 
-    // The deadline, not a slice, ended it — and it is still reported as the deadline.
+    // The deadline, not a slice, ended it - and it is still reported as the deadline.
     assert_eq!(result, Err(HttpOpenError::Deadline));
     assert!(
         took >= Duration::from_millis(290),

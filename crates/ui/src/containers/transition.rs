@@ -1,10 +1,10 @@
 //! Page transitions (restructure spec §6.2): WHEN a `NavStack`'s pending op commits and what the
 //! two levels look like while it does. Three shapes, one trait:
 //!
-//! - [`Immediate`] — a CUT: the op applies at the NAV COMMIT that received it. What the fixture
+//! - [`Immediate`] - a CUT: the op applies at the NAV COMMIT that received it. What the fixture
 //!   host runs under, and what every `ModalStack` present/dismiss is; the application's PAGE stack
 //!   runs [`PageDip`] instead, since phase 12 (D1) made this the only route transition there is.
-//! - [`PageDip`] — `ui::nav`'s dip lifted off its statics: Out 70 ms → one-frame Hold at the
+//! - [`PageDip`] - `ui::nav`'s dip lifted off its statics: Out 70 ms → one-frame Hold at the
 //!   FLOOR, where the op applies → In 140 ms. The floor is one frame unless a caller armed
 //!   `hold_floor`: then the dip waits dark there, the op not yet applied, until `release_floor` or
 //!   the bound (ms of `Tick::ms`). `cancel` reverses the ramp only before the floor is reached; a
@@ -28,7 +28,7 @@
 //!   image, then switches to identical live output on the following frame. No VISIBLE frame draws a live
 //!   page under a full-screen image. [`PAGE_QUIESCENCE_HOLD_MAX_MS`] bounds a page that never
 //!   settles. Screen/input/lifecycle state continues ticking behind the held image.
-//! - [`RoutePush`] — the Settings family's push: commit is immediate, BOTH levels are drawn, and a
+//! - [`RoutePush`] - the Settings family's push: commit is immediate, BOTH levels are drawn, and a
 //!   k=200 spring carries the incoming level in from −0.35 and the outgoing one out to +0.22 (in
 //!   fractions of the width).
 //!
@@ -46,7 +46,7 @@ use tv_machine::motion;
 /// When a pending op applies (§6.2).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CommitPoint {
-    /// At the transition's floor — the one frame `tick` answers `true`.
+    /// At the transition's floor - the one frame `tick` answers `true`.
     Floor,
     /// At the commit that received the request.
     Immediate,
@@ -130,10 +130,10 @@ impl Transition for Immediate {
     }
 }
 
-/// Outgoing ramp (ms) — `ui::xfade`'s number: a control that acknowledges a press later than
+/// Outgoing ramp (ms) - `ui::xfade`'s number: a control that acknowledges a press later than
 /// ~100 ms reads as dropped input.
 pub const DIP_OUT_MS: f32 = 70.0;
-/// Incoming ramp (ms) — longer than out: leave fast, arrive gently.
+/// Incoming ramp (ms) - longer than out: leave fast, arrive gently.
 pub const DIP_IN_MS: f32 = 140.0;
 /// Maximum rasterise+upload time borrowed from one cheap dip-out frame.
 pub const TEXT_PREWARM_BUDGET_US: u64 = 6_000;
@@ -149,7 +149,7 @@ enum DipPhase {
 /// The route dip: fade to the app ground, flip at the floor, fade up off it.
 pub struct PageDip {
     phase: DipPhase,
-    /// Linear 0..1 — 0 = at the floor, 1 = fully present.
+    /// Linear 0..1 - 0 = at the floor, 1 = fully present.
     t: f32,
     continuous: bool,
     /// A wait at the floor, armed by [`Transition::hold_floor`]: the most frame time (`Tick::ms`)
@@ -254,7 +254,7 @@ impl Transition for PageDip {
             DipPhase::Out => {
                 // Spelled as an assignment, not `-= dt`: `t` is already bounded to one ≤140ms
                 // cycle (reset to 1.0/0.0 at every phase edge, never summed across cycles), and
-                // this already reports `Motion` from inside `tick` above — the regression class
+                // this already reports `Motion` from inside `tick` above - the regression class
                 // the dt gate exists to catch (a frozen clock-driven animator) does not apply
                 // here, so nothing beyond the literal syntax the gate matches changes.
                 self.t = self.t - dt * 1000.0 / DIP_OUT_MS;

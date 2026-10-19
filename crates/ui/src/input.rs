@@ -1,6 +1,6 @@
 //! The `Input` machine's HOME (restructure spec §2.2): the press machine, the focus engine, the
 //! hit map, the press ARM (who armed what, from a key or the pointer, holdable or not), and the
-//! television-keyboard owner flag. [`Input`] is the product's field today — the ONE owner of
+//! television-keyboard owner flag. [`Input`] is the product's field today - the ONE owner of
 //! the press, reached by the legacy key ladders as `&mut Press` (spec §14, the press facade).
 //! [`InputMachine`] is the same machine generic over the element key, as the dispatcher owns
 //! it (phase 3b); the two merge when the loop swaps onto the dispatcher.
@@ -8,9 +8,9 @@
 //! The press protocol (§7.4): `Fx::Press(PressArm)` arms; `Input` steps the press on `Tick`,
 //! `Edge::Repeat` and `Up`, resolves dropped key-ups (`LOST_MS`, `MAX_HOLD_MS`), cancels on
 //! navigation, owner change or a pointer press whose hit leaves its arm; at `LONG_MS` it
-//! delivers `PressHold(id)` — `Handled::Yes` cancels the press onto its release spring
+//! delivers `PressHold(id)` - `Handled::Yes` cancels the press onto its release spring
 //! (a declined hold springs back; a taken one springs from its dip up to its pop as the item menu
-//! opens, and nothing ends it early), `Handled::No` latches it non-committing — and on release `PressCommit(id)` to the arming owner only.
+//! opens, and nothing ends it early), `Handled::No` latches it non-committing - and on release `PressCommit(id)` to the arming owner only.
 use super::press::Press;
 
 pub struct Input {
@@ -38,7 +38,7 @@ pub struct Arm<K> {
     pub key: FocusKey<K>,
     pub from: PressFrom,
     pub holdable: bool,
-    /// The machine that armed it — the only one that hears `PressHold`/`PressCommit`.
+    /// The machine that armed it - the only one that hears `PressHold`/`PressCommit`.
     pub owner: MachineId,
     /// `PressHold` was delivered once.
     pub held_delivered: bool,

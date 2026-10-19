@@ -86,16 +86,16 @@ fn replaces_word_at(q: &str, caret: usize, text: &str) -> Option<usize> {
 mod tests {
     use super::*;
     /// **Tapping a word prediction is a REPLACE and the panel never says so.** Typing `sum` and
-    /// tapping the offered `summer` gave `sumsummer` — device-reported, and the event log shows why
+    /// tapping the offered `summer` gave `sumsummer` - device-reported, and the event log shows why
     /// there is no exact fix available: three single-character commits for the keys, then one
     /// commit of `"summer "`, and no `SDL_TEXTEDITING`, no backspace keys, nothing else at all.
     ///
     /// So this is a rule, and a rule's tests are the cases it must NOT fire on.
     #[test]
     fn a_multi_character_commit_at_the_end_replaces_the_word_being_typed() {
-        // the reported case, exactly as the log has it — trailing space included
+        // the reported case, exactly as the log has it - trailing space included
         assert_eq!(replaces_word_at("sum", 3, "summer "), Some(0));
-        // …and mid-sentence, where only the LAST word goes
+        // ...and mid-sentence, where only the LAST word goes
         assert_eq!(replaces_word_at("the sum", 7, "summer "), Some(4));
 
         // ---- the cases it must not fire on ----

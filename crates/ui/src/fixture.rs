@@ -1,10 +1,10 @@
-//! `FixtureHost` — the application bundle the library is compiled and tested against with no
+//! `FixtureHost` - the application bundle the library is compiled and tested against with no
 //! Plex type in scope (spec §3.1, §13 phase 2-i): one `FixtureScreen` that is `Composed` of one
 //! `Part` (a row of N stops), one `FixtureStore` behind a `StoreOrd`, a `FixtureMeasure`, a stub
 //! `Uploader` under a `TexCache<PosterKey>`, and the `Rig` that hands the dispatcher all of it.
 //!
 //! The smoke test at the bottom drives the dispatcher through boot, a key that opens a page, a
-//! store landing and a poster result — one frame each — and is the spike's proof that the
+//! store landing and a poster result - one frame each - and is the spike's proof that the
 //! contracts COMPOSE. Every §15.1 phase-2 / 3b test is present below as an `#[ignore]`d name so
 //! the phase that makes it real only removes the attribute.
 #![cfg(any(test, feature = "test-support"))]
@@ -46,7 +46,7 @@ pub enum FixtureArg {
     Legacy,
     /// A page snapped to its grid: the strip is unreachable from it (§6.2).
     Snapped,
-    /// A page whose picture is the hardware VIDEO PLANE (`RenderStrategy::VideoPlane`, §9) — the
+    /// A page whose picture is the hardware VIDEO PLANE (`RenderStrategy::VideoPlane`, §9) - the
     /// player's shape. It draws a hole in the surface, not a picture.
     VideoPlane,
 }
@@ -143,7 +143,7 @@ impl Host for FixtureHost {
 }
 
 // ---------------------------------------------------------------------------------------------
-// the store — a machine behind StoreOrd(0); its view is published separately from its state
+// the store - a machine behind StoreOrd(0); its view is published separately from its state
 // ---------------------------------------------------------------------------------------------
 
 #[derive(Default)]
@@ -168,7 +168,7 @@ impl FixtureStore {
 }
 
 // ---------------------------------------------------------------------------------------------
-// the part — a row of N stops — and the screen composed of it
+// the part - a row of N stops - and the screen composed of it
 // ---------------------------------------------------------------------------------------------
 
 pub struct FixtureRow {
@@ -301,7 +301,7 @@ impl LogicalState for FixtureState {
     }
 }
 
-/// The page argument whose body steps a REAL spring on every Tick — `gfx::spring`, the integrator
+/// The page argument whose body steps a REAL spring on every Tick - `gfx::spring`, the integrator
 /// the product's owned screens animate through, so `tv_machine::idle` hears it exactly as it hears the
 /// Library's scroll. One page rather than all of them: a spring in flight keeps the present gate
 /// awake, and every other test in this bundle grades quiet frames.
@@ -315,7 +315,7 @@ pub struct FixtureScreen {
     row: FixtureRow,
     /// See [`ANIMATED_PAGE`]. Inert for every other argument.
     spring: crate::Spring,
-    /// The [`draw_order`] tick this page last drew VISIBLY at — a text-prewarm pass through the
+    /// The [`draw_order`] tick this page last drew VISIBLY at - a text-prewarm pass through the
     /// recording painter submits nothing and is counted in [`Self::recorded_draws`] instead.
     /// Deliberately NOT part of [`FixtureState`], which is the screen's LOGICAL state and feeds
     /// the tree's hash: when a page happened to be drawn is render bookkeeping and must not move
@@ -411,7 +411,7 @@ impl Machine<FixtureHost> for FixtureScreen {
                 kind: InputKind::Key { key: Key::Back, .. },
                 ..
             }) => {
-                // §7.3 step 1: the owner had first refusal and declines — BACK is resolved by
+                // §7.3 step 1: the owner had first refusal and declines - BACK is resolved by
                 // the container over the owner's own stack (a pop, a dismiss, or the root)
                 Handled::No
             }
@@ -440,7 +440,7 @@ impl Machine<FixtureHost> for FixtureScreen {
                 }
                 Handled::Yes
             }
-            // The PAGE's own spring, through `gfx::spring` — the integrator every owned screen
+            // The PAGE's own spring, through `gfx::spring` - the integrator every owned screen
             // animates through, and the only one `tv_machine::idle` can see. It reports no `Motion` to the
             // container's gate on purpose: `screens::library` does not either, which is why
             // `idle::page_moving` is the only witness that a page under a panel is moving.
@@ -537,13 +537,13 @@ impl Screen<FixtureHost> for FixtureScreen {
 }
 
 // ---------------------------------------------------------------------------------------------
-// the modal — a surface with a stack of its OWN (the `SettingsSurface` shape, §6.2)
+// the modal - a surface with a stack of its OWN (the `SettingsSurface` shape, §6.2)
 // ---------------------------------------------------------------------------------------------
 
 /// A modal surface whose BACK walks its own `NavStack<RoutePush>` before the app's: `Ok` pushes
 /// an inner page, `Back` pops one while there is one to pop and otherwise DECLINES (`Handled::No`),
 /// which is what lets the container dismiss it. Its inner bodies are `FixtureScreen`s it mounts
-/// itself from the stack's `Life` steps — a screen-owned stack in the test bundle, registered
+/// itself from the stack's `Life` steps - a screen-owned stack in the test bundle, registered
 /// through `Navigation` in the product's screen phases.
 pub struct FixtureModal {
     pub inner: super::containers::stack::NavStack<FixtureHost>,
@@ -553,7 +553,7 @@ pub struct FixtureModal {
     /// A foreground spring of the surface's own (the appear pop), reported as motion on Tick.
     pub pop: f32,
     /// The same pop through `gfx::spring`, so `tv_machine::idle` hears the surface's own motion the way it
-    /// hears a page's — the two halves of the §4.4 attribution have to be gradeable against each
+    /// hears a page's - the two halves of the §4.4 attribution have to be gradeable against each
     /// other, and `tv_machine::motion`'s integrator (the appear spring's) never reaches `tv_machine::idle` at all.
     /// Held to the `pop` window so a settled surface still makes quiet frames.
     spring: crate::Spring,
@@ -567,13 +567,13 @@ pub struct FixtureModal {
     pub scrim_lift: Option<super::screen::ScrimLift>,
     /// The [`draw_order`] tick at which the container ASKED for that dim, and the one at which
     /// this surface's own `draw` ran. The two together are how a host test observes that the
-    /// scrim landed inside the PAGE PASS rather than with the panel — see
+    /// scrim landed inside the PAGE PASS rather than with the panel - see
     /// `a_cached_hosts_snapshot_carries_the_surfaces_scrim`. A `Cell` because `Screen::scrim`
     /// takes `&self`, exactly as every other query on that trait does.
     pub scrim_at: std::cell::Cell<usize>,
     pub draw_at: usize,
     /// What this surface claims to hold of the frame's render residency (`Screen::render_report`).
-    /// [`RenderReport::NONE`] like every product surface today — a test SETS it, because a rule
+    /// [`RenderReport::NONE`] like every product surface today - a test SETS it, because a rule
     /// nothing can breach is a rule nothing tests (`the_render_set_is_checked_over_the_whole_frame`).
     pub render: RenderReport,
     /// What this surface names as its opener (`Screen::opener`): the host page and the element
@@ -775,7 +775,7 @@ impl Machine<FixtureHost> for FixtureModal {
 }
 
 thread_local! {
-    /// What [`FixtureModal::pointer_held`] answers — a test raises it to model a surface whose
+    /// What [`FixtureModal::pointer_held`] answers - a test raises it to model a surface whose
     /// content is in motion (`ui::panel_motion`). Thread-local like every other piece of test state.
     static MODAL_HOLDS_POINTER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
@@ -933,7 +933,7 @@ impl Mounter<FixtureHost> for FixtureMounter {
     }
 }
 
-/// **A page whose picture is the hardware VIDEO PLANE** (§9) — the player's shape, in the harness.
+/// **A page whose picture is the hardware VIDEO PLANE** (§9) - the player's shape, in the harness.
 ///
 /// It draws nothing and registers no stop: what the viewer sees is a plane the television
 /// composites UNDER a hole punched in our surface, and the page's whole job is to leave the hole
@@ -1132,7 +1132,7 @@ impl Rig<FixtureHost> for FixtureRig {
         parts: &CxParts<u32>,
         out: &mut Effects<'_, FixtureHost>,
     ) {
-        // the rig forwards to its adapter set — the one door (`ui::adapters`)
+        // the rig forwards to its adapter set - the one door (`ui::adapters`)
         super::adapters::Adapters::execute(self, from, fx, parts, out);
     }
 
@@ -1145,7 +1145,7 @@ impl Rig<FixtureHost> for FixtureRig {
         let us = self.us;
         self.cache.prepare(b, &mut self.uploader, &mut ph, || us);
         // The rig owns a bare `TexCache` with no `Source` behind it (see the module doc above the
-        // smoke test), so there is nowhere to FORWARD an eviction notification — but the queue
+        // smoke test), so there is nowhere to FORWARD an eviction notification - but the queue
         // still has to be DRAINED, or `has_pending` latches true forever the first time this
         // cache evicts past its 8-slot cap, and every later frame looks like it still has upload
         // work pending.
@@ -1181,7 +1181,7 @@ impl super::adapters::Adapters<FixtureHost> for FixtureRig {
     ) {
         match fx {
             FixtureFx::StoreAdd(u32::MAX) => {
-                // the store's generation moved: notify — the rig has no instance list, so the
+                // the store's generation moved: notify - the rig has no instance list, so the
                 // test delivers `StoreChanged` through `Dispatcher::frame`'s results (the
                 // dispatcher's broadcast is phase 2's `Event::Store{gen}` table row)
             }
@@ -1205,7 +1205,7 @@ impl super::adapters::Adapters<FixtureHost> for FixtureRig {
 }
 
 // ---------------------------------------------------------------------------------------------
-// the smoke test — the spike's proof that the contracts compose
+// the smoke test - the spike's proof that the contracts compose
 // ---------------------------------------------------------------------------------------------
 
 /// A tiny deterministic generator (splitmix64) for the random key walks the card screens' tests
@@ -1258,7 +1258,7 @@ fn the_spike_composes_boot_a_key_a_landing_and_a_poster_over_four_frames() {
     let mut d: Dispatcher<FixtureHost> = Dispatcher::new();
     let mut rig = FixtureRig::new();
 
-    // frame 1: boot — Root(Home) parked, committed, mounted, entered; presented (first frame)
+    // frame 1: boot - Root(Home) parked, committed, mounted, entered; presented (first frame)
     d.request(MachineId::Nav, NavOp::Root(FixtureArg::Home));
     let r1 = d.frame(&mut rig, tick(0), vec![], vec![], &mut NoTap);
     assert!(r1.presented);
@@ -1292,7 +1292,7 @@ fn the_spike_composes_boot_a_key_a_landing_and_a_poster_over_four_frames() {
     assert_eq!(rig.store.view.items, vec![7], "Home asked the store to add; the store stepped in the same drain");
 
     // frame 3: the store notice reaches Home (phase 2's broadcast, spelled by the test) and OK
-    // opens a page — the page mounts THIS frame (a_key_that_opens_a_page_mounts_in_the_same_frame)
+    // opens a page - the page mounts THIS frame (a_key_that_opens_a_page_mounts_in_the_same_frame)
     let notice = (
         Addr {
             to: MachineId::Instance(home),
@@ -1312,7 +1312,7 @@ fn the_spike_composes_boot_a_key_a_landing_and_a_poster_over_four_frames() {
     assert_eq!(d.last_stops().len(), 3, "the page drew its row: three slots at least (the store has one item)");
 
     // frame 4: a poster arrives as an app effect and is accepted, then uploaded in PREPARE
-    // (a_poster_result_is_accepted_in_the_drain_and_uploaded_in_prepare — the spike's half)
+    // (a_poster_result_is_accepted_in_the_drain_and_uploaded_in_prepare - the spike's half)
     d.request(MachineId::Nav, NavOp::Cancel); // a withdrawn transition: nothing mounted
     // the app's poster adapter delivers to `MachineId::Cache`; the rig's `accept` is that path
     rig.cache.accept(PosterReady {
@@ -1802,7 +1802,7 @@ fn the_tick_is_delivered_after_every_result_and_before_nav_commit() {
 /// Owner report (Library All grid, 2026-09-28): a poster LOSING focus snapped back to rest and
 /// the rows under it jumped instead of moving together, while the one GAINING focus animated.
 /// The engine moves focus while the frame's ingested key is drained, but its `FocusMoved` went to
-/// the FIFO tail — BEHIND the frame's `Tick`, which `head` had already queued. That Tick then read
+/// the FIFO tail - BEHIND the frame's `Tick`, which `head` had already queued. That Tick then read
 /// the NEW focus with no announcement, so a screen whose motion distinguishes a deliberate move
 /// from a restore adopted the unannounced cell as a restore (settled, no motion) and the late
 /// `FocusMoved` re-popped it from rest, discarding the outgoing tile's shrink. The notification
@@ -1840,7 +1840,7 @@ fn a_key_that_opens_a_page_mounts_in_the_same_frame() {
 #[test]
 fn a_nav_emitted_from_enter_commits_next_frame() {
     let (mut d, mut rig, _home) = booted();
-    // two OKs: Page(1), then Page(2) — whose Enter pushes Page(3)
+    // two OKs: Page(1), then Page(2) - whose Enter pushes Page(3)
     d.frame(&mut rig, tick(16), vec![key(Key::Ok, tick(16))], vec![], &mut NoTap);
     let r2 = d.frame(&mut rig, tick(32), vec![key(Key::Ok, tick(32))], vec![], &mut NoTap);
     assert_eq!(r2.mounted.len(), 1, "one commit per frame: Page(3) waits");
@@ -1908,13 +1908,13 @@ fn the_adapter_drain_order_is_the_documented_one() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// §15.1 — the tests written first, present as names. Stores-as-machines (phase 4) and the
+// §15.1 - the tests written first, present as names. Stores-as-machines (phase 4) and the
 // texture-cache prepare/draw split (phase 3a) have both been on `main` for weeks now, so the
 // three orphaned placeholders below (D6) were re-examined against what actually exists today,
-// each on its own merits — not carried forward as a block.
+// each on its own merits - not carried forward as a block.
 // ---------------------------------------------------------------------------------------------
 
-// `dev_flags_reach_machines_only_as_recorded_sys_results` (was phase 2) — DELETED, not
+// `dev_flags_reach_machines_only_as_recorded_sys_results` (was phase 2) - DELETED, not
 // implemented. It named a mechanism that was never built the way its own name describes: a
 // "Sys" adapter/result kind that would let a store or screen learn about an armed `/tmp/webosiptv-*`
 // trigger only as a REPLAYED, recorded async result (the same shape an HTTP or store landing takes
@@ -1922,43 +1922,43 @@ fn the_adapter_drain_order_is_the_documented_one() {
 // it already pins HTTP and store traffic. No such kind exists: `AppFx` (`screens/registry.rs`) has
 // no `Sys` variant, `ui::dispatch::ADAPTER_RANKS` names exactly the eleven data-fetch adapters
 // (`auth, pms, browse, search, metadata/season, person, play, metadata/detail, viewstate,
-// alt_sources, poster`) and no twelfth for triggers, and `dev.rs` — the one door onto `/tmp/webosiptv-*`
-// — is read directly at the point a boot or a screen needs a flag (`devtrig::flag`/`devtrig::read`), gated
+// alt_sources, poster`) and no twelfth for triggers, and `dev.rs` - the one door onto `/tmp/webosiptv-*`
+// - is read directly at the point a boot or a screen needs a flag (`devtrig::flag`/`devtrig::read`), gated
 // on the `devtriggers` feature, never through a store or the adapter machinery (see `AGENTS.md`'s
 // "Dev trigger files" section). The design went a different, simpler way: trigger reads are not
 // modelled as async results at all, so there is nothing for a store's `apply`/`run` to receive and
 // nothing for the recorder to distinguish from a real network landing. What the comment on this
-// placeholder actually wanted — a recording that will not silently replay against a DIFFERENT
-// trigger set than the one it was captured with — is real and tested: `app::recorder::triggers_differ`
+// placeholder actually wanted - a recording that will not silently replay against a DIFFERENT
+// trigger set than the one it was captured with - is real and tested: `app::recorder::triggers_differ`
 // (`rust-modules/src/app/recorder.rs:631`, exercised at :1028 and :1033) compares the recorded
 // trigger NAMES against the replay's own and refuses the mismatch. There is no second mechanism
 // left to build.
 //
-// `the_source_pass_registers_no_stops_and_mutates_no_render_cache` (was phase 3a) — DELETED, not
+// `the_source_pass_registers_no_stops_and_mutates_no_render_cache` (was phase 3a) - DELETED, not
 // implemented. Its subject is `ui::tex::Source` (`app::adapters::poster::PosterSource` is the only
 // implementor): the per-draw lookup a poster tile makes to ask "is this key's texture ready, and if
 // not, start fetching it" (`probe`/`warm`), as distinct from the drain/prepare pair the test below
 // pins. Two things rule out a real test of it here. First, there is no SECOND implementor and no
-// fixture stand-in — `ui/fixture.rs` mounts no screen that draws through `tex::Source` at all (its
+// fixture stand-in - `ui/fixture.rs` mounts no screen that draws through `tex::Source` at all (its
 // `FixtureRig` owns a bare `TexCache`, never a `Source`), so there is nothing to probe/warm that
 // is not the real poster store. Second, the real one cannot run here: `poster.rs`'s own test module
-// says so in so many words above `only_a_key_that_survives_a_slot_is_fetchable` — "`lookup` itself
+// says so in so many words above `only_a_key_that_survives_a_slot_is_fetchable` - "`lookup` itself
 // cannot be called from a host test binary (it reaches `gfx::delete_tex`, and nothing here links
-// GL)" — because an eviction (a full store's LRU victim) frees a live GPU texture. A test that
+// GL)" - because an eviction (a full store's LRU victim) frees a live GPU texture. A test that
 // stayed inside a fresh, never-evicting store could dodge that one call, but it would then be
 // proving a fact `PosterSource::probe`/`warm`'s own SIGNATURE already proves at compile time: neither
-// takes a `DrawFrame`, so neither can call `DrawFrame::stop` — there is no runtime path to it, and
+// takes a `DrawFrame`, so neither can call `DrawFrame::stop` - there is no runtime path to it, and
 // asserting a type-level impossibility at runtime is not evidence of anything the compiler was not
-// already enforcing. What genuinely IS a render-cache fact about the source pass — that `probe`/
-// `warm` never insert into `TexCache` themselves, only `drain_decoded` + `prepare` do — is exactly
+// already enforcing. What genuinely IS a render-cache fact about the source pass - that `probe`/
+// `warm` never insert into `TexCache` themselves, only `drain_decoded` + `prepare` do - is exactly
 // what the test below pins, from the other side: `rig.cache.resolve(key)` is `None` right after
 // `accept` and only becomes `Some` once `prepare` has run.
 
 /// **Spec §15.1, phase 3a's other half: the two-phase contract for one poster arrival.**
 ///
 /// A decoded poster reaching the app is a plain VALUE (`PosterReady`) accepted into the cache at
-/// whatever point in the frame the adapter drain runs — no GL, no upload, nothing on screen moves
-/// yet. The upload — the only GL call in this whole path — happens later, in PREPARE, and only if
+/// whatever point in the frame the adapter drain runs - no GL, no upload, nothing on screen moves
+/// yet. The upload - the only GL call in this whole path - happens later, in PREPARE, and only if
 /// PREPARE actually runs this frame. Collapsing the two (uploading straight out of the drain) would
 /// put a GL call on whichever thread the adapter runs the drain on, which is not guaranteed to be
 /// the render thread by construction; keeping them apart is what lets `poster.rs`'s own `drain_decoded`
@@ -1973,7 +1973,7 @@ fn a_poster_result_is_accepted_in_the_drain_and_uploaded_in_prepare() {
     let r1 = d.frame(&mut rig, tick(0), vec![], vec![], &mut NoTap);
     assert!(r1.presented, "boot always presents the first frame");
 
-    // The drain: an app effect delivers a decoded poster — the rig's `FixtureFx::Poster` arm is
+    // The drain: an app effect delivers a decoded poster - the rig's `FixtureFx::Poster` arm is
     // the adapter's own acceptance path (`app_fx` → `Adapters::execute`), so going through
     // `rig.cache.accept` directly exercises exactly what that arm does, without a second copy of
     // the plumbing. Accepting must not itself reach the cache's resolved/uploaded state.
@@ -1995,7 +1995,7 @@ fn a_poster_result_is_accepted_in_the_drain_and_uploaded_in_prepare() {
 }
 
 /// The rig's cache is bare (`TexCache::new(8)`, no `Source` behind it) and its `Rig::prepare`
-/// calls `TexCache::prepare` directly rather than through `ui::tex`'s free-function wrapper —
+/// calls `TexCache::prepare` directly rather than through `ui::tex`'s free-function wrapper -
 /// the wrapper is what drains `take_unresident` and forwards each key to a `Source` on the
 /// product path. Push a 9th distinct poster through a cap-8 cache and `evict_for` queues an
 /// eviction notification with nowhere to go: if `Rig::prepare` never drains it, `has_pending`
@@ -2010,7 +2010,7 @@ fn a_bare_cache_driven_past_capacity_does_not_latch_pending_forever() {
     let r1 = d.frame(&mut rig, tick(0), vec![], vec![], &mut NoTap);
     assert!(r1.presented, "boot always presents the first frame");
 
-    // One distinct key per frame, nine total — the 9th must evict the 1st under the 8-slot cap.
+    // One distinct key per frame, nine total - the 9th must evict the 1st under the 8-slot cap.
     for i in 0..9u32 {
         rig.cache.accept(PosterReady {
             key: PosterKey(100 + i),
@@ -2050,7 +2050,7 @@ fn below_drawn(d: &Dispatcher<FixtureHost>) -> u32 {
         .expect("Home is still on the stack under the player")
 }
 
-/// **Spec §15.1, phase 9 — a page whose picture is the hardware VIDEO PLANE replaces everything
+/// **Spec §15.1, phase 9 - a page whose picture is the hardware VIDEO PLANE replaces everything
 /// below it, and nothing in that frame takes a snapshot.**
 ///
 /// Two halves, and they fail differently on a television.
@@ -2058,20 +2058,20 @@ fn below_drawn(d: &Dispatcher<FixtureHost>) -> u32 {
 /// *Replaces its host.* A push or pop transition draws the level BENEATH the top page so the two
 /// can cross-fade. Under a bound plane there is nothing to cross-fade with: the surface has a hole
 /// punched in it and the television composites the film through it, so a page drawn "underneath"
-/// is drawn OVER the film. `(Frozen, Replaced)` in §6.2's vocabulary — and Frozen matters as much
+/// is drawn OVER the film. `(Frozen, Replaced)` in §6.2's vocabulary - and Frozen matters as much
 /// as Replaced, since a page stepped behind the picture runs its springs out and lands settled,
 /// so the fade back out of the player would begin already over.
 ///
-/// *Takes no snapshot.* Four doors read framebuffer 0 back — the frozen-host snapshot
+/// *Takes no snapshot.* Four doors read framebuffer 0 back - the frozen-host snapshot
 /// (`popover::host::begin_frame`), Glass, the underlay field's live-frame sample
 /// (`gfx::field_kick`, `RouteGround::draw_host`'s source) and `FrameCache::capture`
-/// — and on this frame framebuffer 0 IS the hole. What each of them would cache is a photograph of
+/// - and on this frame framebuffer 0 IS the hole. What each of them would cache is a photograph of
 /// transparent black, served back over the film for as long as the cache lives. Before phase 9 the
 /// only statement of that rule was prose ("never call it on the player route") plus the loop
 /// happening not to call `begin_frame` on one branch; `gfx::video_plane_refuses` is the same rule
 /// where it can be BROKEN, and a shipping debug build panics on it.
 ///
-/// Observed RED (simulated — the fix adds the terms the old code had no notion of): deleting the
+/// Observed RED (simulated - the fix adds the terms the old code had no notion of): deleting the
 /// `&& !video_plane` from `draw_with`'s `draws_below` fails the first half at "the level below a
 /// bound video plane must not draw", and deleting the `video_plane_refuses` call from
 /// `FrameCache::capture` fails the second at "must refuse".
@@ -2080,13 +2080,13 @@ fn a_video_plane_screen_replaces_its_host_and_takes_no_snapshot() {
     let _g = tv_base::testlock::serial();
     // A transition that DRAWS BELOW while it is in flight (`RoutePush`, the Settings family's).
     // The default `Immediate` never draws the level under the top one, so on it this test's first
-    // half would be vacuous — it would pass whether or not the rule exists.
+    // half would be vacuous - it would pass whether or not the rule exists.
     let mut d: Dispatcher<FixtureHost> = Dispatcher::with_transition(Box::new(
         crate::containers::transition::RoutePush::new(),
     ));
     let mut rig = FixtureRig::new();
 
-    // Home, then the player pushed over it — the push transition is what makes the level below
+    // Home, then the player pushed over it - the push transition is what makes the level below
     // draw at all, so it is the only shape in which "replaces its host" can be observed.
     d.request(MachineId::Nav, NavOp::Root(FixtureArg::Home));
     d.frame(&mut rig, tick(0), vec![], vec![], &mut NoTap);
@@ -2124,7 +2124,7 @@ fn a_video_plane_screen_replaces_its_host_and_takes_no_snapshot() {
         "step 9 hands the rig the plane's bit, every frame, presented or not",
     );
 
-    // …the top page drew, and the level below it did NOT.
+    // ...the top page drew, and the level below it did NOT.
     let below_drew = below_drawn(&d);
     assert_eq!(
         below_drew, drew_before_the_plane,
@@ -2212,12 +2212,12 @@ fn the_first_video_plane_frame_releases_the_host_snapshot_and_no_later_one_does(
     assert_eq!(crate::popover::host::releases(), before + 1, "and the frames after it leave it alone");
 }
 
-/// **Spec §12.1 — an app switch PARKS the tree, and the loop is what says so.**
+/// **Spec §12.1 - an app switch PARKS the tree, and the loop is what says so.**
 ///
 /// webOS sends `0x103`/`0x104` when it takes the screen and `0x105`/`0x106` when it gives it back.
-/// The container library has had the whole mechanism since it landed — `Navigation::suspend`
+/// The container library has had the whole mechanism since it landed - `Navigation::suspend`
 /// delivers `ScreenEvent::Suspend` to every mounted body and sets `Navigation.suspended`,
-/// `Dispatcher::suspend` parks it for the next NAV COMMIT — and until phase 9 **nothing called
+/// `Dispatcher::suspend` parks it for the next NAV COMMIT - and until phase 9 **nothing called
 /// either**. Two owned screens answer the event: Settings forwards it down its own stack, and
 /// Search drops the television's keyboard, which the compositor tears down without telling the app
 /// (a field left `editing` comes back drawing a caret over a keyboard that is gone). Both were
@@ -2225,7 +2225,7 @@ fn the_first_video_plane_frame_releases_the_host_snapshot_and_no_later_one_does(
 ///
 /// Two claims, and the second is the one a library test alone cannot make.
 ///
-/// Observed RED (simulated — the loop's arms did not exist to compile against): deleting
+/// Observed RED (simulated - the loop's arms did not exist to compile against): deleting
 /// `self.parked_life.extend(life)` from `Dispatcher::suspend` fails the first at "every mounted
 /// body must hear it"; deleting `app.pages.suspend();` from `app/run.rs`'s background arm fails the
 /// second.
@@ -2270,8 +2270,8 @@ fn an_app_switch_suspends_every_body_and_the_loop_is_what_delivers_it() {
     assert!(!d.nav.suspended, "…and the foreground edge un-parks it");
     assert_eq!(heard(&d, "resume"), 1, "every mounted body must hear `Resume`");
 
-    // The second claim: the LOOP calls them. No host test can drive `app::run` — it needs a live
-    // SDL window — so this is pinned from its source, in the two arms that own the question.
+    // The second claim: the LOOP calls them. No host test can drive `app::run` - it needs a live
+    // SDL window - so this is pinned from its source, in the two arms that own the question.
     // The application crate is not ported yet; the claim is checked once its loop exists.
     let run = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../app/src/app/run.rs");
     if !run.exists() {

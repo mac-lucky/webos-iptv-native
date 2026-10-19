@@ -1,7 +1,7 @@
 //! The thread seam: where work leaves the main thread ([`spawn`]), and what cannot follow it
 //! ([`MainThread`]).
 //!
-//! `std::thread::spawn` **panics** when the OS refuses the thread — it unwraps `Builder::spawn`,
+//! `std::thread::spawn` **panics** when the OS refuses the thread - it unwraps `Builder::spawn`,
 //! whose `Err` is `pthread_create`'s EAGAIN (glibc returns it when `allocate_stack` cannot `mmap`
 //! the stack, or `clone(2)` hits `RLIMIT_NPROC`/`threads-max`). Almost every worker here is
 //! started from the SDL loop, so that panic unwinds out of `plex_run` through the C shim and
@@ -10,15 +10,15 @@
 //! resolve.
 //!
 //! **Measured on the target, not estimated** (`tools/threadprobe.c`, 2026-07-28, run under the
-//! app's own uid — the first version of this note guessed and was wrong about which limit binds):
+//! app's own uid - the first version of this note guessed and was wrong about which limit binds):
 //!
 //! | stack | refused at | binding limit |
 //! |---|---|---|
-//! | 2 MB (the platform default) | **2043 threads** | `RLIMIT_AS` — the full AArch32 4 GB space |
+//! | 2 MB (the platform default) | **2043 threads** | `RLIMIT_AS` - the full AArch32 4 GB space |
 //! | 256 KB (`spawn_small`) | **3745 threads** | `RLIMIT_NPROC`, which is 3746 |
 //!
 //! Both refusals are EAGAIN, exactly the error `spawn` unwraps. Against that, the app runs **31
-//! threads at playback peak** (13 at Home) and peaks at 363 MB of `VmSize` — ~66x and ~11x
+//! threads at playback peak** (13 at Home) and peaks at 363 MB of `VmSize` - ~66x and ~11x
 //! headroom. So this module is not fixing something that happens; it is refusing to let an
 //! unreachable-but-unrecoverable branch exist, for the price of a return value.
 //!
@@ -27,10 +27,10 @@
 //! space (the scarcer resource here at 1/2043 per thread); 256 KB spends a thread slot instead.
 //!
 //! Both entry points below report the refusal instead of panicking. Releasing the armed flag
-//! stays with the caller — a latch is a property of the screen, not of the thread.
+//! stays with the caller - a latch is a property of the screen, not of the thread.
 //!
 //! **This is what step 3 of `docs/async-model-decision.md` became.** That step adopted a generic
-//! `task::Job<T>` — generation guard, monotone one-slot mailbox, single-flight, cancel — to
+//! `task::Job<T>` - generation guard, monotone one-slot mailbox, single-flight, cancel - to
 //! replace the hand-rolled worker idiom. By the time its turn came, the idiom had already landed
 //! by hand at five sites and been device-verified, so `Job` would have been a pure refactor of
 //! working code; the re-evaluation declined it and is logged in the decision doc. What that
@@ -55,12 +55,12 @@
 //!
 //! **This module is also the allowlist boundary of `ci/check-deps.sh`'s `threads` gate**
 //! (restructure spec §15.2, phase 12): every `std::thread::spawn` call outside this file, in
-//! production code, is a violation — checked file by file across the whole crate, with a
+//! production code, is a violation - checked file by file across the whole crate, with a
 //! `#[cfg(test)] mod` block excluded (a unit test's own mock TCP/HTTP peer stands in for a real
 //! peer and is not a worker). Verified 2026-09-10: it is already empty, i.e. every real worker
-//! this crate spawns — the demux/media threads, `aq`, `stream`, `imgcache`, `ff`, `http`, `auth`,
+//! this crate spawns - the demux/media threads, `aq`, `stream`, `imgcache`, `ff`, `http`, `auth`,
 //! `curlio`/`route::decision`, the Plex client/transcoder, `browse`, `player`, `tv_machine::present`,
-//! `tv_machine::landgate` — already calls [`spawn`]/[`spawn_small`], not `std::thread::spawn` directly.
+//! `tv_machine::landgate` - already calls [`spawn`]/[`spawn_small`], not `std::thread::spawn` directly.
 //! `ci/allow/threads.txt` is that gate's allowlist and it, too, is empty for the same reason; a
 //! new production `thread::spawn` outside this file fails CI rather than waiting for a review.
 
@@ -75,7 +75,7 @@ pub mod runtime_check;
 pub use blocking::{allow_blocking, AllowBlocking};
 pub use blocking::{assert_may_block, BlockingGuard, BlockingLabel, FrameScope};
 
-/// Proof that the holder runs on a worker thread, never on the frame thread — the [`MainThread`]
+/// Proof that the holder runs on a worker thread, never on the frame thread - the [`MainThread`]
 /// rule in reverse.
 ///
 /// A ZST with a private field, so it cannot be written down outside this module. It is minted in
@@ -111,19 +111,19 @@ impl OffFrame {
 ///
 /// It gates the two things in `player/` that were main-thread-confined by comment only:
 ///
-/// * **the ACB/Starfish seam** — `player::ffi`'s wrappers. The raw `extern "C"` block is private
+/// * **the ACB/Starfish seam** - `player::ffi`'s wrappers. The raw `extern "C"` block is private
 ///   to that module, so the token is the only way in. Bind order (`setMediaId` → `LOADED` →
 ///   `setMediaVideoData` → `setDisplayWindow` → `PLAYING`) is a sequence of calls with no
 ///   locking behind it; a second thread stepping into the middle of it corrupts the sink.
-/// * **the native session slot** — `App.adapters.player`. Until phase 9 that was
+/// * **the native session slot** - `App.adapters.player`. Until phase 9 that was
 ///   `player::engine::ENGINE`, a `static mut` handed out as `&'static mut` with worker threads
 ///   holding raw pointers into the boxes it owns: two live `&mut` to it is instant UB, and the
 ///   token was the only thing standing between the code and one. It is a FIELD now, so the token
 ///   is CONSUMED into `player::adapter::PlayerAdapter` and `&mut PlayerAdapter` is the
-///   proof instead — one the borrow checker keeps rather than one a caller can satisfy twice.
+///   proof instead - one the borrow checker keeps rather than one a caller can satisfy twice.
 ///
 /// The one deliberate hole: `assume` is callable, so `unsafe { MainThread::assume() }` inside a
-/// worker would defeat this. That is the ceiling of the pattern, not an oversight — what it buys
+/// worker would defeat this. That is the ceiling of the pattern, not an oversight - what it buys
 /// is that the mistake has to be *written*, in an `unsafe` block, instead of happening by
 /// forgetting a convention documented in three other files.
 pub struct MainThread(PhantomData<*const ()>);
@@ -133,14 +133,14 @@ impl MainThread {
     ///
     /// # Safety
     /// The caller asserts this is the SDL main thread. It is not a memory-safety obligation in
-    /// itself — it is the premise every `&MainThread` downstream is trusted on, including the
+    /// itself - it is the premise every `&MainThread` downstream is trusted on, including the
     /// one the Player adapter holds, so a false one reintroduces exactly the races this prevents.
     pub unsafe fn assume() -> Self {
         MainThread(PhantomData)
     }
 }
 
-/// Stack for the short network workers — one HTTP round trip and a decode. The platform default
+/// Stack for the short network workers - one HTTP round trip and a decode. The platform default
 /// (2 MB) is pure reserved address space on a 32-bit target, and several of these run at once.
 /// Deliberately NOT used for the demux/decode/encode threads: libavformat wants a real stack.
 const SMALL_STACK: usize = 256 * 1024;
@@ -205,8 +205,8 @@ impl SmallWorker {
     fn enter(counted: bool, what: &str) -> Self {
         // Not counted: the library-discovery worker (`browse::spawn_discovery`) dials whatever
         // server the test registered, which may be an address that answers only by its connect
-        // timeout, and it posts into the per-owner adapter the test owns and drops with itself —
-        // no process global — so waiting for it would charge every such test seconds for nothing.
+        // timeout, and it posts into the per-owner adapter the test owns and drops with itself -
+        // no process global - so waiting for it would charge every such test seconds for nothing.
         const UNCOUNTED: &[&str] = &["sources"];
         if !counted || UNCOUNTED.contains(&what) {
             return SmallWorker(None);
@@ -263,7 +263,7 @@ fn spawn_with(
 }
 
 /// Spawn `f` and keep the handle. `None` means the OS refused the thread and **the worker does
-/// not exist** — undo whatever was armed for it. `what` names the work in the failure log.
+/// not exist** - undo whatever was armed for it. `what` names the work in the failure log.
 pub fn spawn(what: &str, f: impl FnOnce() + Send + 'static) -> Option<JoinHandle<()>> {
     spawn_with(what, None, f)
 }
@@ -334,7 +334,7 @@ fn spawn_or_inline(
 
 /// [`spawn_small`], but handing back the handle so the caller can [`join`] it later. For work that
 /// is fire-and-forget *during* a session yet must still be allowed to finish before the process
-/// exits — the end-of-playback scrobble is the only such case, and losing it would lose the
+/// exits - the end-of-playback scrobble is the only such case, and losing it would lose the
 /// server-side resume point.
 pub fn spawn_small_keeping(
     what: &str,
@@ -343,7 +343,7 @@ pub fn spawn_small_keeping(
     spawn_with(what, Some(SMALL_STACK), f)
 }
 
-/// A join this long parked the SDL loop for ~15 frames — the shortest stall a person reads as a
+/// A join this long parked the SDL loop for ~15 frames - the shortest stall a person reads as a
 /// freeze rather than a stutter.
 const STALL_MS: u64 = 250;
 
@@ -351,7 +351,7 @@ const STALL_MS: u64 = 250;
 ///
 /// The counterpart to [`spawn`], and the reason it exists rather than a bare `let _ = h.join();`:
 /// the frame loop has an FPS heartbeat, `/tmp/webosiptv-framedrop` catches the frames that blow the
-/// budget, and `ui::profile` splits a frame by draw phase — but none of them can see a worker, and
+/// budget, and `ui::profile` splits a frame by draw phase - but none of them can see a worker, and
 /// every teardown stall this engine has had was the main thread parked in one of these joins with
 /// no number left behind. Unconditional: an `Instant` pair around a call whose whole purpose is to
 /// block cannot perturb what it measures, and gating it would hide the teardown numbers in exactly
@@ -359,14 +359,14 @@ const STALL_MS: u64 = 250;
 ///
 /// The number is the JOINER's wait, not the worker's lifetime. Joining a worker that finished
 /// 300 ms ago costs nothing, and two of `engine::teardown`'s three joins are normally of workers
-/// that have already exited — reporting their lifetimes would flag every teardown as stalling and
+/// that have already exited - reporting their lifetimes would flag every teardown as stalling and
 /// make the numbers worthless for finding the one that does.
 ///
 /// After this, a bare `.join()` anywhere outside this module is a stall nobody can see;
 /// `grep -rn '\.join()' rust-modules/src` is the enforcement, because there is no other.
 ///
 /// **Baseline measured on device** (2026-07-29, BACK out of a direct-play movie on a healthy LAN,
-/// captured by temporarily setting `STALL_MS` to 0): `demux 0ms`, `media 0ms`, `timeline 0ms` —
+/// captured by temporarily setting `STALL_MS` to 0): `demux 0ms`, `media 0ms`, `timeline 0ms` -
 /// all three joins are free in the ordinary case. That is the number the teardown findings have to
 /// be read against: the joins are fault-conditional, not an everyday cost, and it independently
 /// confirms the condvar fix that superseded `docs/async-model-review.md` §3b's "every teardown
@@ -397,13 +397,13 @@ mod tests {
     ///
     /// **Not `usize::MAX`**, which is the obvious spelling of "unsatisfiable" and the one this
     /// test used until 2026-08-02. `std`'s unix `Thread::new` rounds the requested stack up to a
-    /// page — `stack_size + page_size - 1` — and on `usize::MAX` that addition overflows, so a
+    /// page - `stack_size + page_size - 1` - and on `usize::MAX` that addition overflows, so a
     /// debug-assertions build panics *inside std* before `pthread_create` is ever reached. The
     /// test then fails claiming the very thing it exists to prove. It is toolchain-dependent
     /// (green on 1.96 stable, red on 1.98-nightly) and this crate is nightly-only for
     /// `-Z build-std`, so `make check` was the one that saw it.
     ///
-    /// Half the address space is just as unsatisfiable — no allocator anywhere will find 8 EiB —
+    /// Half the address space is just as unsatisfiable - no allocator anywhere will find 8 EiB -
     /// while leaving room for the page rounding to land, and it stays correct on the 32-bit
     /// target, which a literal like `1 << 60` would not.
     #[test]
@@ -456,7 +456,7 @@ mod tests {
         assert_eq!(rx.recv().unwrap().trim_end(), "comm-probe");
     }
 
-    /// [`super::MainThread`] earns its keep entirely by NOT being `Send` — that absence is what
+    /// [`super::MainThread`] earns its keep entirely by NOT being `Send` - that absence is what
     /// makes a closure which captured one impossible to hand to `spawn`. An absent impl is
     /// invisible to ordinary code, so detect it: the inherent const applies only when `T: Send`,
     /// and resolution falls through to the blanket trait when it doesn't. The `i32` line is there

@@ -32,7 +32,7 @@ test-support = ["tv_base/test-support", "tv_machine/test-support"]
 tv_base = { path = "../base" }
 tv_machine = { path = "../machine" }
 libc = "0.2"
-# safe pure-Rust JPEG/PNG decoders (img.rs) — replaces vendored stb_image.h
+# safe pure-Rust JPEG/PNG decoders (img.rs) - replaces vendored stb_image.h
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 resvg = { version = "0.48.1", default-features = false }
 

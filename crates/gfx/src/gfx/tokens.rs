@@ -5,7 +5,7 @@
 //! They lived in `ui/theme.rs` and moved here (module-layers step L5) because `gfx` and `text` read
 //! them and the `gfx` layer may not name `ui`. `ui::theme` imports `rgb8` and the two stops for its
 //! private palette and re-exports everything else (`theme::CLEAR_RGB`, `theme::size::BODY`,
-//! `theme::with_a`, `theme::CARD_GLOW_A`, …), so every screen still names the token in the place
+//! `theme::with_a`, `theme::CARD_GLOW_A`, ...), so every screen still names the token in the place
 //! `ui/CLAUDE.md` tells it to look: `theme.rs` stays the one palette, and a token's VALUE is written
 //! down once, here.
 //!
@@ -17,7 +17,7 @@
 /// An 8-bit sRGB code as an opaque token value. `rgb8(0x2c, 0x2c, 0x2e)` is `#2c2c2e`.
 ///
 /// Every palette stop is an EXACT 8-bit code, which is load-bearing rather than tidy: the panel is
-/// plain 888 with no sRGB framebuffer anywhere in the tree, so a token value IS an sRGB code — and a
+/// plain 888 with no sRGB framebuffer anywhere in the tree, so a token value IS an sRGB code - and a
 /// FRACTIONAL one hands `GL_DITHER` (on by default in GLES2) a half-code to alternate on across a
 /// large flat fill, which banded the app ground visibly before it was snapped. So write the code and
 /// let this do the division; never a decimal guess.
@@ -25,7 +25,7 @@ pub const fn rgb8(r: u8, g: u8, b: u8) -> [f32; 4] {
     [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
 }
 
-// Neutral — achromatic. These two stops are the ones the renderer paints with directly; the rest of
+// Neutral - achromatic. These two stops are the ones the renderer paints with directly; the rest of
 // the palette is `ui::theme`'s private primitive layer, which imports these so a code is still
 // written down in exactly one place.
 /// The app ground (`theme::SURFACE_APP`'s stop): the palette's purple-navy `#1a173e`. The lighter
@@ -39,7 +39,7 @@ pub const NEUTRAL_500: [f32; 4] = rgb8(0x1a, 0x17, 0x3e);
 /// lighter ink measured 2.48:1 against its 2.5:1.
 pub const NEUTRAL_1000: [f32; 4] = rgb8(0x05, 0x05, 0x08);
 
-/// GL clear color — 3-float (`frame_clear` takes r,g,b, no alpha). The app's DEFAULT base, and
+/// GL clear color - 3-float (`frame_clear` takes r,g,b, no alpha). The app's DEFAULT base, and
 /// `theme::SURFACE_APP` itself rather than a second copy of its code (both are [`NEUTRAL_500`]):
 /// browsing screens clear to the app ground, which is what makes a route change read as a
 /// seamless dip. Home overdraws it with `SURFACE_APP` (the identical colour). Two punches through to
@@ -57,7 +57,7 @@ pub const fn with_a(c: [f32; 4], a: f32) -> [f32; 4] {
 }
 
 // ── THE FOCUSED TILE'S LIT-GLASS EDGE (ArtTile component, Claude Design) ────────────────────────
-// A FOCUSED art tile only — fades in with the focus pop `f` (0 at rest, 1 fully focused), folded
+// A FOCUSED art tile only - fades in with the focus pop `f` (0 at rest, 1 fully focused), folded
 // into the same `fs_img.frag` pass as the resting sheen above rather than a second draw. Three
 // layers, white light only, never a coloured ring or an outset border. The shader carries the
 // pixel geometry as literals (it cannot read a Rust `const`); the numbers below are that shader's
@@ -67,41 +67,41 @@ pub const fn with_a(c: [f32; 4], a: f32) -> [f32; 4] {
 /// inward from the whole perimeter over this many px.
 pub const CARD_GLOW_A: f32 = 0.08;
 pub const CARD_GLOW_BAND_PX: f32 = 12.0;
-/// RIM inner glow, TOP layer: `inset 0 4px 8px -4px white/.12` — a brighter, tighter band hugging
-/// the top edge only (one light, from above — the same direction every card shadow falls in).
+/// RIM inner glow, TOP layer: `inset 0 4px 8px -4px white/.12` - a brighter, tighter band hugging
+/// the top edge only (one light, from above - the same direction every card shadow falls in).
 pub const CARD_GLOW_TOP_A: f32 = 0.12;
 pub const CARD_GLOW_TOP_PX: f32 = 6.0;
-/// RIM inner glow, BOTTOM layer: `inset 0 -4px 8px -5px white/.06` — fainter, tighter, on the
+/// RIM inner glow, BOTTOM layer: `inset 0 -4px 8px -5px white/.06` - fainter, tighter, on the
 /// bottom edge (the light's own falloff reaching the far side of the tile).
 pub const CARD_GLOW_BOT_A: f32 = 0.06;
 pub const CARD_GLOW_BOT_PX: f32 = 4.0;
 /// GLARE (`--card-glass-glare-focus`): the top tab bar's own glass crown. The resting 1px
 /// perimeter sheen (`theme::CARD_SHEEN`, .22) is lifted to [`CARD_GLARE_A`] for the top `CARD_GLARE_PX`
-/// of the tile height, easing linearly back to the plain sheen by `CARD_GLARE_EASE` of the height —
+/// of the tile height, easing linearly back to the plain sheen by `CARD_GLARE_EASE` of the height -
 /// `linear-gradient(180deg, card_glare_a 0, card_glare_a 12px, transparent 16%)` masked to the 1px
 /// ring. `CARD_GLARE_EASE` keeps the glare on the crown only, rather than running down the sides.
 pub const CARD_GLARE_PX: f32 = 12.0;
 pub const CARD_GLARE_EASE: f32 = 0.16;
-/// The crown's own target alpha — brighter than `theme::GLASS_RIM_LIGHT` (.28) because a 1px hairline
+/// The crown's own target alpha - brighter than `theme::GLASS_RIM_LIGHT` (.28) because a 1px hairline
 /// over bright artwork needs more contrast than the same hairline over the dark glass track that
 /// `theme::GLASS_RIM_LIGHT` was tuned for.
 pub const CARD_GLARE_A: f32 = 0.45;
 /// GLOSS (`--card-glass-gloss-focus`): `linear-gradient(160deg, white/.14 0%, transparent 34%)`
-/// over the artwork — a soft top-left sheen on the face, composited under the RIM/GLARE above it.
+/// over the artwork - a soft top-left sheen on the face, composited under the RIM/GLARE above it.
 pub const CARD_GLOSS_A: f32 = 0.14;
 pub const CARD_GLOSS_FADE: f32 = 0.34;
 /// The 160deg CSS gradient direction as a unit vector in card-local (x-right, y-down) space:
-/// `(sin 160°, -cos 160°)` — mostly down, slightly left-to-right. `sin160 = sin20`, `-cos160 = cos20`.
+/// `(sin 160°, -cos 160°)` - mostly down, slightly left-to-right. `sin160 = sin20`, `-cos160 = cos20`.
 pub const CARD_GLOSS_DIR: [f32; 2] = [0.342_020_14, 0.939_692_6];
 
 // ── Type scale ───────────────────────────────────────────────────────────────
-/// The one legibility-tuned ladder of text sizes for the whole UI — the *size* axis of the design
+/// The one legibility-tuned ladder of text sizes for the whole UI - the *size* axis of the design
 /// system (colours above, focus geometry below). Authored for a 1920×1080 panel viewed from a
 /// couch, so [`size::CAPTION`] (24) is a **hard floor**: nothing in the product chrome renders
 /// smaller, because sub-24 text is unreadable at that distance (the old raw 17/18/19/20/21 sizes
 /// were exactly what read badly). Pass these to `Painter::text` / `Label` / `TextView` /
-/// `text::elide` in place of a raw integer — a size is a *role*, not a magic number (mirrors the
-/// "never a raw colour literal" rule). Rungs step ~1.15–1.25×; a role picks the nearest rung.
+/// `text::elide` in place of a raw integer - a size is a *role*, not a magic number (mirrors the
+/// "never a raw colour literal" rule). Rungs step ~1.15-1.25×; a role picks the nearest rung.
 ///
 /// One deliberate carve-out sits outside the ladder (documented at its call site, not a raw
 /// literal): the player-HUD now-playing **display title** (larger than [`size::TITLE`]), media
@@ -110,41 +110,41 @@ pub const CARD_GLOSS_DIR: [f32; 2] = [0.342_020_14, 0.939_692_6];
 ///
 /// **Rasterization contract:** the render path keeps every rung's stroke weights design-true
 /// (light hinting in `text.rs::font_at`, pixel-snapped 1:1 quads via `gfx::snap`), so rung values
-/// are chosen for hierarchy and legibility ONLY — no rung needs to dodge px sizes that hint badly.
+/// are chosen for hierarchy and legibility ONLY - no rung needs to dodge px sizes that hint badly.
 /// After swapping fonts or touching hinting, re-verify with `tools/font-hint-audit.py`.
 ///
-/// **A size cannot be animated — CROSSFADE two rungs instead.** Glyphs are cached per (size, bold)
+/// **A size cannot be animated - CROSSFADE two rungs instead.** Glyphs are cached per (size, bold)
 /// as rasterized textures, so tweening a point size would rasterize a fresh run every frame and
 /// churn that cache. A title that has to change size does it as two `Label` draws whose alphas run
 /// opposite on one 0..1 progress: `detail.rs`'s hero → compact title (HERO → TITLE, on the scroll)
 /// is how that is spelled. **`person.rs`'s band condense was the second worked example and is
-/// gone** — that band stopped condensing (its module doc says why), so its name is one run at
+/// gone** - that band stopped condensing (its module doc says why), so its name is one run at
 /// `size::DISPLAY` now and a reader sent there for the pattern would conclude the rule is
 /// unimplemented.
 pub mod size {
     use std::os::raw::c_int;
-    /// Full-bleed hero title — the home + detail hero headline.
+    /// Full-bleed hero title - the home + detail hero headline.
     pub const HERO: c_int = 72;
-    /// Full-card display title — the post-play (Up Next) card's episode name
+    /// Full-card display title - the post-play (Up Next) card's episode name
     /// (`Plex Pass Awareness.dc.html` deliverable D): a one-line headline for a card that owns
     /// the FRAME but not the page, one ~1.2× ladder step past [`TITLE`] without [`HERO`]'s
     /// billboard weight (a 72px line over live credits would read as a new screen, not a prompt).
     pub const DISPLAY: c_int = 48;
-    /// Screen / panel title — the in-player Info card title, the scrolled compact title, About column heads.
+    /// Screen / panel title - the in-player Info card title, the scrolled compact title, About column heads.
     pub const TITLE: c_int = 40;
     /// Section headers ("Related", "Cast & Crew") + list-row titles.
     pub const HEADLINE: c_int = 32;
-    /// Default reading text (synopsis, hero meta, About paragraphs, empty states) + control labels (Play / action buttons, tabs, pills — one rung under a header).
+    /// Default reading text (synopsis, hero meta, About paragraphs, empty states) + control labels (Play / action buttons, tabs, pills - one rung under a header).
     pub const BODY: c_int = 28;
-    /// Secondary labels — card / episode / chapter titles, cast names, list detail, meta chips.
+    /// Secondary labels - card / episode / chapter titles, cast names, list detail, meta chips.
     pub const LABEL: c_int = 26;
-    /// Couch legibility **FLOOR** for ordinary product text — kickers, timecodes, cast roles,
+    /// Couch legibility **FLOOR** for ordinary product text - kickers, timecodes, cast roles,
     /// badges and field labels. The deliberately opened diagnostics instrument is the sole
     /// exception; it has its own dense [`DIAGNOSTIC`] rung rather than weakening this product rule.
     pub const CAPTION: c_int = 24;
-    /// Fine print — deliberately below the couch floor (explicit design direction, 2026-07-12,
+    /// Fine print - deliberately below the couch floor (explicit design direction, 2026-07-12,
     /// re-tuned on-device 16 → 20 → 22: "bigger, but smaller than the meta line"). De-emphasis is
-    /// the point — atmosphere copy beside an outsized title, not content someone must read; labels
+    /// the point - atmosphere copy beside an outsized title, not content someone must read; labels
     /// the eye needs to catch (the SxEy kicker, meta lines) stay on the regular rungs.
     ///
     /// **NEITHER HERO'S SYNOPSIS IS ON THIS RUNG ANY MORE**, and this doc went on saying "the small
@@ -155,7 +155,7 @@ pub mod size {
     /// prose on its page, so it is READING copy and the recorded "smaller than the meta line"
     /// directive is satisfied at `LABEL` 26 under a `BODY` 28 meta line. What is left here is the
     /// episode row's air date, the rating-row provider captions, the Library's note line, the
-    /// player HUD's key capsule and the Source chip's handle — one-line labels, every one of them.
+    /// player HUD's key capsule and the Source chip's handle - one-line labels, every one of them.
     pub const MICRO: c_int = 22;
     /// Dense engineering read-outs whose primary job is comparing many bounded numeric fields in
     /// one photograph.  This is deliberately below [`MICRO`]: diagnostics are opened on purpose

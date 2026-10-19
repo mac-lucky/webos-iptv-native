@@ -1,5 +1,5 @@
 //! **The resize and page-slide motion of an in-player table popover** (`docs/player-submenus.md`,
-//! "Animation"): the Tracks panel's drill-in pages and tab switches, and the `…` popover's row set.
+//! "Animation"): the Tracks panel's drill-in pages and tab switches, and the `...` popover's row set.
 //!
 //! The panel is a bottom/right-anchored card whose natural size is its table's measured size. When
 //! that size changes (a page push or pop, a tab switch, a live row added) the card does not jump:
@@ -115,7 +115,7 @@ pub struct PanelMotion {
     placed: bool,
     /// The layout cache: the table's [`TableView::layout_rev`] and the natural rect measured for it.
     cache: Cell<Option<(u32, Rect)>>,
-    /// The last natural rect handed out — what the page that is about to leave was laid out at.
+    /// The last natural rect handed out - what the page that is about to leave was laid out at.
     last_natural: Cell<Rect>,
     slide: Option<Slide>,
     /// The [`TableView::layout_rev`] whose strings [`Self::prewarm_text`] last rasterised.
@@ -142,7 +142,7 @@ impl PanelMotion {
     ///
     /// On the player route the frame's first framebuffer command (`glClear`) is where this driver
     /// waits for a free back buffer, ~15 ms of every frame. A drill-in's new page used to meet its
-    /// strings cold in the draw AFTER that wait: `FRAMEDROP … clear:12.8 … textx8:7.4,surf:10.9`,
+    /// strings cold in the draw AFTER that wait: `FRAMEDROP ... clear:12.8 ... textx8:7.4,surf:10.9`,
     /// a 26.7 ms frame on the TV on the first visit to each Tracks sub-page. Recorded
     /// here and drained ahead of the draw ([`Self::drain_queued_text`]), the same work overlaps the
     /// wait instead of adding to it. Runs once per table layout ([`TableView::layout_rev`]); a
@@ -284,7 +284,7 @@ impl PanelMotion {
         Rect::new(self.left.pos, self.top.pos, (self.right - self.left.pos).max(0.0), (self.bottom - self.top.pos).max(0.0))
     }
 
-    /// Is the panel mid-motion — the card still moving to its layout, or a page slide running?
+    /// Is the panel mid-motion - the card still moving to its layout, or a page slide running?
     /// What `Screen::pointer_held` answers.
     pub fn transitioning(&self) -> bool {
         let natural = self.last_natural.get();

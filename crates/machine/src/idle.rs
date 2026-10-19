@@ -1,20 +1,20 @@
-//! **Whole-frame present gating** — "nothing on screen changed, so don't repaint it".
+//! **Whole-frame present gating** - "nothing on screen changed, so don't repaint it".
 //!
 //! This is *not* the dirty-rectangle tracking [`mod.rs`](super)'s renderer doc rejects, and the
 //! distinction is the whole reason this module is allowed to exist. That rule is about what
 //! happens *inside* a frame: the renderer stays immediate-mode, every frame still clears and
 //! rebuilds the entire view tree, and the way to not draw something is still to CULL it. This
 //! module only decides whether to run that frame **at all**. When it says yes, nothing below it
-//! changes; when it says no, the loop skips `glViewport`…`SDL_GL_SwapWindow` wholesale. No screen,
+//! changes; when it says no, the loop skips `glViewport`...`SDL_GL_SwapWindow` wholesale. No screen,
 //! widget or painter learns anything new, and nothing tracks sub-frame damage.
 //!
 //! # Why it is worth having
 //!
 //! Measured on the device (2026-07-31, 60 s windows, `/proc` jiffy deltas): a **still** Home grid
-//! cost 16.0% of one Cortex-A53 core in this process — and, because the compositor must blend our
+//! cost 16.0% of one Cortex-A53 core in this process - and, because the compositor must blend our
 //! 1080p surface every time we present, another ~19.4 points inside `surface-manager` (23.8% with
-//! us up vs 4.4% with the app closed). That second charge is **content-independent** — it measured
-//! the same on the flat profile picker, the Home grid and the hero billboard — so it is a per-
+//! us up vs 4.4% with the app closed). That second charge is **content-independent** - it measured
+//! the same on the flat profile picker, the Home grid and the hero billboard - so it is a per-
 //! *present* charge, not a per-pixel one. Roughly 35 points of one core, indefinitely, to re-send
 //! a picture that has not changed. A TV sits on Home for hours and the SoC is fan-less.
 //!
@@ -23,8 +23,8 @@
 //! Two independent signals, deliberately not one heuristic:
 //!
 //! 1. **Motion is detected exactly, not guessed.** Every animation in the app runs through
-//!    [`gfx::spring`](crate::gfx::spring) or [`gfx::spring_zeta`](crate::gfx::spring_zeta) — those
-//!    two functions are the only spring integrators there are — so they call [`note_spring`] and
+//!    [`gfx::spring`](crate::gfx::spring) or [`gfx::spring_zeta`](crate::gfx::spring_zeta) - those
+//!    two functions are the only spring integrators there are - so they call [`note_spring`] and
 //!    the gate *knows* whether any of the ~439 springs a settled Home grid steps per frame is
 //!    still in flight. There is no settle-window guess to tune, and no animation can be truncated
 //!    mid-flight by a timer that expired early.
@@ -35,9 +35,9 @@
 //!    there, and the [`KEEPALIVE_MS`] backstop below bounds the damage if someone forgets.
 //!
 //! **Springs are not the only clock, and that is the standing hazard.** Anything that animates
-//! from raw time — a millisecond ramp, a phase accumulator, a countdown — is invisible to (1) by
+//! from raw time - a millisecond ramp, a phase accumulator, a countdown - is invisible to (1) by
 //! construction and must report through (2) itself. Two did not, and both froze in the product:
-//! `Xfade` (`tv_ui::xfade`) (every CONTENT cross-fade — the Library's grid and page, Search's
+//! `Xfade` (`tv_ui::xfade`) (every CONTENT cross-fade - the Library's grid and page, Search's
 //! results, Filmography's preview) and `Spinner` (`tv_ui::widgets::Spinner`)
 //! (every loading read-out). They report from their own advance and draw respectively; the reasons
 //! those two sides differ are on each call. `Xfade` was the ROUTE dip too until restructure phase
@@ -51,13 +51,13 @@
 //!
 //! # What this module does NOT do
 //!
-//! It does not slow the **loop** — only the **present**. Input polling, the remote FIFO drain,
+//! It does not slow the **loop** - only the **present**. Input polling, the remote FIFO drain,
 //! `ls2_pump`, `route::pump_play`, `metadata::pump_detail`, `app::adapters::poster::prepare` and every
 //! screen's `*_update` keep running at full rate, so key latency is unchanged, timers still fire
 //! (the hero billboard's 8 s auto-flip still flips), and async work still lands on schedule. Those
 //! cost ~0.3% of a core between them; the 16% was the draw.
 //!
-//! It is also **not applied while the hardware video plane is bound** — see [`VIDEO_PLANE`],
+//! It is also **not applied while the hardware video plane is bound** - see [`VIDEO_PLANE`],
 //! [`note`] and `Player::video_plane_bound` below, fed by `Player::set_video_plane_bound`'s edges
 //! rather than by which route is on screen. A pre-bind spinner or a post-unbind failure read-out
 //! is an ordinary idle-gated frame; "we stop presenting for seconds while a plane is bound to our
@@ -74,14 +74,14 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
 /// That is true of the DISTANCE term and false of the VELOCITY term, because velocity is in units
 /// **per second**: `1e-3` on a pixel-valued spring means "still moving at a thousandth of a pixel
 /// per second", which a critically-damped spring satisfies for a very long time after it has
-/// visually arrived. Simulated against the real constants, that tail was **36–52% of every
-/// interaction's presents** — 43 of the 83 frames a 280 px shelf scroll costs, all of them
+/// visually arrived. Simulated against the real constants, that tail was **36-52% of every
+/// interaction's presents** - 43 of the 83 frames a 280 px shelf scroll costs, all of them
 /// sub-pixel. Those are whole presents, so each one also carried the compositor's per-present
 /// charge, which is the larger half.
 ///
 /// So: scale the threshold to the spring's own magnitude (`REST_REL`), cap it below one pixel so a
 /// large-magnitude spring can never stop somewhere visible (`REST_CAP`), and compare **velocity
-/// times dt** — the distance this frame — rather than velocity itself.
+/// times dt** - the distance this frame - rather than velocity itself.
 ///
 /// Erring small is still the safe direction: too large freezes a moving screen, too small costs a
 /// few frames at the tail. `REST_CAP` is the guarantee that "too large" can never exceed a quarter
@@ -97,7 +97,7 @@ const REST_CAP: f32 = 0.25;
 /// Present at least this often even when the gate sees no reason to. This is **insurance, not
 /// pacing**: it bounds how long a screen can be stale if some future async landing forgets to call
 /// [`invalidate`], and it keeps a commit flowing to the compositor rather than leaving the surface
-/// silent for minutes on end — a state this wayland stack has never been asked to hold.
+/// silent for minutes on end - a state this wayland stack has never been asked to hold.
 ///
 /// At 2 s this is 0.5 fps, i.e. it gives back ~0.8% of the 60 fps cost while capping worst-case
 /// staleness at two seconds. Set it to 0 to disable once the invalidation set has been proven
@@ -120,19 +120,19 @@ thread_local! {
     /// by the render loop; a spring stepped on some other thread has, by definition, nothing to do
     /// with whether the panel needs repainting. Making it per-thread also makes the host suite
     /// hermetic for free: `card_row`'s tests drive a local `CardRow` and are documented as ordinary
-    /// and parallel, so they step springs on other threads WITHOUT `testlock` — with a
+    /// and parallel, so they step springs on other threads WITHOUT `testlock` - with a
     /// process-global flag they would intermittently mark this module's "settled screen"
     /// assertions as moving.
     static MOVING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 
-    /// Motion noted while NO [`MotionScope`] was open — the PAGE's own springs, as distinct from a
+    /// Motion noted while NO [`MotionScope`] was open - the PAGE's own springs, as distinct from a
     /// popover's, which step inside `popover::own_motion`'s scope. [`MOVING`] merges both, and has
     /// to (either keeps the present gate awake); this one is the half `popover::host` needs to
-    /// answer "did the page under a FADING panel move" — a page that takes input again on the
+    /// answer "did the page under a FADING panel move" - a page that takes input again on the
     /// press frame, so its motion may not be masked by the fade's own. Same thread-local
     /// rationale as `MOVING`.
     static PAGE_MOVING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    /// How many [`MotionScope`]s are open right now — zero means a spring reporting now belongs
+    /// How many [`MotionScope`]s are open right now - zero means a spring reporting now belongs
     /// to the page.
     static SCOPE_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 
@@ -149,12 +149,12 @@ thread_local! {
     /// judged visible. Same thread-local rationale as `MOVING`.
     static DT: std::cell::Cell<f32> = const { std::cell::Cell::new(1.0 / 60.0) };
 
-    /// A monotonic microsecond clock, advanced once per frame by [`frame_begin`] — for a
+    /// A monotonic microsecond clock, advanced once per frame by [`frame_begin`] - for a
     /// clock-driven leaf that has no `Tick` of its own to hand it (`card_row`'s focused-title
     /// marquee is the one caller: it advances from inside `draw`, reached through a generic
     /// `Column::draw_child` trait method and several call sites across three lanes' files, none
     /// of which carries a `Tick`). Unlike the retired `dt()` accessor this is never SUMMED by a
-    /// caller — a reader takes two readings and subtracts them ([`now_ms`]'s own doc), so no
+    /// caller - a reader takes two readings and subtracts them ([`now_ms`]'s own doc), so no
     /// caller can accumulate drift the way a per-frame `f32 dt` invited. `u64` microseconds
     /// rather than `f32` seconds for the same reason `search.rs`'s debounce and `anim.rs`'s probe
     /// clock convert once rather than sum: exact, with no realistic overflow horizon.
@@ -172,11 +172,11 @@ thread_local! {
 thread_local! {
     /// Did the PREVIOUS iteration's update phase report motion? Read-and-replaced once per
     /// iteration by [`should_present`], which is what turns the first still frame after a spring
-    /// lands into the SETTLE frame — see there.
+    /// lands into the SETTLE frame - see there.
     static WAS_MOVING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// A discrete change happened; present once more. Taken-and-cleared by [`should_present`] — NOT by
+/// A discrete change happened; present once more. Taken-and-cleared by [`should_present`] - NOT by
 /// [`note_present`], so that a report raised during a draw survives to the frame it belongs to.
 static DIRTY: AtomicBool = AtomicBool::new(true);
 /// A frame requested for scheduling rather than because pixels changed (dynamic glass waiting for
@@ -187,10 +187,10 @@ static WAKE: AtomicBool = AtomicBool::new(false);
 static DAMAGE_GEN: AtomicU32 = AtomicU32::new(0);
 /// `SDL_GetTicks` of the last present, for the [`KEEPALIVE_MS`] backstop.
 static LAST_PRESENT: AtomicU32 = AtomicU32::new(0);
-/// Presents since the last [`take_presents`] — the heartbeat's `fps=` field.
+/// Presents since the last [`take_presents`] - the heartbeat's `fps=` field.
 static PRESENTS: AtomicU32 = AtomicU32::new(0);
 /// `now` of the last [`should_present`] that found a CHANGE (motion, damage, a wake, the settle
-/// frame) — the keepalive and the bound video plane do not count. The simulator's settled-shot
+/// frame) - the keepalive and the bound video plane do not count. The simulator's settled-shot
 /// clock (`shot::tick`) reads it; nothing on the television does.
 #[cfg(feature = "hostsim")]
 static LAST_CHANGE: AtomicU32 = AtomicU32::new(0);
@@ -203,7 +203,7 @@ static ENABLED: AtomicBool = AtomicBool::new(true);
 /// and "we stop presenting while a plane is slaved to it" is a claim about this compositor that
 /// reading cannot settle.
 ///
-/// **It has exactly ONE writer** — [`crate::player::machine::Player::set_video_plane_bound`], on
+/// **It has exactly ONE writer** - [`crate::player::machine::Player::set_video_plane_bound`], on
 /// the bit's EDGES (spec §16 risk 10: a second formula term here is how the two disagree). The
 /// loop must never poke it, and nothing here re-derives it from the route.
 static VIDEO_PLANE: AtomicBool = AtomicBool::new(false);
@@ -211,14 +211,14 @@ static VIDEO_PLANE: AtomicBool = AtomicBool::new(false);
 /// **Is the host page being served from the frame cache rather than rasterized?**
 ///
 /// Armed for the length of the page draw underneath an open popover that holds a snapshot, and
-/// LIFTED around the popover's own drawing — `ui::popover::host` owns both edges. While it is on,
+/// LIFTED around the popover's own drawing - `ui::popover::host` owns both edges. While it is on,
 /// every primitive in `gfx` refuses its quad, because the pixels it would produce are already on
 /// the framebuffer, one textured quad ago.
 ///
 /// **It is a REFUSAL, not a skipped call tree**, and that is what makes it safe to apply to a page
 /// `gfx` knows nothing about: the page's draw code still runs, so its layout is still measured,
 /// its pointer hit rects are still recorded and its poster textures are still uploaded. Only the
-/// FILL is removed — which on this GPU is the whole of the cost. A detail page under an open track
+/// FILL is removed - which on this GPU is the whole of the cost. A detail page under an open track
 /// panel measured `draw≈75 ms` per presented frame, entirely in fragments, against a
 /// `drawmask=all` floor of 17 ms.
 ///
@@ -232,7 +232,7 @@ static PAGE_FROZEN: AtomicBool = AtomicBool::new(false);
 /// Arm or lift the page freeze, returning the state that was in force.
 ///
 /// Callers restore what they were handed rather than storing `false`, so a popover's lift NESTS
-/// inside the page pass instead of ending it — the page draw that follows the popover (another
+/// inside the page pass instead of ending it - the page draw that follows the popover (another
 /// panel, another scrim) is still frozen.
 #[inline]
 pub fn set_page_frozen(on: bool) -> bool {
@@ -263,13 +263,13 @@ pub fn enabled() -> bool {
 /// a caller says WHAT happened rather than poking a bool.
 ///
 /// The mapping onto this module's older doors, in full:
-/// * `VideoPlane(b)` — the one input with state of its own; see [`VIDEO_PLANE`].
-/// * `Damage(_)` / `Fault(_)` — [`invalidate`]. The provenance is dropped: `tv_machine::idle` has no
+/// * `VideoPlane(b)` - the one input with state of its own; see [`VIDEO_PLANE`].
+/// * `Damage(_)` / `Fault(_)` - [`invalidate`]. The provenance is dropped: `tv_machine::idle` has no
 ///   ledger to record it on (`Present::why` is the machine's, and the recorder reads that one).
-/// * `Motion` — [`invalidate`] as well, deliberately NOT the `MOVING` thread-local. `MOVING` is
+/// * `Motion` - [`invalidate`] as well, deliberately NOT the `MOVING` thread-local. `MOVING` is
 ///   the *rest test*'s answer, judged from a spring's own post-step state by [`note_spring`], and
 ///   it feeds `page_moving`, which decides whether a frozen host is re-snapshotted. A caller who
-///   only knows "something moved" cannot answer that, so it gets one frame — never a claim about
+///   only knows "something moved" cannot answer that, so it gets one frame - never a claim about
 ///   which springs were in flight.
 pub fn note(ev: crate::present::PresentEvent) {
     use crate::present::PresentEvent;
@@ -279,8 +279,8 @@ pub fn note(ev: crate::present::PresentEvent) {
     }
 }
 
-/// The gate's current video-plane input. Read by the frame algorithm's step 8/9 consumers — the
-/// opaque-region call and the capture skip — so all of them see ONE value.
+/// The gate's current video-plane input. Read by the frame algorithm's step 8/9 consumers - the
+/// opaque-region call and the capture skip - so all of them see ONE value.
 #[inline]
 pub fn video_plane_bound() -> bool {
     VIDEO_PLANE.load(Relaxed)
@@ -304,8 +304,8 @@ pub fn note_spring(pos: f32, target: f32, vel: f32) {
     }
 }
 
-/// Run `f` — a page's DECORATIVE springs (a colour dissolve under the page, an in-place focus pop)
-/// — so that their motion still wakes the present gate and still counts as page motion for every
+/// Run `f` - a page's DECORATIVE springs (a colour dissolve under the page, an in-place focus pop)
+/// - so that their motion still wakes the present gate and still counts as page motion for every
 /// pixel-facing reader ([`page_moving`]), but does not count toward [`page_layout_moving`].
 ///
 /// The page-freeze holds a route's snapshot until the page stops moving so that first poster
@@ -325,13 +325,13 @@ pub fn decorative<T>(f: impl FnOnce() -> T) -> T {
     f()
 }
 
-/// Whether a spring at `pos` heading for `target` with `vel` is visibly at rest — the exact test
+/// Whether a spring at `pos` heading for `target` with `vel` is visibly at rest - the exact test
 /// [`note_spring`] applies, exported so an animator can snap a settled spring onto its target
 /// (`Spring::jump`) and hand the compositor an exactly-resting final frame.
 #[inline]
 pub fn settled(pos: f32, target: f32, vel: f32) -> bool {
     let t = (REST_REL * (1.0 + pos.abs().max(target.abs()))).min(REST_CAP);
-    // `vel * dt` is the travel this frame — the only form in which a velocity is comparable to a
+    // `vel * dt` is the travel this frame - the only form in which a velocity is comparable to a
     // distance, and the whole reason the tail of every scroll used to keep the panel awake.
     (pos - target).abs() <= t && (vel * DT.with(|d| d.get())).abs() <= t
 }
@@ -339,7 +339,7 @@ pub fn settled(pos: f32, target: f32, vel: f32) -> bool {
 /// A `Spring::jump` (`tv_ui::Spring::jump`) teleported a value that was not already there.
 ///
 /// This is [`invalidate`], not a motion report, and the distinction is load-bearing: a jump can
-/// happen inside an event handler, which runs BEFORE [`frame_begin`] clears the motion flag — so a
+/// happen inside an event handler, which runs BEFORE [`frame_begin`] clears the motion flag - so a
 /// motion report would be wiped before the gate ever read it. A jump is a discrete change and
 /// belongs on the sticky flag.
 #[inline]
@@ -352,23 +352,23 @@ pub fn note_jump(changed: bool) {
 /// Something changed that no spring will report: a texture landing, new data from the server, a
 /// keypress, a route change.
 ///
-/// Call sites today — keep this list current, it is the module's correctness argument:
+/// Call sites today - keep this list current, it is the module's correctness argument:
 /// - any SDL event dequeued, and any remote-FIFO token drained (`app.rs`)
 /// - `metadata::pump_detail` landing (`app.rs`)
-/// - **any** play plan landing (`route::apply_plan`) — including one that carries the server's
+/// - **any** play plan landing (`route::apply_plan`) - including one that carries the server's
 ///   REFUSAL, which `app.rs` cannot see: `pump_play` returns false for a plan with no URL, so the
 ///   caller's invalidate is skipped for exactly the landing that flips the player from Resolving
 ///   to Error. It repainted anyway only because the player route bypasses this gate outright
 /// - a poster texture uploaded (`app::adapters::poster::prepare`)
-/// - a hub catalog being installed (`pms::commit`) — EVERY install, whichever path built it: the
+/// - a hub catalog being installed (`pms::commit`) - EVERY install, whichever path built it: the
 ///   boot fetch, a landing through `pms::pump`, a view-state edit, a roster sync, and the empty
 ///   commit `pms::reset` performs. The call used to sit at the call sites instead, where two of
 ///   the five did not make it
 /// - a view-state write's OPTIMISTIC edit (`ViewStateStore::run` / `pms::edit_item`) and the refresh
-///   its owned landing pass kicks (`ViewStateStore::pump`) — a watched tick, a corner veil and a resume bar all
+///   its owned landing pass kicks (`ViewStateStore::pump`) - a watched tick, a corner veil and a resume bar all
 ///   change with no spring behind any of them, and the press is the only thing that moved
 /// - a browse page landing (`BrowseStore::pump`)
-/// - a server's self-description landing (`plex::serverinfo::store`) — its version and Plex Pass
+/// - a server's self-description landing (`plex::serverinfo::store`) - its version and Plex Pass
 ///   tristate are what the stats panel's Server row, the detail hero's "hardware conversion
 ///   needs [PLEX PASS]" note and the failure read-out's capsule are drawn from, and it lands on a
 ///   worker seconds after the screen that shows them has settled
@@ -379,15 +379,15 @@ pub fn note_jump(changed: bool) {
 ///   report, but an opener no card section draws (the Detail episode strip, season tabs, hero
 ///   buttons, the Home hero) springs under the frozen host snapshot, which must be re-taken until
 ///   it rests. A tap's press never reports
-/// - an `Xfade` ramp mid-flight, and a `Spinner` being drawn — the two time-driven animators
+/// - an `Xfade` ramp mid-flight, and a `Spinner` being drawn - the two time-driven animators
 ///   `note_spring` cannot see
 ///
 /// **A report raised while the host page is FROZEN is dropped** ([`page_frozen`]).
-/// Two of the call sites above — the focused-title marquee and the spinner — report from inside a
+/// Two of the call sites above - the focused-title marquee and the spinner - report from inside a
 /// DRAW, and under an open popover that draw produces no pixels: the page is one cached quad.
 /// Honouring them would invalidate the very snapshot they were drawn from, i.e. a full page redraw
 /// every frame with nothing on screen to show for it, and it is the one way a page could defeat the
-/// cache without any screen doing anything wrong. It is also the correct PICTURE — a decoration on
+/// cache without any screen doing anything wrong. It is also the correct PICTURE - a decoration on
 /// a page the user cannot reach is meant to pause, which is what the profile menu's frozen host has
 /// always done. Nothing genuine can be swallowed: the freeze is armed only for the length of the
 /// page draw, and every real landing (server data, a poster texture, input) reports from the update
@@ -408,7 +408,7 @@ pub fn invalidate() {
 
 #[cfg(any(test, feature = "test-support"))]
 thread_local! {
-    /// How many times THIS thread has raised discrete damage — the test-only half of `DIRTY`.
+    /// How many times THIS thread has raised discrete damage - the test-only half of `DIRTY`.
     /// `DIRTY` and `DAMAGE_GEN` are process-wide on purpose (a worker thread's landing must wake
     /// the main loop), which makes them useless for grading "did this animation ask for a frame"
     /// under `cargo test`: any unlocked test on another thread that repaints anything flips them,
@@ -424,7 +424,7 @@ pub fn take_local_damage() -> u32 {
 }
 
 /// Drain leftover gate state so another module's spring test can assert a quiet frame.
-/// Callers still take [`tv_base::testlock::serial`] first — this is not the lock.
+/// Callers still take [`tv_base::testlock::serial`] first - this is not the lock.
 #[cfg(any(test, feature = "test-support"))]
 pub fn reset_for_test() {
     set_enabled(true);
@@ -447,7 +447,7 @@ thread_local! {
     /// Depth of open [`OwnScope`]s: while non-zero, every [`invalidate`] is a POPOVER's own damage.
     static OWN_SCOPE: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
-/// Damage this frame raised inside a popover's [`OwnScope`] — the panel's own. Taken against
+/// Damage this frame raised inside a popover's [`OwnScope`] - the panel's own. Taken against
 /// [`DAMAGE_GEN`] by [`take_page_damage`].
 static OWN_DAMAGE_N: AtomicU32 = AtomicU32::new(0);
 /// The [`DAMAGE_GEN`] value at the last [`take_page_damage`].
@@ -457,11 +457,11 @@ static TAKEN_GEN: AtomicU32 = AtomicU32::new(0);
 ///
 /// Opened by `popover::own_motion` around a panel's `update`, by `popover::host::live` around its
 /// drawing, and by `popover::host::input_scope` around every INPUT event (never a lifecycle or
-/// window event, which is the app's) while a panel holds the page — the three places a panel raises
+/// window event, which is the app's) while a panel holds the page - the three places a panel raises
 /// damage (the appear spring's `invalidate`, a table's
 /// marquee, the per-event repaint and whatever a key handler adds). Attributing those by
-/// construction is what lets [`take_page_damage`] answer the host cache's real question — DID THE
-/// PAGE UNDERNEATH CHANGE — with no per-frame bit or explicit claim for a handler to get wrong.
+/// construction is what lets [`take_page_damage`] answer the host cache's real question - DID THE
+/// PAGE UNDERNEATH CHANGE - with no per-frame bit or explicit claim for a handler to get wrong.
 /// Nests; drop closes it.
 #[must_use = "damage is attributed only for this guard's lifetime"]
 pub struct OwnScope(());
@@ -481,7 +481,7 @@ impl Drop for OwnScope {
 
 /// **Did the PAGE change since the last take?** Once per drawn frame, by `popover::host::begin_frame`.
 ///
-/// Every [`invalidate`] since the last take, minus those raised inside an [`OwnScope`] — more
+/// Every [`invalidate`] since the last take, minus those raised inside an [`OwnScope`] - more
 /// invalidations than the panel's own means at least one came from the page (a poster landing,
 /// hub data, a marker), and the frozen host must be drawn again. The subtraction is by COUNT
 /// rather than by a per-frame bit so that a page landing on the same frame as a popover key press,
@@ -508,7 +508,7 @@ pub fn wake() {
 }
 
 /// Start of an iteration: forget last frame's motion (the update phase is about to re-derive it),
-/// stamp this frame's `dt` for [`note_spring`], and advance [`MS_CLOCK_US`] for [`now_ms`] — by
+/// stamp this frame's `dt` for [`note_spring`], and advance [`MS_CLOCK_US`] for [`now_ms`] - by
 /// the exact whole-microsecond conversion of `dt`, not a summed `f32`, for the same reason
 /// `search.rs`'s debounce and `anim.rs`'s probe clock do it that way.
 #[inline]
@@ -529,15 +529,15 @@ pub fn frame_begin_judging_rest_with(dt: f32, rest_dt: f32) {
 }
 
 /// A monotonic millisecond reading, for a clock-driven animator that has no `Tick` of its own to
-/// hand it — the same hazard the module doc calls out for `Xfade` (`tv_ui::xfade::Xfade`) and
+/// hand it - the same hazard the module doc calls out for `Xfade` (`tv_ui::xfade::Xfade`) and
 /// `Spinner` (`tv_ui::widgets::Spinner`): a millisecond ramp is invisible to [`note_spring`] and
-/// must report through [`invalidate`] itself. `card_row`'s focused-title marquee is the third —
+/// must report through [`invalidate`] itself. `card_row`'s focused-title marquee is the third -
 /// it advances from inside `draw`, reached through a generic `Column::draw_child` trait method
-/// and several call sites across three lanes' files, none of which carries a `Tick` — so it reads
+/// and several call sites across three lanes' files, none of which carries a `Tick` - so it reads
 /// this instead of widening that trait's fixed parameter list.
 ///
 /// **Take two readings and subtract them (`u32::wrapping_sub`)**, exactly as `motion::Phase`
-/// does with a real `Tick.ms` — never accumulate a per-frame delta into a running total, which is
+/// does with a real `Tick.ms` - never accumulate a per-frame delta into a running total, which is
 /// the `check-deps.sh` `dt` gate's whole complaint and the reason this replaced a `dt()` accessor
 /// callers used to sum themselves.
 #[inline]
@@ -555,20 +555,20 @@ pub fn scoped_motion<T>(f: impl FnOnce() -> T) -> (T, bool) {
 }
 
 /// [`scoped_motion`] as an explicit open/close pair, for a caller whose scoped region is a whole
-/// function body rather than a closure — a popover's `update`, which steps three or four springs
+/// function body rather than a closure - a popover's `update`, which steps three or four springs
 /// through several early returns and would otherwise have to be reindented into a closure to say
 /// the same thing.
 ///
 /// **It closes on `Drop` as well as on [`close`](Self::close)**, which is what lets it be held as a
-/// plain guard over a region with early returns — the dispatcher's per-surface step and draw
+/// plain guard over a region with early returns - the dispatcher's per-surface step and draw
 /// (§4.4), where the alternative is a `close()` on every path out. Before that it had no `Drop` at
 /// all, so a scope that was dropped rather than closed left [`SCOPE_DEPTH`] raised for the rest of
 /// the frame: every later spring in the app would then report as a popover's, and nothing would
-/// fail — the gate would simply stop seeing the page move. `close` still consumes the guard and
+/// fail - the gate would simply stop seeing the page move. `close` still consumes the guard and
 /// returns the verdict; the `Drop` that follows it is a no-op.
 pub struct MotionScope {
     before: bool,
-    /// Still raising [`SCOPE_DEPTH`] — false once [`close`](Self::close) has merged it back.
+    /// Still raising [`SCOPE_DEPTH`] - false once [`close`](Self::close) has merged it back.
     open: bool,
 }
 
@@ -610,28 +610,28 @@ impl Drop for MotionScope {
 /// Should this iteration draw and swap?
 ///
 /// Call AFTER the update phase (so this frame's spring steps have been seen) and before
-/// `glViewport`. The caller owns the route policy — this answers only "has anything changed".
+/// `glViewport`. The caller owns the route policy - this answers only "has anything changed".
 /// Should this iteration draw and swap?
 ///
 /// **TAKES-AND-CLEARS the discrete flag**, which is why it must be called exactly once per
-/// iteration and why the caller's route check must be on the RIGHT of the `||` — see `app.rs`.
+/// iteration and why the caller's route check must be on the RIGHT of the `||` - see `app.rs`.
 /// Clearing here rather than after the draw is what lets a report raised DURING a draw survive:
 /// `Spinner::draw` is the first such reporter, and with the flag cleared post-draw its report was
 /// destroyed on the frame it was raised, so the spinner would freeze on its very first link.
 ///
-/// **The first still frame after motion is presented too — the SETTLE frame.** A spring in flight
+/// **The first still frame after motion is presented too - the SETTLE frame.** A spring in flight
 /// is judged by the rest test at the top of this file, so the last frame it forces is one whose
 /// residual is under a quarter pixel; the frame after it, where the spring reports nothing, is the
 /// picture that stays on the panel until the next key. It was added for an at-rest term in the
-/// renderer — `gfx::page_wash_dither`, which dropped the ±1 LSB dither from Home's and Detail's
+/// renderer - `gfx::page_wash_dither`, which dropped the ±1 LSB dither from Home's and Detail's
 /// page wash while their artwork moved and restored it on the frame the artwork's springs came to
 /// rest, a frame that forced no present of its own. That gate is gone (2026-09-19: every wash
 /// dithers on every frame, `gfx::draw_ambient`), so no renderer term differs between the last
 /// moving frame and the first still one any more; the settle present is kept as the one extra
 /// frame that guarantees the resting picture is the fully-settled one. One frame, once per
 /// settle, and the idle gate then closes as before. (This repairs the LIVE page only. A frozen-host snapshot is
-/// drawn again on page damage or, under a fading panel, on page motion —
-/// `popover::host::begin_frame`'s rule — and never by this frame.)
+/// drawn again on page damage or, under a fading panel, on page motion -
+/// `popover::host::begin_frame`'s rule - and never by this frame.)
 pub fn should_present(now: u32) -> bool {
     let damage_gen = DAMAGE_GEN.load(Relaxed);
     let new_damage = PRESENT_DAMAGE_GEN.with(|seen| {
@@ -658,8 +658,8 @@ pub fn should_present(now: u32) -> bool {
     // the call site as it was through phase 8. Two reasons, and the second is the bug: a term on
     // the right of the caller's `||` short-circuits this whole function away on the frames it is
     // true for, leaving `DIRTY`/`WAKE` set to fire spuriously on the way back out; and the term
-    // itself was the ROUTE, so the frames before the plane binds and after it unbinds — a spinner,
-    // a HUD fade, the failure read-out — were exempted from the gate for no reason the compositor
+    // itself was the ROUTE, so the frames before the plane binds and after it unbinds - a spinner,
+    // a HUD fade, the failure read-out - were exempted from the gate for no reason the compositor
     // knows about. They are ordinary idle frames now, which is what makes every player-side
     // animator's motion report load-bearing.
     if changed || VIDEO_PLANE.load(Relaxed) {
@@ -689,7 +689,7 @@ pub fn present_moving() -> bool {
     MOVING.with(|m| m.get())
 }
 
-/// Did a spring OUTSIDE every [`MotionScope`] report motion this frame — i.e. the page's own, not a
+/// Did a spring OUTSIDE every [`MotionScope`] report motion this frame - i.e. the page's own, not a
 /// popover's? `popover::host::begin_frame`'s question for a page under a fading panel.
 #[inline]
 pub fn page_moving() -> bool {
@@ -703,13 +703,13 @@ pub fn page_layout_moving() -> bool {
     PAGE_LAYOUT_MOVING.with(|m| m.get())
 }
 
-/// `now` of the last frame that had something to change — see [`LAST_CHANGE`]. Simulator only.
+/// `now` of the last frame that had something to change - see [`LAST_CHANGE`]. Simulator only.
 #[cfg(feature = "hostsim")]
 pub fn last_change_ms() -> u32 {
     LAST_CHANGE.load(Relaxed)
 }
 
-/// Record that a frame was presented. Deliberately does NOT clear the discrete flag — a report
+/// Record that a frame was presented. Deliberately does NOT clear the discrete flag - a report
 /// raised by the draw this call follows belongs to the NEXT frame, and [`should_present`] already
 /// consumed the one that justified this one.
 ///
@@ -722,7 +722,7 @@ pub fn note_present(now: u32) {
     PRESENTS.fetch_add(1, Relaxed);
 }
 
-/// Presents since the last call — drained once a second into the heartbeat as `fps=`, which is the
+/// Presents since the last call - drained once a second into the heartbeat as `fps=`, which is the
 /// only field there that is a frame rate.
 ///
 /// Its neighbour `loop=` deliberately counts LOOP iterations: it is the app's liveness signal and
@@ -738,7 +738,7 @@ mod tests {
     use super::*;
 
     /// The gate's statics are reached from `gfx::spring`, which every other module's spring tests
-    /// also drive — so this contends across modules, not just within this file. `testlock`, not a
+    /// also drive - so this contends across modules, not just within this file. `testlock`, not a
     /// module-local mutex (see `lib.rs::testlock`).
     fn fresh() -> tv_base::testlock::Serial {
         let g = tv_base::testlock::serial();
@@ -746,15 +746,15 @@ mod tests {
         g
     }
 
-    /// **Spec §9, §4.4, §16 risk 10 — the whole-frame gate is turned off by the PLANE'S BIT, and
+    /// **Spec §9, §4.4, §16 risk 10 - the whole-frame gate is turned off by the PLANE'S BIT, and
     /// only by it.** This is the gate's half of the claim, graded against the bit's own door
-    /// ([`note`] with [`PresentEvent::VideoPlane`]); the half that needs the player — the bit is
+    /// ([`note`] with [`PresentEvent::VideoPlane`]); the half that needs the player - the bit is
     /// published on its EDGES only, the false edge raises the damage that presents the unbind frame,
-    /// and the loop asks the compositor from the bit on every frame — is
+    /// and the loop asks the compositor from the bit on every frame - is
     /// `app::run::video_plane_gate_tests`, the one layer that owns a `Player` and the loop's source.
     ///
     /// 1. *Only while bound.* The term used to be `|| fr.player` at the call site, i.e. "the
-    ///    player SCREEN is up" — true through the whole pre-bind spinner and the whole post-unbind
+    ///    player SCREEN is up" - true through the whole pre-bind spinner and the whole post-unbind
     ///    fade, when the compositor has an ordinary UI surface and nothing is slaved to it.
     /// 2. *Lowering the bit is not damage.* The frame the plane goes away on is very often one the
     ///    gate would otherwise skip, which is why the edge's writer raises damage with it; the gate
@@ -799,7 +799,7 @@ mod tests {
         );
     }
 
-    /// The host cache's question — did the PAGE change — answered by count: damage raised inside
+    /// The host cache's question - did the PAGE change - answered by count: damage raised inside
     /// a popover's own scope (its update, its drawing, the input it holds) is not the page's, and
     /// one page invalidation beside any amount of the panel's own is still seen.
     #[test]
@@ -808,7 +808,7 @@ mod tests {
         assert!(!take_page_damage(), "nothing happened");
         {
             let _own = OwnScope::open();
-            invalidate(); // the appear spring, a marquee, a key the panel handled — its own
+            invalidate(); // the appear spring, a marquee, a key the panel handled - its own
             invalidate();
         }
         assert!(!take_page_damage(), "damage inside an own scope is not the page's");
@@ -885,7 +885,7 @@ mod tests {
     }
 
     /// THE REGRESSION THIS PREDICATE EXISTS FOR. A 280 px shelf scroll that has arrived to within a
-    /// twentieth of a pixel, still carrying 5 px/s — 0.08 px of travel in the next frame — used to
+    /// twentieth of a pixel, still carrying 5 px/s - 0.08 px of travel in the next frame - used to
     /// read as moving, because 5.0 > 1e-3. That tail was 43 of the scroll's 83 presents.
     #[test]
     fn a_scroll_that_has_visually_arrived_is_at_rest() {
@@ -954,9 +954,9 @@ mod tests {
         );
     }
 
-    /// A jump reports only when it actually moved — `home.rs` jumps to the same value every frame
+    /// A jump reports only when it actually moved - `home.rs` jumps to the same value every frame
     /// while the hub list is empty, and an unguarded report would pin 60fps on that exact screen.
-    /// This is the gate's half, through [`note_jump`] — the door `Spring::jump` reports by; the
+    /// This is the gate's half, through [`note_jump`] - the door `Spring::jump` reports by; the
     /// guard on the `Spring` side (`self.pos != v || self.vel != 0.0`) is graded where `Spring`
     /// lives, `ui::spring_tests`.
     #[test]
@@ -1035,11 +1035,11 @@ mod tests {
         let _g = fresh();
         note_present(u32::MAX - 10);
         frame_begin(1.0 / 60.0);
-        // 16 ms past the wrap: elapsed is 16, not 4e9 — the keepalive is not due
+        // 16 ms past the wrap: elapsed is 16, not 4e9 - the keepalive is not due
         assert!(!should_present(5));
         // and it still comes due on time across that same wrap
         assert!(should_present((u32::MAX - 10).wrapping_add(KEEPALIVE_MS)));
-        // a tick BEFORE the last present is only reachable at a wrap — repaint, never stall
+        // a tick BEFORE the last present is only reachable at a wrap - repaint, never stall
         LAST_PRESENT.store(5, Relaxed);
         frame_begin(1.0 / 60.0);
         assert!(should_present(u32::MAX - 10));
@@ -1056,8 +1056,8 @@ mod tests {
     }
 
     /// OVER-REPORTING IS THE SILENT FAILURE. A gate that presents too often loses the entire
-    /// saving while every floor-style assertion still passes, so a whole settled tree — the ~439
-    /// springs a Home grid steps per frame, all at rest — must produce exactly nothing.
+    /// saving while every floor-style assertion still passes, so a whole settled tree - the ~439
+    /// springs a Home grid steps per frame, all at rest - must produce exactly nothing.
     #[test]
     fn a_whole_settled_tree_asks_for_nothing() {
         let _g = fresh();
@@ -1088,7 +1088,7 @@ mod tests {
     }
 
     /// Motion is re-derived every frame, never remembered: last frame's movement buys exactly ONE
-    /// more present — the settle frame — and must not leak past it, or a single animation would
+    /// more present - the settle frame - and must not leak past it, or a single animation would
     /// pin the loop permanently.
     #[test]
     fn motion_does_not_survive_the_frame_that_had_it() {
@@ -1108,7 +1108,7 @@ mod tests {
     }
 
     /// `dt` scales the velocity term, so a long frame counts as more travel. A spring drifting at
-    /// 12 px/s is at rest in a 16 ms frame (0.2 px) and moving in a 50 ms one (0.6 px) — the dt
+    /// 12 px/s is at rest in a 16 ms frame (0.2 px) and moving in a 50 ms one (0.6 px) - the dt
     /// clamp's worst case, and the reason the velocity test cannot be a bare constant.
     #[test]
     fn a_longer_frame_covers_more_travel() {
@@ -1126,7 +1126,7 @@ mod tests {
         assert!(should_present(10_032), "0.6px in a long frame is");
     }
 
-    /// The kill switch must not silently consume the dirty flag — `/tmp/webosiptv-noidle` is the
+    /// The kill switch must not silently consume the dirty flag - `/tmp/webosiptv-noidle` is the
     /// A/B instrument, so arming it has to change the frame RATE and nothing else.
     #[test]
     fn the_kill_switch_leaves_the_dirty_flag_alone() {

@@ -3,11 +3,11 @@
 //! This app is driven headlessly by ~44 files under `/tmp/webosiptv-*`: which screen to boot to,
 //! which item to play, which URL to stream, whether to auto-press OK, which PMS token to use.
 //! That is how `tests/run.py` and every capture scene work, and it is not going away. This module
-//! is the READ side of that surface — [`flag`], [`read`], [`read_sample`], the per-process latch
+//! is the READ side of that surface - [`flag`], [`read`], [`read_sample`], the per-process latch
 //! [`latched_flag!`], and the handful of triggers whose answer is a plain value ([`no_wan`],
 //! [`holdload_delay_ms`], [`guard_log_only`]). It names no application type, so every layer can
-//! call it. What a trigger DOES once read — the arms that boot a screen, press a key, feed the
-//! player a URL — is `dev` and its `scenarios`, which names the app and sits above
+//! call it. What a trigger DOES once read - the arms that boot a screen, press a key, feed the
+//! player a URL - is `dev` and its `scenarios`, which names the app and sits above
 //! everything; a typed trigger (a value that needs an upper layer's type to parse into) lives next
 //! to the one lower-layer module that consumes it, parsed from [`read`].
 //!
@@ -15,7 +15,7 @@
 //! too (mode 1777, both jail profiles), so on an ordinary user's TV every one of those files is a
 //! behaviour switch any co-resident process can throw. Three are outright takeovers:
 //! `webosiptv-token` beats the signed-in session (`app.rs`'s boot gate), `webosiptv-servers` hands
-//! the app a whole additional server — an address AND the token to trust it with — and
+//! the app a whole additional server - an address AND the token to trust it with - and
 //! `webosiptv-url` replaces the stream the player feeds.
 //!
 //! So every read goes through here, and here is `#[cfg]`-gated on the `devtriggers` feature. In a
@@ -28,7 +28,7 @@
 //! `nobudget` flag on `DevFlags`), the optimizer may keep the branch and its string literals
 //! in a release build, and `ci/check-package.py` fails the package because it greps the shipped
 //! bytes for every trigger name `dev`'s `DIAG` list and [`CONTROLLED`] declare. So every
-//! statement whose literal names a trigger (a log line saying `/tmp/webosiptv-…`) carries its own
+//! statement whose literal names a trigger (a log line saying `/tmp/webosiptv-...`) carries its own
 //! `#[cfg(feature = "devtriggers")]`. Never rely on constant folding for this.
 //!
 //! **Never open a `/tmp` path directly.** The grep that audits this (`/tmp/webosiptv-` outside
@@ -95,7 +95,7 @@ pub fn flag(_name: &str) -> bool {
 /// mid-run and a per-frame probe would change its answer half way through a case.
 ///
 /// A macro rather than a function because the latch has to be a `static` per trigger, and a
-/// function would need a map behind a lock — which is the thing being avoided. It lives HERE
+/// function would need a map behind a lock - which is the thing being avoided. It lives HERE
 /// because this module is the one door onto the `/tmp` surface; it was briefly a file-local macro
 /// in `ui/widgets.rs`, which walled it off from the other per-frame `flag` callers
 /// (`focusprobe::armed` had already hand-rolled exactly this body, doc comment and all).
@@ -106,7 +106,7 @@ pub fn flag(_name: &str) -> bool {
 ///
 /// ```ignore
 /// crate::devtrig::latched_flag!(
-///     /// `/tmp/webosiptv-flattabs` — the material off, for an A/B against the flat capsule.
+///     /// `/tmp/webosiptv-flattabs` - the material off, for an A/B against the flat capsule.
 ///     fn flat_tabs_armed = "flattabs";
 /// );
 /// ```
@@ -123,7 +123,7 @@ macro_rules! __latched_flag {
 }
 pub use __latched_flag as latched_flag;
 
-/// The trigger's CONTENT, trimmed. `Some("")` for a trigger armed as an empty file — several
+/// The trigger's CONTENT, trimmed. `Some("")` for a trigger armed as an empty file - several
 /// distinguish empty (take the default) from a value (`autoseek`, `library`, `marker`), so an
 /// empty file must not read the same as an absent one.
 #[cfg(feature = "devtriggers")]
@@ -144,16 +144,16 @@ pub fn guard_log_only() -> bool {
     *MODE.get_or_init(|| read("guard").as_deref() == Some("log"))
 }
 
-/// **`/tmp/webosiptv-nowan` — refuse every name lookup, as a dead resolver would.**
+/// **`/tmp/webosiptv-nowan` - refuse every name lookup, as a dead resolver would.**
 ///
 /// The offline-mode reproduction. A household whose internet is down but whose LAN is up resolves
-/// no public name at all: `plex.tv`, `discover.provider.plex.tv` and — the one that matters — the
+/// no public name at all: `plex.tv`, `discover.provider.plex.tv` and - the one that matters - the
 /// `plex.direct` hostname the app persisted for its OWN server on the LAN. Nothing on a desk can
 /// take the router's uplink away deterministically, so this trigger does it inside the app: while
 /// armed, `net`, `curlio` and `stream` refuse any host that is not a
 /// numeric literal, at the point where they would otherwise hand it to a resolver, and return the
 /// same error a failed resolution returns. A name reaches the wire only when the request carries a
-/// resolve pin (`plex::ResolvePin`) — which is exactly what the fix provides, so the same
+/// resolve pin (`plex::ResolvePin`) - which is exactly what the fix provides, so the same
 /// trigger shows the defect red and the fix green with no network condition arranged anywhere.
 ///
 /// Content `slow` first sleeps the connect budget an API call would have spent waiting on a dead
@@ -174,11 +174,11 @@ pub fn no_wan() -> Option<NoWan> {
     })
 }
 
-/// **Hold the Load-returned flag** — `webosiptv-holdload[=ms]`.
+/// **Hold the Load-returned flag** - `webosiptv-holdload[=ms]`.
 ///
 /// `Some(ms)` when armed (default 30000 for a bare/empty trigger, per its own `parse` fallback),
 /// else `None`. `player::threads::load_thread` sleeps this many milliseconds right after the real
-/// `sf_load` call returns and BEFORE `Shared::mark_native_load_returned` publishes that fact — so
+/// `sf_load` call returns and BEFORE `Shared::mark_native_load_returned` publishes that fact - so
 /// issue #74 D.1's budget (the pump's `deferring` line, then, past `NATIVE_LOAD_BUDGET`, the
 /// failure read-out) becomes observable on a real television on demand, rather than only on a
 /// k5lp set that happens to hang there for real. Deliberately NOT `DIAG`: it changes playback
@@ -198,13 +198,13 @@ pub fn holdload_delay_ms() -> Option<u64> {
     None
 }
 
-/// A raw dev payload in the runtime root, by bare NAME — only `sample.h264` and `sample.h265`,
+/// A raw dev payload in the runtime root, by bare NAME - only `sample.h264` and `sample.h265`,
 /// which predate the `webosiptv-` prefix and feed the player a local Annex-B sample instead of a
 /// stream. Everything else here is `webosiptv-<name>`; these two are the exception, so they get
 /// their own door rather than a prefix they do not have.
 ///
 /// It took an ABSOLUTE path until the flavour split, which left them as the last two runtime
-/// surfaces still pinned to a shared `/tmp` while every other one had moved — harmless in itself
+/// surfaces still pinned to a shared `/tmp` while every other one had moved - harmless in itself
 /// (two installs reading one sample is fine) but a hole in the rule that every runtime surface
 /// resolves through [`crate::paths::in_runtime_dir`], and rules with holes stop being checkable.
 /// NB the file now goes in the install's own root: `$(make -s print-rundir)/sample.h264`.
@@ -217,7 +217,7 @@ pub fn read_sample(_name: &str) -> Option<Vec<u8>> {
     None
 }
 
-/// `true` when this build reads `/tmp` at all — for the one boot log line that says so, and for
+/// `true` when this build reads `/tmp` at all - for the one boot log line that says so, and for
 /// call sites gating a whole subsystem (the capture listener, the remote FIFO) rather than a read.
 pub const ENABLED: bool = cfg!(feature = "devtriggers");
 
@@ -226,7 +226,7 @@ pub const ENABLED: bool = cfg!(feature = "devtriggers");
 ///
 /// `test` is in the cfg beside the feature, and only for a compile reason: the test below writes
 /// through this door rather than through a literal, and it guards itself at RUNTIME on
-/// [`ENABLED`] — but a runtime guard cannot stop a call from being compiled, so without this the
+/// [`ENABLED`] - but a runtime guard cannot stop a call from being compiled, so without this the
 /// whole crate failed to build under `--no-default-features --test` (E0425, "cannot find function
 /// `path` in module `super`"). A shipping release build is unchanged: `cfg(test)` is false there,
 /// and the fn is gone exactly as before.

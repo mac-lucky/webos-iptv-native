@@ -4,9 +4,9 @@ use super::*;
 #[allow(unused_imports)]
 use super::test_support::*;
 
-/// Regression: the header block was parsed as STRICT UTF-8 (`from_utf8(…).unwrap_or("")`), so a
-/// single non-UTF-8 byte anywhere in it — here a lone Latin-1 `0xE9` in a header value, which
-/// is exactly what a server echoing a filename or title produces — emptied the whole block. The
+/// Regression: the header block was parsed as STRICT UTF-8 (`from_utf8(...).unwrap_or("")`), so a
+/// single non-UTF-8 byte anywhere in it - here a lone Latin-1 `0xE9` in a header value, which
+/// is exactly what a server echoing a filename or title produces - emptied the whole block. The
 /// status then stayed 0, and `http_open`'s `status < 200` check closed a perfectly good 200 and
 /// reported it as a transport failure: an unplayable item / a missing poster with a healthy
 /// server on the other end. The response is otherwise entirely well formed.
@@ -14,7 +14,7 @@ use super::test_support::*;
 fn one_non_utf8_byte_in_a_header_does_not_turn_a_200_into_a_failure() {
     let mut resp: Vec<u8> = Vec::new();
     resp.extend_from_slice(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Title: caf");
-    resp.push(0xE9); // 'é' in Latin-1 — a lone 0xE9 is not valid UTF-8 in any position
+    resp.push(0xE9); // 'é' in Latin-1 - a lone 0xE9 is not valid UTF-8 in any position
     resp.extend_from_slice(b"\r\n\r\nhello");
     let (port, h) = one_shot_server(resp);
 
@@ -51,12 +51,12 @@ fn one_non_utf8_byte_in_a_header_does_not_turn_a_200_into_a_failure() {
 }
 
 /// The status extraction indexed a fixed `[9..]`. On the old `&str` that panicked outright when
-/// a multi-byte character straddled index 9 — a panic inside `http_open`, which runs on the
+/// a multi-byte character straddled index 9 - a panic inside `http_open`, which runs on the
 /// demux and poster workers as well as the main loop. A garbage status line must be REJECTED
 /// (status 0 → open fails), never fatal.
 #[test]
 fn a_status_line_that_straddles_the_status_offset_is_rejected_not_fatal() {
-    // The 4-byte U+1F600 starts at index 7, so it OWNS index 9 — the old `&str[9..]` split it.
+    // The 4-byte U+1F600 starts at index 7, so it OWNS index 9 - the old `&str[9..]` split it.
     let (port, h) = one_shot_server("HTTP/1.\u{1F600} 200 OK\r\n\r\n".as_bytes().to_vec());
 
     let (mut hs, rv) = open_against(port);
@@ -73,7 +73,7 @@ fn a_status_line_that_straddles_the_status_offset_is_rejected_not_fatal() {
 
 /// Header field NAMES are case-insensitive (RFC 9110 §5.1) and servers do not send one casing
 /// consistently. The old code got that from lowercasing the whole block; `find_ci` has to give
-/// it back, and — the part that matters to the caller — the offset it returns must index the
+/// it back, and - the part that matters to the caller - the offset it returns must index the
 /// ORIGINAL bytes, since the value is read from there. Tested directly rather than through a
 /// loopback round trip: it is a pure function, and every socket a test holds open is one the
 /// fd-leak test above can miscount while the two run in parallel.
@@ -99,7 +99,7 @@ fn header_names_are_found_whatever_their_casing() {
 
 /// The redaction rule these log lines rest on: what reaches the event log is the endpoint, and
 /// a query string never is. A query may carry a credential (an access token, a signature), while
-/// the event log is what a user pastes into a public issue thread — so this is graded on the
+/// the event log is what a user pastes into a public issue thread - so this is graded on the
 /// credential being ABSENT, not on the split being pretty.
 #[test]
 fn a_logged_endpoint_drops_the_query_and_with_it_the_token() {
@@ -126,7 +126,7 @@ fn a_logged_endpoint_drops_the_query_and_with_it_the_token() {
 }
 
 /// The completeness test itself. A body that reached its `Content-Length` reports nothing; one
-/// that stopped short reports how far it got and what was owed, and names WHICH end it was —
+/// that stopped short reports how far it got and what was owed, and names WHICH end it was -
 /// a mid-body `SO_RCVTIMEO` (recv error) reads nothing like a peer that closed early (EOF),
 /// which is why the read loops keep -1 and 0 apart rather than folding them into `r <= 0`.
 #[test]
@@ -171,7 +171,7 @@ fn a_short_body_is_reported_and_a_complete_one_is_not() {
         "the verb belongs on the line: {e}"
     );
 
-    // No length at all — a close-delimited body. A clean end is the ONLY end it has, so
+    // No length at all - a close-delimited body. A clean end is the ONLY end it has, so
     // silence; an error is still an error, with nothing to state as `want`.
     assert_eq!(short_body_line("GET", "/x", 900, -1, false, false), None);
     let u = short_body_line("GET", "/x", 900, -1, false, true).expect("reported");
@@ -179,7 +179,7 @@ fn a_short_body_is_reported_and_a_complete_one_is_not() {
 }
 
 /// Chunked framing has no `Content-Length` to fall short of, and `http_read`'s chunked branch
-/// counts DECODED bytes into `consumed` without ever reading the field — so the length test
+/// counts DECODED bytes into `consumed` without ever reading the field - so the length test
 /// must not run there, INCLUDING for a server that sent both headers, where the two numbers
 /// are not the same quantity. Only a recv error can call a chunked transfer incomplete.
 #[test]
@@ -201,7 +201,7 @@ fn a_chunked_response_cannot_report_a_short_body_on_length() {
     );
 }
 
-/// The chunked detection was `find_ci(hdr, b"\r\ntransfer-encoding: chunked")` — one exact
+/// The chunked detection was `find_ci(hdr, b"\r\ntransfer-encoding: chunked")` - one exact
 /// spelling, single space, single token. Every other legal way to write the same header missed,
 /// and a miss is not a failure: the body is then read as close-delimited with the chunk-size
 /// lines left INLINE in it, i.e. silent corruption of whatever the caller parses next.
@@ -241,9 +241,9 @@ fn chunked_is_recognised_however_the_header_is_spelled() {
     assert!(!header_is_chunked(b""));
 }
 
-/// …and the spelling reaches the READ path, not merely the predicate. A server answering
+/// ...and the spelling reaches the READ path, not merely the predicate. A server answering
 /// `Transfer-Encoding:chunked` (no space) used to hand its caller `4\r\nabcd\r\n0\r\n\r\n`
-/// verbatim — a body that parses as neither JSON nor a media stream, from a healthy server.
+/// verbatim - a body that parses as neither JSON nor a media stream, from a healthy server.
 #[test]
 fn a_chunked_body_spelled_without_a_space_is_still_decoded() {
     let (port, h) = one_shot_server(
@@ -260,7 +260,7 @@ fn a_chunked_body_spelled_without_a_space_is_still_decoded() {
 /// The constraint the reporting is bound by: it is observability only. A server that promises
 /// 10 bytes and closes after 4 still hands the caller those 4 bytes as `Some(body)`, so what
 /// the data layer does with them (`get_json`'s serde failure, `.ok()`-folded to `None`) is
-/// decided exactly where it was — the event log is the only thing that gained a fact.
+/// decided exactly where it was - the event log is the only thing that gained a fact.
 #[test]
 fn a_truncated_body_is_still_returned_to_the_caller() {
     let (port, h) =
@@ -279,7 +279,7 @@ fn a_truncated_body_is_still_returned_to_the_caller() {
 }
 
 /// **A non-2xx is a RESPONSE, and it must arrive as one.** The wrapper these two tests used to
-/// call answered `None` here, indistinguishable from a refused connection — and a credential
+/// call answered `None` here, indistinguishable from a refused connection - and a credential
 /// problem then reads as a reachability one. Graded against a real socket rather than against the header parser, because what is
 /// being asserted is the composition: `http_open` reports the failure through its return value
 /// and leaves the code on the struct, and only reading `hs_status` afterwards recovers it.
@@ -346,7 +346,7 @@ fn a_500_response_remains_a_status_after_its_deadline_passes() {
 
 /// Nothing listening is the OTHER outcome, and the primitives must report it as one: the open
 /// fails and the status stays `0`, the value `http_open`'s parser leaves when no `HTTP/1.x NNN`
-/// line ever arrived — never a code some server could have sent. `crate::http`'s plaintext arm
+/// line ever arrived - never a code some server could have sent. `crate::http`'s plaintext arm
 /// turns exactly that `0` into `None`, so a caller cannot read it as a refusal (`classify` would
 /// score it `Unreachable` either way, but by luck rather than by decision); that half is graded
 /// in `http`'s tests.

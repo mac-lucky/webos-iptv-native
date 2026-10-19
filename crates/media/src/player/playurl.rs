@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 
-/// A stream to play and **the Load payload declaration to play it with**, with nothing behind it —
+/// A stream to play and **the Load payload declaration to play it with**, with nothing behind it -
 /// `/tmp/webosiptv-playurl`, the player-PIPELINE test tier's one entry point.
 ///
 /// `webosiptv-url` hands the engine a URL alone; the Load payload's codecs, frame rate and
@@ -26,7 +26,7 @@ use std::collections::BTreeMap;
 ///  "atmos":false, "headers":{"Referer":"https://live.example/"}}
 /// ```
 ///
-/// `{"url":"…","probe":true}` declares nothing instead: the stream is probed and decided exactly
+/// `{"url":"...","probe":true}` declares nothing instead: the stream is probed and decided exactly
 /// as a playlist channel is. A debug build opens the player on the trigger at boot
 /// (`app::boot`), so relaunching the app with the file in place starts the case.
 ///
@@ -34,7 +34,7 @@ use std::collections::BTreeMap;
 /// a credential in either reaches a log the day someone points this trigger at a real stream.
 #[derive(serde::Deserialize, Clone)]
 pub struct PlayUrl {
-    /// `http(s)://…`.
+    /// `http(s)://...`.
     #[serde(default)]
     pub url: String,
     /// The player's title; empty reads "playurl".
@@ -44,7 +44,7 @@ pub struct PlayUrl {
     /// `"vp9"`, `"vp8"` (the last three only on a set whose table lists that decoder).
     #[serde(default)]
     pub vcodec: String,
-    /// The audio codec, in FFmpeg's spelling (`"eac3"`, not `"AC3 PLUS"`) — the engine does the
+    /// The audio codec, in FFmpeg's spelling (`"eac3"`, not `"AC3 PLUS"`) - the engine does the
     /// LG-side renaming, which is the trap this tier exists to keep testing.
     #[serde(default)]
     pub acodec: String,
@@ -75,7 +75,7 @@ pub struct PlayUrl {
 /// The four Dolby Vision fields the Load payload decides on.
 #[derive(serde::Deserialize, Clone, Copy, Default)]
 pub struct PlayDovi {
-    /// 5 / 7 / 8. **Zero means no Dolby Vision at all** — it is what drives `present`, rather
+    /// 5 / 7 / 8. **Zero means no Dolby Vision at all** - it is what drives `present`, rather
     /// than a separate flag that could disagree with it.
     #[serde(default)]
     pub profile: i64,
@@ -127,7 +127,7 @@ impl PlayUrl {
 ///
 /// An `Err` rather than a defaulted object on malformed input: a run whose declaration was
 /// silently dropped grades as "the payload is wrong", when the fault is a typo in the harness. An
-/// empty `url` is an `Err` too — an all-defaults object would send the engine looking for
+/// empty `url` is an `Err` too - an all-defaults object would send the engine looking for
 /// `webosiptv-url` instead and the case would play something else entirely.
 #[cfg(any(feature = "devtriggers", test))]
 fn parse_playurl(s: &str) -> Result<PlayUrl, String> {
@@ -138,7 +138,7 @@ fn parse_playurl(s: &str) -> Result<PlayUrl, String> {
     Ok(p)
 }
 
-/// This boot's URL-and-declaration, if one was armed — `/tmp/webosiptv-playurl`.
+/// This boot's URL-and-declaration, if one was armed - `/tmp/webosiptv-playurl`.
 ///
 /// `None` = not armed; `Some(Err)` = armed but unreadable, which the caller logs. **Not memoized**:
 /// every start re-reads it, because a seek that escalates to a full reload builds the payload
@@ -178,7 +178,7 @@ mod tests {
         assert_eq!(start.headers.lines(true).collect::<Vec<_>>(), ["Referer: https://live.example/"]);
     }
 
-    /// Omitted fields must mean "no Dolby anything, no headers" — not a parse failure.
+    /// Omitted fields must mean "no Dolby anything, no headers" - not a parse failure.
     #[test]
     fn omitted_fields_default_to_a_silent_declaration() {
         let p = super::parse_playurl(r#"{"url":"http://10.0.0.2:8020/a.mkv","vcodec":"h264","acodec":"ac3"}"#).unwrap();

@@ -6,11 +6,11 @@
 // above the shadow box; the cut below skips the covered interior.
 //
 // TWO cut shapes, chosen by u_cut, because the occluder can be opaque or translucent:
-//   u_cut < 0  — the OPAQUE occluder's cut: a cheap axis-aligned box inset by u_radius+1, which
+//   u_cut < 0 - the OPAQUE occluder's cut: a cheap axis-aligned box inset by u_radius+1, which
 //                stops short of the corner arcs so the penumbra still rounds them. Everything it
 //                leaves inside the occluder is hidden by the occluder itself.
-//   u_cut >= 0 — the TRANSLUCENT occluder's cut: the occluder's own rounded rect, corner radius
-//                u_cut, so NO ink lands under the panel at all. The box cut is wrong here — the
+//   u_cut >= 0 - the TRANSLUCENT occluder's cut: the occluder's own rounded rect, corner radius
+//                u_cut, so NO ink lands under the panel at all. The box cut is wrong here - the
 //                band it leaves between the inset and the edge is at full strength and ends in a
 //                hard step, which is a drawn FRAME once you can see through the thing on top of it.
 // Coordinate chain is highp - see the PRECISION note in fs_src.frag.

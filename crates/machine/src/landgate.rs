@@ -16,14 +16,14 @@
 //! mailbox, and while the store's next recorded landing frame is still in the future the answer
 //! is "not yet" and the record stays where it is.
 //!
-//! * A landing that arrives EARLY waits — it is consumed on its recorded frame instead.
+//! * A landing that arrives EARLY waits - it is consumed on its recorded frame instead.
 //! * On the frame a landing is DUE, the site polls its mailbox for a bounded moment
 //!   ([`WAIT_POLLS`]) before giving up, because a worker that was fast enough when the recording
 //!   was taken can be a frame slower here. Holding alone fixes only one of the two directions,
 //!   and the other is a coin flip: measured on flow 12 with the hold alone, Metadata landed a
 //!   frame late and Person two, and every frame after that diverged.
 //! * A landing that is still not there when the budget is spent is delivered whenever it does
-//!   arrive and counted as `late` — that is the pre-phase-11 behaviour, kept as the fallback.
+//!   arrive and counted as `late` - that is the pre-phase-11 behaviour, kept as the fallback.
 //! * A landing the recording never saw at all is delivered at once and counted as `extra`.
 //! * A recorded landing that never arrives is counted as `missing` when the replay ends.
 //!
@@ -38,14 +38,14 @@
 //! Each [`Gate`] belongs to one `Stores` owner, and is keyed per STORE ORDINAL inside that owner:
 //! the schedule is that store's `(frame, count)` pairs, and every arrival at any of its sites
 //! consumes one unit. The COUNT is load-bearing and a boolean was
-//! measured wrong first — `person` has one mailbox per fetch and took four answers over four
+//! measured wrong first - `person` has one mailbox per fetch and took four answers over four
 //! frames when the recording was made and over three when it was replayed, so a per-frame boolean
 //! let one replay frame consume two arrivals for one cursor step, after which every later landing
 //! of that store read as `late` for the rest of the run. With counts the second arrival on a
 //! frame whose unit is spent is simply HELD to the next recorded frame, which is where it was.
 //!
 //! **It is a hold, never a spawn barrier.** The gate wraps the mailbox take alone, so the pumps'
-//! other halves — the retry countdowns, `maybe_spawn`, the debounce, the roster sync — run on
+//! other halves - the retry countdowns, `maybe_spawn`, the debounce, the roster sync - run on
 //! their recorded frames exactly as they did. Gating a whole `pump()` would have suppressed the
 //! spawn that produces the very landing being waited for.
 //!
@@ -200,7 +200,7 @@ const MAX_DIFFS: usize = 64;
 
 /// How many times a site polls its mailbox on the frame a landing is DUE, and how long it waits
 /// between polls: 400 x 500 µs, so at most ~200 ms per (frame, store). A count rather than a
-/// deadline deliberately — `ci/check-deps.sh`'s `wall` rule keeps `Instant::now` out of `ui/`,
+/// deadline deliberately - `ci/check-deps.sh`'s `wall` rule keeps `Instant::now` out of `ui/`,
 /// and a replay's budget has no business reading a clock the recording does not own.
 const WAIT_POLLS: usize = 400;
 const WAIT_STEP_US: u64 = 500;
@@ -452,7 +452,7 @@ fn phase(&self, ord: StoreOrd) -> Phase {
         let i = ord.0;
         match s.sched.get(&i).and_then(|q| q.front()).map(|&(at, _)| at) {
             // still ahead of us: leave the mailbox alone until the frame comes round. A second
-            // arrival on a frame whose recorded arrivals are all spent is held here too — that is
+            // arrival on a frame whose recorded arrivals are all spent is held here too - that is
             // the count doing its work.
             Some(at) if at > s.frame => Phase::Hold,
             Some(at) if at == s.frame => {
@@ -694,7 +694,7 @@ mod tests {
         let _g = tv_base::testlock::serial();
         let _armed = Armed;
         arm_replay(vec![vec![], vec![(3, 1)]]);
-        // ONE result, in the mailbox since frame 0 — the worker finished long before its frame
+        // ONE result, in the mailbox since frame 0 - the worker finished long before its frame
         let mailbox = std::cell::Cell::new(Some("result"));
         let mut delivered = None;
         for f in 0..=4u64 {
@@ -735,7 +735,7 @@ mod tests {
         arm_replay(vec![vec![], vec![(3, 1)]]);
         for f in 0..=5u64 {
             begin_frame(f);
-            // nothing arrives until frame 5 — holding cannot manufacture a result
+            // nothing arrives until frame 5 - holding cannot manufacture a result
             let got = take(A, || if f >= 5 { Some(()) } else { None });
             assert_eq!(got.is_some(), f == 5);
         }
@@ -769,7 +769,7 @@ mod tests {
         assert!(take_diffs().is_empty(), "a landing waited for is not a divergence");
     }
 
-    /// …and the wait is claimed once per (frame, store), so a store whose landing is due at a
+    /// ...and the wait is claimed once per (frame, store), so a store whose landing is due at a
     /// site that will never produce it cannot spend the budget twice on one frame.
     #[test]
     fn the_due_frame_wait_is_spent_once_per_store_per_frame() {
@@ -799,7 +799,7 @@ mod tests {
     }
 
     /// A store with several mailboxes: the COUNT decides how many of its sites may take on one
-    /// frame. Two arrivals on a frame the recording gave one are not both delivered — the second
+    /// frame. Two arrivals on a frame the recording gave one are not both delivered - the second
     /// is held to the frame the recording took it on, which is what keeps the cursor aligned for
     /// the rest of the run.
     #[test]

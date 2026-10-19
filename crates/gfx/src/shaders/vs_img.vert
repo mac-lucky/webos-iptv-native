@@ -39,7 +39,7 @@ varying highp float v_gloss;
 #ifdef WI_DITHER_NC
 // The dither tile's coordinate (`shaders/dither.glsl`, cost rule 4): target px / NOISE_DIM, linear
 // in position, so interpolated exactly and never computed per fragment. Only the programs whose
-// vertex source is built with `gfx::glsl_vs_dithered!` carry it — never the poster/card path.
+// vertex source is built with `gfx::glsl_vs_dithered!` carry it - never the poster/card path.
 varying highp vec2 v_dither_nc;
 #endif
 #ifdef WI_STILL_GROUND

@@ -4,11 +4,11 @@ use super::*;
 use crate::tile::Resume;
 
 /// The band's blurred region, in authored px^2, for a track `w` wide with the chip unfurled
-/// beside it — through **`gfx`'s own `blur_region` and `blur_region_union`**, not a copy of them.
+/// beside it - through **`gfx`'s own `blur_region` and `blur_region_union`**, not a copy of them.
 ///
 /// The copy is the thing to avoid here and there is a measurement to prove it: this test's
 /// predecessor modelled the region inline and left the screen CLAMP out, which priced the tab
-/// track at `(940+176) x 252` = 281k px^2 where the rising region is `1116 x 200` = 223k — a 26%
+/// track at `(940+176) x 252` = 281k px^2 where the rising region is `1116 x 200` = 223k - a 26%
 /// over-estimate that sat under a passing assertion for as long as the limit existed, and the
 /// reason the old limit read as if it had only ~7% of headroom when it had far more. Both
 /// surfaces are grown `gfx::BLUR_MARGIN` a side (`blur_region` is the rising, upper-bound region; a band that never rises is grabbed only `BLUR_REACH`) and then clamped to the screen, so the capsule
@@ -17,8 +17,8 @@ use crate::tile::Resume;
 /// rather than 252. That is `blur_region`'s business, and it is now asked rather than restated.
 ///
 /// The rects are the DRAWN ones: `chip_cap` at rest with a name at its budget, and the centred
-/// track `draw_tab_row` builds. Only the chip's left edge reaches the union — the capsule grows
-/// rightward and the clearance keeps its right edge inside the track's — so the pair prices the
+/// track `draw_tab_row` builds. Only the chip's left edge reaches the union - the capsule grows
+/// rightward and the clearance keeps its right edge inside the track's - so the pair prices the
 /// same at every point of the unfurl, which is why one number can stand for the band.
 pub(super) fn band_region(w: f32) -> f32 {
     let (h, y) = (TAB_PILL_H + 2.0 * TAB_TRACK_PAD, TOP_BAR_Y - TAB_TRACK_PAD);
@@ -33,13 +33,13 @@ pub(super) fn band_region(w: f32) -> f32 {
 
 // ── The poster's state mark: one vocabulary, one mark at a time ───────────────────────────
 //
-// `card` needs a GL context, so the CHOICE is what a host test can reach — and the choice is
+// `card` needs a GL context, so the CHOICE is what a host test can reach - and the choice is
 // where this has been wrong before: the mark used to say "unwatched" in amber, which is the
 // opposite claim, and the bar/disc precedence is only observable on an item PMS reports as both.
 
 /// A MOVIE's facts at a given watched state, `in_progress` being the application's answer to its
 /// resume rule (30 of 100 minutes in, when it is). For a LEAF the two flags really are each
-/// other's negation — which is exactly what stops being true for a container, hence the show cases
+/// other's negation - which is exactly what stops being true for a container, hence the show cases
 /// below. The resume rule's own edges (an offset past the end, no runtime) are the application's
 /// and are graded where it applies them, in `screens::registry::tile_facts`.
 pub(super) fn row(watched: bool, in_progress: bool) -> TileFacts<'static> {
@@ -87,7 +87,7 @@ impl tv_machine::machine::Measure for StatusMetrics {
 
 // ---- the legibility contract itself -------------------------------------------------------
 
-/// One sRGB channel, linearized (WCAG 2.x) — see the `AmbientWash` block above for why this
+/// One sRGB channel, linearized (WCAG 2.x) - see the `AmbientWash` block above for why this
 /// yardstick lives in the tests rather than in the app.
 pub(super) fn srgb_lin(c: f32) -> f32 {
     if c <= 0.03928 {
@@ -111,11 +111,11 @@ pub(super) fn contrast_over_art(ink: [f32; 4], art: f32, a: f32) -> f32 {
     (l1.max(l2) + 0.05) / (l1.min(l2) + 0.05)
 }
 
-/// One HERO-72 bold cap band, the device font's — quoted, not measured, because the host suite
+/// One HERO-72 bold cap band, the device font's - quoted, not measured, because the host suite
 /// opens no SDL_ttf (the same boundary that keeps `detail::hero_chain` pure).
 pub(super) const HERO_CAP_H: f32 = 52.0;
 
-/// The height of home's synopsis block at its cap — the SHARED hero blurb
+/// The height of home's synopsis block at its cap - the SHARED hero blurb
 /// ([`crate::hero_synopsis`]), so this table follows the rung and the leading instead of
 /// quoting them. It was the literal `87.0` with `// three size::MICRO lines at the hero's 29px
 /// leading` beside it, which is exactly the comment that goes stale in silence: the block is
@@ -138,10 +138,10 @@ pub(super) fn home_title_band_top() -> f32 {
     )
 }
 
-/// …and the cap top of the TEXT it falls back to, which is what the legibility table grades.
+/// ...and the cap top of the TEXT it falls back to, which is what the legibility table grades.
 /// The fallback is BASELINED on the band's bottom edge (`hero_logo::place`'s optical rule), so
 /// the ink sits a cap band above that line, ~70px below the band's own top. A clearLogo occupies
-/// the band instead and reaches higher — that is art, graded by eye on a capture, not here.
+/// the band instead and reaches higher - that is art, graded by eye on a capture, not here.
 pub(super) fn home_title_cap_top() -> f32 {
     home_title_band_top() + crate::hero_logo::band_h(crate::hero_logo::LogoRung::Hero)
         - HERO_CAP_H
@@ -154,7 +154,7 @@ pub(super) fn detail_title_cap_top() -> f32 {
 
 /// A spread of pill widths. Deliberately wider than the device's (a real "TV" pill measures
 /// ≈67px at `size::BODY`, "Kids & Family Movies" ≈350) so a modest pill count crosses
-/// [`TAB_VIEW_MAX`] and the overflow arithmetic is exercised without inventing 30 libraries —
+/// [`TAB_VIEW_MAX`] and the overflow arithmetic is exercised without inventing 30 libraries -
 /// the thresholds below are therefore about the geometry, not about a particular server.
 pub(super) fn widths_for(n: usize) -> Vec<f32> {
     (0..n).map(|i| 140.0 + (i % 5) as f32 * 60.0).collect()
@@ -168,13 +168,13 @@ pub(super) fn widths_for(n: usize) -> Vec<f32> {
 /// One frame at the app's own cadence, the value `card_row.rs`'s tests step with.
 pub(super) const DT: f32 = 1.0 / 60.0;
 
-/// Pill `i`'s content-space `(x, w)` in the fixture strip — the same pair
+/// Pill `i`'s content-space `(x, w)` in the fixture strip - the same pair
 /// [`StripRender::update`] hands the strip, built from the same two functions.
 pub(super) fn span_of(w: &[f32], i: usize) -> (f32, f32) {
     (tab_pill_x(w, i), w[i])
 }
 
-/// The capsule/strip tests drive `Capsule::step`, whose landing frame `Spring::jump`s — and
+/// The capsule/strip tests drive `Capsule::step`, whose landing frame `Spring::jump`s - and
 /// `Spring::jump` reports to `tv_machine::idle`'s process-global dirty flag. So they are serial by
 /// obligation, not precaution (`xfade.rs`'s rule): under parallel libtest they intermittently
 /// failed OTHER modules' "a settled screen asks for nothing" assertions.

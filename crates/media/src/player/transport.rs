@@ -1,5 +1,5 @@
 //! The player's transport-pause contract: the one door every surface reaches the player's pause
-//! through — the player's own transport keys and the detail page's trailer transport
+//! through - the player's own transport keys and the detail page's trailer transport
 //! ([`super::preview::transport`]) alike.
 
 use std::sync::atomic::Ordering::Relaxed;
@@ -15,7 +15,7 @@ pub fn set_paused(v: bool) {
 }
 
 /// PURE: the paused value a transport request settles on. `Some(true)` is the remote's PLAY key,
-/// `Some(false)` its PAUSE, and `None` the single PLAYPAUSE toggle — which is the only one of the
+/// `Some(false)` its PAUSE, and `None` the single PLAYPAUSE toggle - which is the only one of the
 /// three that needs the current state at all. One function rather than a `match` per caller, so a
 /// PLAY key cannot toggle on one surface and resume on another.
 pub fn transport_target(play: Option<bool>, paused: bool) -> bool {

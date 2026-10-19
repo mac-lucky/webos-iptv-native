@@ -1,4 +1,4 @@
-//! **What a stream IS, as the Load must declare it** — and the two decisions that follow from it
+//! **What a stream IS, as the Load must declare it** - and the two decisions that follow from it
 //! before a native object is built: how its Dolby Vision is presented, and whether its audio can
 //! be fed to the television's decoder at all.
 //!
@@ -43,13 +43,13 @@ pub struct StreamDeclaration {
 /// feeds one elementary stream to a decoder that has never heard of an RPU, so the base layer is
 /// exactly what reaches the panel unless the Load declares the stream as Dolby Vision.
 ///
-/// All zero is "nothing said", which is also what a non-DV stream produces — see
+/// All zero is "nothing said", which is also what a non-DV stream produces - see
 /// [`Dovi::base_layer_unusable`] for why silence must never convict.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
 pub struct Dovi {
     /// The stream carries Dolby Vision at all (a `dvcC`/`dvvC` configuration record).
     pub present: bool,
-    /// The profile: 5 / 7 / 8 …; 0 means unknown.
+    /// The profile: 5 / 7 / 8 ...; 0 means unknown.
     pub profile: i64,
     /// The base layer's signal compatibility id: 0 none (P5) / 1 HDR10 / 2 SDR / 4 HLG.
     pub bl_compat: i64,
@@ -72,7 +72,7 @@ impl Dovi {
         self.el_present || self.profile == 5 || (self.profile > 0 && self.bl_compat == 0)
     }
 
-    /// PURE: **how this stream will be presented** — the one predicate behind both the refusal and
+    /// PURE: **how this stream will be presented** - the one predicate behind both the refusal and
     /// the Load payload's `DolbyHdrInfo` node, so the two can never disagree.
     ///
     /// - not `present` → [`DvPresentation::NotDv`];
@@ -86,7 +86,7 @@ impl Dovi {
     ///   profile, or `signal` withheld on an unusable base layer) → refuse iff the base layer is
     ///   unusable, else play the base layer;
     /// - otherwise declare it, which is what makes the panel enter Dolby Vision mode (libpf sets
-    ///   `dolby-vision=TRUE` on the mere presence of the node — decompiled from this television's
+    ///   `dolby-vision=TRUE` on the mere presence of the node - decompiled from this television's
     ///   own `CustomPipeline::parseOptionStringSpi`).
     pub fn presentation(
         &self,
@@ -186,14 +186,14 @@ impl DvPresentation {
 }
 
 tv_base::devtrig::latched_flag!(
-    /// `/tmp/webosiptv-dvnonode` — keep a declared Dolby Vision playback but send **no**
+    /// `/tmp/webosiptv-dvnonode` - keep a declared Dolby Vision playback but send **no**
     /// `DolbyHdrInfo` node. Diagnostic only, applied at the payload: the picture is expected to be
     /// WRONG for a Profile 5 stream; this knob judges cadence, not colour.
     pub fn dv_node_suppressed = "dvnonode";
 );
 
 tv_base::devtrig::latched_flag!(
-    /// `/tmp/webosiptv-nodv` — **withhold the Dolby Vision declaration**, for a bisect. A
+    /// `/tmp/webosiptv-nodv` - **withhold the Dolby Vision declaration**, for a bisect. A
     /// withheld Profile 5 is refused (its base layer is unusable), so this bisects "declared vs
     /// refused"; [`dv_node_suppressed`] is the finer instrument.
     pub fn dv_withheld = "nodv";
@@ -217,7 +217,7 @@ pub enum AudioFeed {
     /// (`ff::adec::sink_channels`: stereo); the Load declares `"PCM"` with that `pcmInfo`. Chosen
     /// when the decoder bound at boot (`ff::adec::available`).
     SoftPcm { source: String, channels: u32 },
-    /// **The television cannot decode this track** — a codec the pipeline has no decoder for (or
+    /// **The television cannot decode this track** - a codec the pipeline has no decoder for (or
     /// a listed one beyond its measured channel ceiling) and the build cannot decode either, or any
     /// such track when the software decoder did not bind. Nothing else re-encodes it: a start that reaches this decision is
     /// refused with an explicit error (`player::FailureKind::AudioUnsupported`) instead of a Load
@@ -307,7 +307,7 @@ impl AudioFeed {
 }
 
 /// **What the probe read off the container** (`ff::probe`): every video and audio stream, as
-/// plain data, in FILE order — the order `PlaybackStart::audio_track` and the demuxer's
+/// plain data, in FILE order - the order `PlaybackStart::audio_track` and the demuxer's
 /// `desired_audio_idx` count audio streams in. Filled by the FFmpeg side, consumed by the pure
 /// [`derive_declaration`], so the decision is testable without a demuxer.
 #[derive(Clone, Debug, Default, PartialEq)]

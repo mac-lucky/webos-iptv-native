@@ -1,10 +1,10 @@
-//! `net` — a small blocking HTTP(S) client over **whatever libcurl the machine already has**, bound
+//! `net` - a small blocking HTTP(S) client over **whatever libcurl the machine already has**, bound
 //! at runtime by the candidate list below (nothing is linked). The plain-HTTP socket in
 //! [`crate::stream`] cannot do TLS; this fills that gap. Every call is **blocking**, so callers
 //! must run it off the SDL main loop.
 //!
-//! It is the transport for every TLS request the app makes — JSON GETs to arbitrary addon hosts,
-//! public redirect-following fetches ([`https_get_public`]), telemetry ([`post_ca`]) — with
+//! It is the transport for every TLS request the app makes - JSON GETs to arbitrary addon hosts,
+//! public redirect-following fetches ([`https_get_public`]), telemetry ([`post_ca`]) - with
 //! per-call deadlines ([`Timeouts`]), a bounded response body (`max_body`), an optional DNS pin
 //! ([`resolve`]) and the process's one `User-Agent` ([`set_user_agent`]).
 //!
@@ -52,7 +52,7 @@ pub struct CurlVersionInfo {
 //
 // The TV's libcurl SONAME is not stable across webOS: releases up to 6.4.0 answer to
 // `libcurl.so.5`, and from 7.4.0 on only `libcurl.so.4` exists. Naming either in DT_NEEDED
-// excludes half the fleet — and the exclusion is not "curl calls fail", it is the dynamic loader
+// excludes half the fleet - and the exclusion is not "curl calls fail", it is the dynamic loader
 // refusing to start the process. (5.3.1 and 6.4.0 carry BOTH names, a compat alias LG kept over
 // the transition, which is why `.so.5` reached further than the file listing suggests.)
 //
@@ -60,14 +60,14 @@ pub struct CurlVersionInfo {
 // is how the variadic API is bound: each call site passes exactly one trailing argument whose type
 // is fixed by the option id, so one concrete non-variadic signature per call shape is both
 // sufficient and what the compiler was already generating. This was hand-written once on the
-// belief that a macro could not express it — the blocker was never the variadics, only the
+// belief that a macro could not express it - the blocker was never the variadics, only the
 // one-symbol-per-wrapper assumption.
 //
 // **The third name is macOS's, and it is what gives the desktop build HTTPS at all.** The host
 // simulator and the `WebosIptv.app` bundle run this same module, and on a Mac the two ELF
 // SONAMEs simply do not open. macOS ships libcurl in the dyld shared cache and
 // `dlopen("libcurl.4.dylib")` resolves it with no install, no Homebrew and nothing to bundle.
-// It is LAST deliberately — a television never reaches it, so this costs the device nothing but
+// It is LAST deliberately - a television never reaches it, so this costs the device nothing but
 // one extra failed `dlopen` in the already-fatal no-curl case, and the candidate list stays
 // ordered by "what the fleet actually answers to" first.
 tv_base::dynlib! {
@@ -84,7 +84,7 @@ tv_base::dynlib! {
     // option id are the only named parameters, and the value arrives through `va_arg`. Spelling
     // that value's type after the ellipsis is what lets one C symbol be bound as more than one
     // wrapper; moving it BEFORE the ellipsis would compile, run on the television, and hand libcurl a
-    // garbage pointer on Apple ARM64 (see `dynlib!`'s doc — it is a stack-vs-register convention
+    // garbage pointer on Apple ARM64 (see `dynlib!`'s doc - it is a stack-vs-register convention
     // difference, and it crashes inside `strlen`).
     fn curl_easy_setopt_ptr = "curl_easy_setopt"(handle: *mut CURL, option: c_int, ..., v: *const c_void) -> c_int;
     fn curl_easy_setopt_long = "curl_easy_setopt"(handle: *mut CURL, option: c_int, ..., v: c_long) -> c_int;
@@ -118,27 +118,27 @@ const CURLOPT_REDIR_PROTOCOLS: c_int = 182;
 const CURLPROTO_HTTP: c_long = 1 << 0;
 const CURLPROTO_HTTPS: c_long = 1 << 1;
 const PUBLIC_MAX_REDIRECTS: c_long = 5;
-/// `CURLOPT_CUSTOMREQUEST` (OBJECTPOINT + 36). The METHOD TOKEN, and nothing else — it does not
+/// `CURLOPT_CUSTOMREQUEST` (OBJECTPOINT + 36). The METHOD TOKEN, and nothing else - it does not
 /// change what curl sends or expects, it only overrides the verb written on the request line. That
 /// is exactly what a body-less `PUT` needs: `CURLOPT_UPLOAD` would make curl wait to read a body
-/// it is never given, while this sends a plain GET-shaped request that says `PUT` — the same bytes
+/// it is never given, while this sends a plain GET-shaped request that says `PUT` - the same bytes
 /// the plaintext [`crate::stream`] path puts on the wire for a body-less `PUT`.
 ///
 /// It is an option ID, **not a new symbol**: `curl_easy_setopt` is already bound, so nothing about
 /// the `dynlib!` table (and therefore nothing about which firmwares this binary starts on) moves
 /// for this. Present since libcurl 7.1; the television's is 7.53.1.
 const CURLOPT_CUSTOMREQUEST: c_int = 10036;
-/// `CURLOPT_PINNEDPUBLICKEY` (OBJECTPOINT + 230) — `"sha256//<base64 of the SPKI's SHA-256>"`.
+/// `CURLOPT_PINNEDPUBLICKEY` (OBJECTPOINT + 230) - `"sha256//<base64 of the SPKI's SHA-256>"`.
 ///
 /// libcurl 7.39+, against the dev television's 7.53.1, so it reaches every firmware this app
 /// claims. It is checked **independently of** `CURLOPT_SSL_VERIFYPEER`, which is what makes the
 /// one caller possible: the lab receiver ([`crate::lab`]) is a self-signed certificate generated
 /// per session on a developer's Mac, so there is no CA to verify against and the pin is the whole
-/// of the endpoint's identity — a narrower trust root than the television's CA store, not a wider
+/// of the endpoint's identity - a narrower trust root than the television's CA store, not a wider
 /// one. No private key is in this binary; a pin is a hash of a public key.
 const CURLOPT_PINNEDPUBLICKEY: c_int = 10230;
 
-/// `CURLOPT_CAINFO` (OBJECTPOINT + 65) — a path to a PEM bundle to verify the peer against,
+/// `CURLOPT_CAINFO` (OBJECTPOINT + 65) - a path to a PEM bundle to verify the peer against,
 /// INSTEAD of whatever trust store this firmware shipped with in 2019. Production sets it in two
 /// places only: [`Tls::CaBundle`] (the telemetry bundle) and [`roots::apply`] (the bundled-roots
 /// fallback, after the device store has already said no).
@@ -152,12 +152,12 @@ pub const CURLOPT_CAINFO: c_int = 10065;
 /// the DNS cache, so the named host is never resolved. Present since 7.21.3; the entry syntax the
 /// television's 7.53.1 parses is documented on [`origin::ResolvePin::entry`]. See [`resolve`].
 const CURLOPT_RESOLVE: c_int = 10203;
-/// `CURLE_UNKNOWN_OPTION` — what `curl_easy_setopt` answers for an option id this libcurl was
+/// `CURLE_UNKNOWN_OPTION` - what `curl_easy_setopt` answers for an option id this libcurl was
 /// built without. The one `setopt` result in this module that is NOT fatal: see [`resolve`].
 const CURLE_UNKNOWN_OPTION: c_int = 48;
 // curl.h info ids (CURLINFO_LONG = 0x200000).
 const CURLINFO_RESPONSE_CODE: c_int = 0x20_0002;
-/// `CURLINFO_SSL_VERIFYRESULT` (LONG + 13) — the X509 verify result of the peer certificate, as
+/// `CURLINFO_SSL_VERIFYRESULT` (LONG + 13) - the X509 verify result of the peer certificate, as
 /// libcurl's TLS backend recorded it: `0` verified, otherwise OpenSSL's `X509_V_ERR_*` number
 /// (see [`tls_verify_why`]). An info id on the already-bound [`curl_easy_getinfo_long`], not a
 /// new symbol. Backends that never fill it leave `0`, so `0` after a verification failure means
@@ -168,7 +168,7 @@ const CURLVERSION_FIRST: c_int = 0;
 const CURL_VERSION_ASYNCHDNS: c_int = 1 << 7;
 
 /// Is libcurl resolved? False on a device with no libcurl this app can bind, which means no
-/// HTTPS requests at all — but a running app, and a log line saying why.
+/// HTTPS requests at all - but a running app, and a log line saying why.
 static CURL_OK: AtomicBool = AtomicBool::new(false);
 
 /// Whether two threads may enter distinct curl handles concurrently. The media multi transport
@@ -603,7 +603,7 @@ impl Drop for Easy {
 
 /// An owned `curl_slist`, freed on drop. Named for its first job (the request headers) and used
 /// for the resolve list too: libcurl does not copy either list, it keeps the pointer for the life
-/// of the transfer, so the wrapper must outlive `curl_easy_perform` — which it does by being a
+/// of the transfer, so the wrapper must outlive `curl_easy_perform` - which it does by being a
 /// local of the function that performs.
 struct HeaderList(*mut curl_slist);
 
@@ -662,7 +662,7 @@ impl From<RequestError> for RequestFailure {
 
 impl RequestFailure {
     /// The verify result when this failure is a certificate chain the television's trust store could
-    /// not verify — see [`roots::untrusted_chain_verify`] for the closed set — and `None` for
+    /// not verify - see [`roots::untrusted_chain_verify`] for the closed set - and `None` for
     /// everything else, the clock cases (9, 10) and a name mismatch included.
     pub fn untrusted_chain(&self) -> Option<u8> { roots::untrusted_chain_verify(self.curl_rc?, self.verify) }
 }
@@ -708,7 +708,7 @@ fn finish_response(
 /// **How long one call may take.** The values are a PER-CALL argument rather than constants
 /// because the right policy depends entirely on what is being fetched.
 ///
-/// `total_s` is `CURLOPT_TIMEOUT`, which bounds the WHOLE transfer — connect, TLS, request,
+/// `total_s` is `CURLOPT_TIMEOUT`, which bounds the WHOLE transfer - connect, TLS, request,
 /// response body, all of it. 25 s is right for an API call, whose answer is a few kilobytes of
 /// JSON, and is **fatal for anything that streams**: a long transfer is aborted mid-body at 25 s
 /// however healthy the connection is; a long body takes [`BULK`] (or [`STREAM`]) instead.
@@ -733,7 +733,7 @@ pub struct Timeouts {
     pub low_speed_s: c_long,
 }
 
-/// The deadlines for an **API call** — a request whose answer is small JSON (an addon manifest, a
+/// The deadlines for an **API call** - a request whose answer is small JSON (an addon manifest, a
 /// catalog page) and whose caller is a user waiting behind a spinner.
 pub const API: Timeouts = Timeouts {
     connect_s: 8,
@@ -772,13 +772,13 @@ fn allowed_redirect_protocols(url: &[u8]) -> c_long {
 /// that carries one (empty slice → a POST with no body), `None` for one that does not. `verb` is
 /// the method token; see [`CURLOPT_CUSTOMREQUEST`] for how a body-less non-GET is sent.
 ///
-/// Returns `None` on a transport error (offline, TLS failure, timeout) — callers treat that as
+/// Returns `None` on a transport error (offline, TLS failure, timeout) - callers treat that as
 /// "not reachable". A request that COMPLETED comes back as `Some`, whatever status it carries, so
 /// a `401` is a value here and never a `None`: folding the two together is what sends a user to
 /// look at a router for a credential problem.
 ///
 /// **The easy handle is per call, deliberately.** It is initialised and cleaned up here, so there
-/// is no cross-call state to remember to clear — no leftover `CUSTOMREQUEST` turning the next GET
+/// is no cross-call state to remember to clear - no leftover `CUSTOMREQUEST` turning the next GET
 /// into a PUT, no stale header list, no connection reuse whose keep-alive outlives the credential
 /// that authorised it. A reusable handle (or a share/multi) would buy connection reuse and cost a
 /// design: an addon client makes tens of requests per screen, not thousands.
@@ -815,7 +815,7 @@ pub fn request_result(
         .map_err(|failure| failure.cause)
 }
 
-/// [`request_result`] keeping the whole [`RequestFailure`] — the `CURLcode`, the final status and
+/// [`request_result`] keeping the whole [`RequestFailure`] - the `CURLcode`, the final status and
 /// the X509 verify result a caller needs to say WHY a request failed. The same one entry every
 /// device-trust-store request passes.
 #[allow(clippy::too_many_arguments)]
@@ -833,7 +833,7 @@ pub fn request_result_evidence(
     // A host test that needs to drive the REAL request path against a loopback HTTPS server cannot
     // make libcurl trust that server's self-signed certificate any other way: this function is the
     // one place every such request enters. `test_ca_bundle::get()` is compiled out entirely in a
-    // non-test build — there is no bundle to read and no branch that reads one — so this is not a
+    // non-test build - there is no bundle to read and no branch that reads one - so this is not a
     // production bypass, only a `cfg(test)` caller of the `Tls::CaBundle` mode.
     #[cfg(any(test, feature = "test-support"))]
     if let Some(bundle) = test_ca_bundle::get() {
@@ -862,7 +862,7 @@ pub fn request_result_evidence(
     )
 }
 
-/// Test-only override of the CA trust root `request_result` verifies against — see that
+/// Test-only override of the CA trust root `request_result` verifies against - see that
 /// function's doc. Process-global rather than thread-local: a caller may dial on a real worker
 /// thread, which a thread-local would never see.
 /// Guard every read/write with `tv_base::testlock::serial()`, matching this crate's existing
@@ -886,12 +886,12 @@ pub mod test_ca_bundle {
 
 /// Real loopback server doubles for driving requests through the REAL curl/TLS stack
 /// (`net::request_result_evidence`, unmodified). `test_ca_bundle` above is the other half: it is
-/// how curl is told to trust the certificate [`mint_cert`] mints here — the same PEM, so a real
+/// how curl is told to trust the certificate [`mint_cert`] mints here - the same PEM, so a real
 /// TLS handshake against [`spawn_dual_protocol`] genuinely verifies.
 // Not `pub mod` directly: `ci/check-deps.sh`'s `threads` gate only recognises a bare
 // `#[cfg(test)]` + `mod ` pair when deciding a block is test-only and skipping the real
 // `std::thread::spawn` calls inside it (`spawn_dual_protocol`/`spawn_plain_only`, standing in for
-// a loopback server) — the same convention the `mutators` gate above already relies on. A `pub`
+// a loopback server) - the same convention the `mutators` gate above already relies on. A `pub`
 // qualifier on the `mod` line does not match that pattern, so the module stays private and every
 // item the rest of the crate needs is re-exported below instead.
 #[cfg(any(test, feature = "test-support"))]
@@ -946,7 +946,7 @@ mod loopback_server {
     /// Mint a CA and a leaf it issues, the leaf valid exactly over `[not_before, not_after]`
     /// (`(year, month, day)`), the SAN list exactly `names`. `pem` is the **CA**: that is what a
     /// client is told to trust, and the server presents only the leaf unless
-    /// [`TestCert::serving_chain`] is asked for — and the only way to give a test a leaf whose
+    /// [`TestCert::serving_chain`] is asked for - and the only way to give a test a leaf whose
     /// validity window excludes "now" (a wrong television clock) while the trust anchor stays valid.
     pub fn mint_ca_issued_cert(
         names: &[&str],
@@ -983,7 +983,7 @@ mod loopback_server {
     }
 
     /// `(year, month, day)` of `days` from now (negative: the past), in the shape
-    /// [`mint_ca_issued_cert`] takes — dates relative to now, so a test does not rot.
+    /// [`mint_ca_issued_cert`] takes - dates relative to now, so a test does not rot.
     pub fn ymd_from_now(days: i64) -> (i32, u8, u8) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -995,7 +995,7 @@ mod loopback_server {
 
     /// RAII guard for the process-global CA override (`test_ca_bundle`): writes `pem` to a scratch
     /// file, installs it as curl's trusted CAINFO for the duration, and always clears the override
-    /// (and deletes the file) on drop — including on panic/unwind — so a failing assertion in one
+    /// (and deletes the file) on drop - including on panic/unwind - so a failing assertion in one
     /// test can never leak a trusted CA into another running after it under the same
     /// `testlock::serial()` guard.
     pub struct TestCaGuard(std::path::PathBuf);
@@ -1050,7 +1050,7 @@ mod loopback_server {
         out
     }
 
-    /// Drain one HTTP/1.1 request off `r` before answering — a body-less GET, so this only needs to
+    /// Drain one HTTP/1.1 request off `r` before answering - a body-less GET, so this only needs to
     /// find the header terminator, not parse anything. Bounded and best-effort: nothing here sends a
     /// request built to defeat it.
     fn drain_request(r: &mut impl Read) {
@@ -1176,7 +1176,7 @@ mod loopback_server {
 
     /// One answer of [`spawn_scripted`]: a status, an optional `Location` (absolute or relative, as
     /// the server wrote it) and a body. A redirect may carry a body, and a redirect may have no
-    /// `Location` at all — both are things a real server sends and a client has to survive.
+    /// `Location` at all - both are things a real server sends and a client has to survive.
     #[derive(Clone)]
     pub struct Reply {
         status: u16,
@@ -1246,8 +1246,8 @@ mod loopback_server {
 
     /// A TLS-only loopback double whose answer is chosen by the request's PATH (the query is
     /// ignored for the match and recorded as sent): `routes` maps a path to a [`Reply`], and a path
-    /// that is not in it gets a `404`. The double for what [`spawn_redirecting`] cannot say — a
-    /// chain of hops, a relative `Location`, a `303` or a `308`, a `3xx` with a body or with none —
+    /// that is not in it gets a `404`. The double for what [`spawn_redirecting`] cannot say - a
+    /// chain of hops, a relative `Location`, a `303` or a `308`, a `3xx` with a body or with none -
     /// and, like [`spawn_observed`], it records every request (`Observed::requests`: the request
     /// line with its query, then the headers, verbatim) and counts every accepted connection. One
     /// request per connection (`Connection: close`).
@@ -1429,12 +1429,12 @@ mod loopback_server {
         Observed { port, accepted, requests }
     }
 
-    /// A loopback double that only ever speaks plaintext HTTP — for the "HTTPS fails" E2E
+    /// A loopback double that only ever speaks plaintext HTTP - for the "HTTPS fails" E2E
     /// scenario, where a TLS ClientHello against this listener must fail the handshake (there is
     /// no `rustls::ServerConnection` here to answer it) while a plain request still succeeds.
     ///
-    /// A ClientHello (first byte `0x16`) gets what a plaintext-only web server sends it — a bare
-    /// `400` — so curl fails the HANDSHAKE at once rather than stalling until its timeout while
+    /// A ClientHello (first byte `0x16`) gets what a plaintext-only web server sends it - a bare
+    /// `400` - so curl fails the HANDSHAKE at once rather than stalling until its timeout while
     /// `drain_request` waits for a header terminator a ClientHello never contains.
     pub fn spawn_plain_only(body: Vec<u8>) -> u16 {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind plaintext listener");
@@ -1460,7 +1460,7 @@ mod loopback_server {
     }
 
     /// A loopback port nothing listens on: bind, read back the ephemeral port, then drop the
-    /// listener — so a candidate dialled here gets a deterministic refused connection rather than
+    /// listener - so a candidate dialled here gets a deterministic refused connection rather than
     /// a merely-unassigned one.
     pub fn dead_port() -> u16 {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind dead-port probe");
@@ -1492,7 +1492,7 @@ pub use loopback_server::{curl_ready, expired_leaf};
 /// "CA-verified" are opposites that a bare string parameter let a caller hold at the same time.
 /// Making them variants means the compiler enforces what a comment used to ask for.
 pub enum Tls<'a> {
-    /// CA-verified against **the television's own trust store**. The default — `request` is
+    /// CA-verified against **the television's own trust store**. The default - `request` is
     /// exactly this. An https request that this store fails for a missing issuer is repeated once
     /// against the shipped public roots ([`roots::Mode::Roots`]); the first attempt is this one,
     /// unless the host is latched in roots mode (a recent success through the bundle), which
@@ -1502,7 +1502,7 @@ pub enum Tls<'a> {
     /// roots: it exists so a third-party endpoint's CA rotation is not at the mercy of a store
     /// baked into a 2019 firmware.
     CaBundle(&'a str),
-    /// **Pinned**, and CA verification deliberately off — see [`CURLOPT_PINNEDPUBLICKEY`]. Only the
+    /// **Pinned**, and CA verification deliberately off - see [`CURLOPT_PINNEDPUBLICKEY`]. Only the
     /// lab receiver, which is a self-signed certificate on a developer's Mac.
     #[cfg_attr(not(feature = "lab-diagnostics"), allow(dead_code))]
     Pinned(&'a str),
@@ -1517,12 +1517,12 @@ enum TlsCfg {
 }
 
 /// [`request`], plus an explicit [`Tls`] mode. One extra parameter rather than a second
-/// transport: everything about a pinned request — the header list, the verb shapes, the bounded
-/// sink, the `CURLcode` naming, the fallback serialisation — is identical, and a copy of this
+/// transport: everything about a pinned request - the header list, the verb shapes, the bounded
+/// sink, the `CURLcode` naming, the fallback serialisation - is identical, and a copy of this
 /// function would be a second place for all of it to drift.
 ///
-/// One extra parameter rather than a second transport: everything else about a request — the header
-/// list, the verb shapes, the bounded sink, the `CURLcode` naming, the fallback serialisation — is
+/// One extra parameter rather than a second transport: everything else about a request - the header
+/// list, the verb shapes, the bounded sink, the `CURLcode` naming, the fallback serialisation - is
 /// identical, and a copy of this function would be a second place for all of it to drift.
 #[allow(clippy::too_many_arguments)]
 #[track_caller]
@@ -2080,7 +2080,7 @@ fn request_tls_sink(
         .collect::<Result<_, _>>()
         .map_err(|_| RequestError::Transport)?;
     // The guard `CURL_OK` exists for. Without it, a device with no libcurl this app can bind
-    // reaches `curl_easy_init`'s wrapper and takes `dynlib::missing_symbol`, which panics — a
+    // reaches `curl_easy_init`'s wrapper and takes `dynlib::missing_symbol`, which panics - a
     // request failing should return an error and let the caller fall back, not kill a thread.
     if !available() {
         return Err(RequestError::Transport.into());
@@ -2097,7 +2097,7 @@ fn request_tls_sink(
                 .unwrap_or_else(|e| e.into_inner()),
         )
     };
-    // **Roots mode is only ever considered for a CA-verified https request** — never
+    // **Roots mode is only ever considered for a CA-verified https request** - never
     // [`Tls::Pinned`] (which has already turned verification off for a reason of its own), never
     // plaintext. `key` is that request's `host:port` in [`roots`]'s latch, or `None` when the
     // request can never use the bundle. Which attempt follows a failed one is
@@ -2198,14 +2198,14 @@ fn request_tls_sink(
                 curl_easy_setopt_long(easy.0, CURLOPT_SSL_VERIFYHOST, 2 as c_long),
                 "CURLOPT_SSL_VERIFYHOST"
             );
-            // A pinned request replaces CA verification with key pinning — see
+            // A pinned request replaces CA verification with key pinning - see
             // [`CURLOPT_PINNEDPUBLICKEY`]. Written AFTER the two defaults above so the ordinary path is
             // still one unconditional pair of lines that cannot be reached with the wrong value.
             //
             // Every security-relevant option above is fail-closed. Pinning is additionally important:
-            // if the option is rejected — an older libcurl, or a TLS backend whose
+            // if the option is rejected - an older libcurl, or a TLS backend whose
             // pinning support post-dates it, which is neither a symbol nor a library and so is
-            // invisible to `tools/fwcompat.py` — then the two lines under it would still run and the
+            // invisible to `tools/fwcompat.py` - then the two lines under it would still run and the
             // request would go out with **no pinning and no CA verification at all**, accepting any
             // certificate anyone cared to present. So an unsupported option is a REFUSAL, before
             // verification is touched: a lab upload that does not happen costs a log, and one sent to
@@ -2218,7 +2218,7 @@ fn request_tls_sink(
                 // the failure it guards is milder and worth stating so nobody "simplifies" the pinned
                 // check to match: a REJECTED `CURLOPT_CAINFO` leaves the device's own store in force,
                 // which still verifies, whereas a rejected pin would leave nothing verifying at all.
-                // Refusing here is a deliberate over-reaction — if we could not select the roots we
+                // Refusing here is a deliberate over-reaction - if we could not select the roots we
                 // meant to, the honest report is that the send did not happen.
                 TlsCfg::CaBundle(p) => {
                     let rc = curl_easy_setopt_ptr(easy.0, CURLOPT_CAINFO, p.as_ptr() as *const c_void);
@@ -2250,7 +2250,7 @@ fn request_tls_sink(
             // **Roots mode** ([`roots`]): the bundled public roots in place of this firmware's CA
             // store, verification still fully on. Written AFTER the `tls_c` match so it replaces a
             // test bundle too. `roots::apply` checks `CURLOPT_CAINFO`'s result: a refusal means the
-            // roots we meant to select are not the ones in force, so nothing is sent — the request
+            // roots we meant to select are not the ones in force, so nothing is sent - the request
             // reports the strict failure it already had (or goes strict, if roots was the latched
             // start), the same fail-closed posture as the `TlsCfg::CaBundle` arm.
             if let Some(path) = &roots_c {
@@ -2275,7 +2275,7 @@ fn request_tls_sink(
             // character); boot logged that and none is sent.
             apply_user_agent(easy.0);
 
-            // request headers — keep the CStrings alive until after perform.
+            // request headers - keep the CStrings alive until after perform.
             let mut slist = HeaderList(ptr::null_mut());
             for c in &hdr_owned {
                 let next = curl_slist_append(slist.0, c.as_ptr());
@@ -2288,7 +2288,7 @@ fn request_tls_sink(
                 curl_easy_setopt_ptr(easy.0, CURLOPT_HTTPHEADER, slist.0 as *const c_void);
             }
             // The resolve pin. Its list is a second `HeaderList` local for the same lifetime reason as
-            // the first: curl keeps the pointer until the transfer ends. NOT `require_setopt!` — a
+            // the first: curl keeps the pointer until the transfer ends. NOT `require_setopt!` - a
             // libcurl that answers `CURLE_UNKNOWN_OPTION` here has simply not got the option, and the
             // right outcome is today's DNS path, logged once; every OTHER refusal still cancels
             // (`resolve::note_setopt` decides).
@@ -2306,11 +2306,11 @@ fn request_tls_sink(
             }
             // The VERB. Three shapes, and the split is what keeps each one on the wire curl already
             // knows how to send:
-            //   * `GET` with no body is curl's default — setting nothing is setting it right.
+            //   * `GET` with no body is curl's default - setting nothing is setting it right.
             //   * anything WITH a body rides `CURLOPT_POST`, so curl writes the `Content-Length` and
             //     the body itself; a non-`POST` verb on top of that only renames the request line.
             //   * a body-LESS non-GET (a bare `PUT`) is a GET-shaped request with the verb
-            //     overridden — see [`CURLOPT_CUSTOMREQUEST`] for why not `CURLOPT_UPLOAD`.
+            //     overridden - see [`CURLOPT_CUSTOMREQUEST`] for why not `CURLOPT_UPLOAD`.
             if let Some(body) = body {
                 curl_easy_setopt_long(easy.0, CURLOPT_POST, 1 as c_long);
                 curl_easy_setopt_long(easy.0, CURLOPT_POSTFIELDSIZE, body.len() as c_long);
@@ -2342,9 +2342,9 @@ fn request_tls_sink(
                 ));
             }
             let verify = if rc == roots::TLS_VERIFY_FAILED { verify_result(easy.0) } else { None };
-            // NAMED, not just counted — logged by the caller once the request's last attempt is
+            // NAMED, not just counted - logged by the caller once the request's last attempt is
             // known, so a strict failure that roots mode is about to answer costs no line here.
-            // Everything here rides the TELEVISION's curl and therefore its OpenSSL and its CA store —
+            // Everything here rides the TELEVISION's curl and therefore its OpenSSL and its CA store -
             // the library that varies most across firmwares. Collapsing every failure to one answer
             // makes a stale CA bundle on a set nobody here owns indistinguishable from being offline.
             // These are the ones that mean something different from "the network is down". 60 and 51
@@ -2497,7 +2497,7 @@ fn wall_clock_year() -> Option<i64> {
 /// (`None` when libcurl would not say); `year` is [`wall_clock_year`]. Libcurl's 60 is one code
 /// for every reason a chain failed, so the sentence comes from the verify result and never blames
 /// the CA store by default. A television cold-booted without internet has a wrong clock, which
-/// makes a perfectly valid certificate "expired" or "not yet valid" — and the year the device
+/// makes a perfectly valid certificate "expired" or "not yet valid" - and the year the device
 /// believes it is the evidence that confirms it. Closed vocabulary: no host, URL or certificate
 /// field is ever interpolated, only the numbers.
 ///
@@ -2558,7 +2558,7 @@ pub fn https_post(url: &str, headers: &[String], body: &[u8]) -> Option<Resp> {
     request(url, headers, "POST", Some(body), API, false, None, None)
 }
 
-/// Blocking **pinned** HTTPS POST — used by Lab Diagnostics uploads and Lab Control's long poll.
+/// Blocking **pinned** HTTPS POST - used by Lab Diagnostics uploads and Lab Control's long poll.
 /// Their receiver is a self-signed certificate on a developer's Mac. Redirects are OFF (a pinned
 /// endpoint that redirects is not the endpoint) and the response body is capped: the receiver
 /// answers one small JSON object.
@@ -2582,12 +2582,12 @@ pub fn post_pinned(
     )
 }
 
-/// Blocking **CA-verified, unpinned** HTTPS POST to a third-party endpoint — the telemetry sinks.
+/// Blocking **CA-verified, unpinned** HTTPS POST to a third-party endpoint - the telemetry sinks.
 ///
 /// # Why this exists, given that [`https_post`] is already CA-verified and unpinned
 ///
 /// The plan this was built to called for a new request mode on the grounds that [`post_pinned`]
-/// sets `SSL_VERIFYPEER=0`, so "Sentry and PostHog need the opposite". They do — and `request` has
+/// sets `SSL_VERIFYPEER=0`, so "Sentry and PostHog need the opposite". They do - and `request` has
 /// been that opposite since it was written: `VERIFYPEER=1`/`VERIFYHOST=2` by default, lowered in
 /// exactly one place, the lab's pinning branch. The premise was wrong, and the mode it asked for
 /// already existed. Recording that rather than quietly building it, because "add a mode that is
@@ -2602,15 +2602,15 @@ pub fn post_pinned(
 /// * **our own roots, when we ship them.** The device's trust store was frozen in 2019 and cannot
 ///   be updated; a third party's CA rotation should not be able to end reporting on every
 ///   television at once. When `roots.pem` sits beside the binary this uses it, and says which it
-///   used — otherwise "which trust store verified that" is unanswerable after the fact.
+///   used - otherwise "which trust store verified that" is unanswerable after the fact.
 ///
 /// **Never pinned, deliberately.** Pinning a third party's SPKI means going dark at their next key
 /// rotation, on televisions nobody can update. That is the opposite trade from the lab receiver's.
-#[allow(dead_code)] // no sender yet — see `telemetry::sentry`
+#[allow(dead_code)] // no sender yet - see `telemetry::sentry`
 pub fn post_ca(url: &str, headers: &[String], body: &[u8], t: Timeouts) -> Option<Resp> {
     let bundle = shipped_ca_bundle(tv_base::paths::app_dir());
     // Once per process, not per send. Which trust store verified a telemetry endpoint is a fact
-    // that is unanswerable after the event and free to state before it — but it does not change
+    // that is unanswerable after the event and free to state before it - but it does not change
     // between sends, and a line per upload would drown the log it is written into.
     static SAID: std::sync::Once = std::sync::Once::new();
     SAID.call_once(|| match &bundle {
@@ -2639,7 +2639,7 @@ pub fn post_ca(url: &str, headers: &[String], body: &[u8], t: Timeouts) -> Optio
 /// is silent by nature: no bundle means the device's own 2019 trust store verifies instead, which
 /// works right up until it does not. A host test can watch this choose, and cannot watch a socket.
 ///
-/// `to_str` rather than a lossy conversion — a path that is not UTF-8 cannot become a `CString`
+/// `to_str` rather than a lossy conversion - a path that is not UTF-8 cannot become a `CString`
 /// curl would open, and answering `None` sends us down the working path rather than into a
 /// guaranteed error 77.
 fn shipped_ca_bundle(dir: &std::path::Path) -> Option<String> {
@@ -2683,13 +2683,13 @@ pub fn refuse_name(host: &str, connect_s: c_long) -> bool {
         std::thread::sleep(std::time::Duration::from_secs(connect_s.max(0) as u64));
     }
     // `host=`, not a bare `{host}` interpolation, so `eventlog::scrub::scrub_local`'s host clause
-    // catches it — a private hostname reaching this line unredacted is the exact device leak
+    // catches it - a private hostname reaching this line unredacted is the exact device leak
     // `stream.rs`'s DNS-failure line had.
     tv_base::eventlog::log(&format!("net: nowan — refused name host={host}"));
     true
 }
 
-/// **Resolve pins — the DNS answers this process already knows.**
+/// **Resolve pins - the DNS answers this process already knows.**
 ///
 /// A [`ResolvePin`] says "this name IS this address" ([`ResolvePin::for_origin`] has the rule). A
 /// caller that holds a pin passes its entry into [`request_result`] explicitly. A caller that only
@@ -2699,7 +2699,7 @@ pub fn refuse_name(host: &str, connect_s: c_long) -> bool {
 /// **Append-only, process-lifetime, first pin wins.** A worker mid-stream may already have
 /// captured a route, so a table that removed or rewrote an entry could change the resolution of a
 /// connection in flight; [`add`] therefore never replaces, and a second pin for the same
-/// `host:port` is refused. The table holds one entry per name this process has ever pinned — a
+/// `host:port` is refused. The table holds one entry per name this process has ever pinned - a
 /// handful.
 pub mod resolve {
     use super::{c_int, Mutex, Ordering, CURLE_UNKNOWN_OPTION};
@@ -2735,14 +2735,14 @@ pub mod resolve {
         pin.entry(super::curl_version_num())
     }
 
-    /// [`lookup`] then [`entry_of`] — what the media plane asks for a URL it is about to open.
+    /// [`lookup`] then [`entry_of`] - what the media plane asks for a URL it is about to open.
     pub fn entry_for(host: &str, port: i32) -> Option<String> {
         lookup(host, port).map(|p| entry_of(&p))
     }
 
     /// Grade a `curl_easy_setopt(CURLOPT_RESOLVE)` result. `Ok` means the request may go on:
     /// either the pin took, or this libcurl has no such option (`CURLE_UNKNOWN_OPTION`, 48) and
-    /// the name resolves through DNS as it did before the pin existed — logged once per process
+    /// the name resolves through DNS as it did before the pin existed - logged once per process
     /// so the fact is in the log from a set nobody here owns. Any OTHER refusal is `Err`: a
     /// malformed entry or a broken handle is not a reason to quietly send the request elsewhere.
     /// Under `nowan` even 48 is `Err`, because DNS is deliberately unavailable there.
@@ -2772,7 +2772,7 @@ pub mod resolve {
     }
 }
 
-/// **Roots mode — the bundled public roots, for a device trust store that predates the issuer.**
+/// **Roots mode - the bundled public roots, for a device trust store that predates the issuer.**
 ///
 /// A television's CA store is frozen with its firmware. A 2020 webOS store lacks Let's Encrypt's
 /// newer roots (ISRG Root X2, and the 2025 YR/YE hierarchy), and most HTTPS hosts an addon client
@@ -2788,7 +2788,7 @@ pub mod resolve {
 /// unreadable bundle means the fallback never engages.
 ///
 /// **What never takes it**, by the closed trigger in [`after_failure`]: a DATE failure (verify 9 or
-/// 10 — a wrong clock, or an expired certificate: another root store would refuse the same dates),
+/// 10 - a wrong clock, or an expired certificate: another root store would refuse the same dates),
 /// a NAME mismatch (51, or 60 with no verify result on libcurl 7.62+), a self-signed chain (18, 19:
 /// the server presented its own root, which no bundle of public roots holds), any other verify
 /// result, and any failure that is not a verification failure at all (a refused connection, a
@@ -2824,15 +2824,15 @@ pub mod roots {
     /// `CURLE_PEER_FAILED_VERIFICATION` from 7.62, where 51 stops meaning that; the number is what
     /// is stable, so this name is version-neutral.
     pub const TLS_VERIFY_FAILED: c_int = 60;
-    /// OpenSSL `X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT` (2), `…_GET_ISSUER_CERT_LOCALLY` (20) and
-    /// `…_VERIFY_LEAF_SIGNATURE` (21): the chain walk ended at an issuer this trust store does not
+    /// OpenSSL `X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT` (2), `..._GET_ISSUER_CERT_LOCALLY` (20) and
+    /// `..._VERIFY_LEAF_SIGNATURE` (21): the chain walk ended at an issuer this trust store does not
     /// hold. The only verify results the bundle is offered for.
     const X509_NO_ISSUER: c_long = 2;
     const X509_NO_LOCAL_ISSUER: c_long = 20;
     const X509_NO_LEAF_SIGNATURE_KEY: c_long = 21;
-    /// OpenSSL `X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT` (18) and `…_SELF_SIGNED_CERT_IN_CHAIN` (19):
+    /// OpenSSL `X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT` (18) and `..._SELF_SIGNED_CERT_IN_CHAIN` (19):
     /// the chain ends at a certificate that is its own issuer and that this trust store does not
-    /// hold. Not a case roots mode answers — no bundle of public roots holds a server's own root —
+    /// hold. Not a case roots mode answers - no bundle of public roots holds a server's own root -
     /// but it is every bit as much "this device cannot vouch for this server" as a missing issuer,
     /// which is all [`untrusted_chain_verify`] says.
     const X509_SELF_SIGNED_LEAF: c_long = 18;
@@ -2850,7 +2850,7 @@ pub mod roots {
             && matches!(verify, Some(X509_NO_ISSUER | X509_NO_LOCAL_ISSUER | X509_NO_LEAF_SIGNATURE_KEY))
     }
 
-    /// **The closed answer to "did the television's trust store fail this server?"** — libcurl 60 with
+    /// **The closed answer to "did the television's trust store fail this server?"** - libcurl 60 with
     /// an OpenSSL verify result of 2, 18, 19, 20 or 21 (a missing issuer, or a chain that ends at a
     /// root nobody here holds), as that number, and `None` for everything else. Never 9 or 10: those
     /// are the date, which a wrong television clock explains. Never a different `rc` (a refused
@@ -2875,7 +2875,7 @@ pub mod roots {
     /// The shipped roots bundle, when there is one to use: `ROOTS_FILE` in the app directory (a
     /// root-owned, read-only location on the television, which is why it is a safer place for a
     /// trust anchor than anything under `/tmp`), **as a non-empty file this process can read**. A
-    /// missing, empty or unreadable file is `None` and the fallback simply does not engage — the
+    /// missing, empty or unreadable file is `None` and the fallback simply does not engage - the
     /// request then fails as it always did, with the strict attempt's own verify result, instead of
     /// handing libcurl a `CURLOPT_CAINFO` it cannot load (rc 77). Fail-closed either way; said once
     /// per process, since it does not change between requests.
@@ -3022,7 +3022,7 @@ pub mod roots {
     }
 
     /// Roots mode is not being used for `key` after all (libcurl would not be put in it): its latch
-    /// is over, and nothing else is claimed — this is not a strict success.
+    /// is over, and nothing else is claimed - this is not a strict success.
     pub fn unlatch(key: &str) {
         latched().remove(key);
     }
@@ -3480,7 +3480,7 @@ mod request_tests {
 
     /// **The offline fix, at the transport.** A host no resolver on earth answers for
     /// (`.invalid`, RFC 2606) reaches a loopback listener when the request carries a resolve
-    /// entry naming it, and reaches nothing without one — so a request that succeeds here did so
+    /// entry naming it, and reaches nothing without one - so a request that succeeds here did so
     /// through `CURLOPT_RESOLVE` and not through DNS. Vacuous on a host with no libcurl.
     #[test]
     fn a_resolve_entry_dials_the_address_without_dns() {
@@ -3508,8 +3508,8 @@ mod request_tests {
         .expect("loopback v4 binds");
     }
 
-    /// The same over IPv6, in whichever entry syntax the bound libcurl takes — bare below 7.57.0,
-    /// bracketed from it — chosen by `ResolvePin::entry` from the version this process captured.
+    /// The same over IPv6, in whichever entry syntax the bound libcurl takes - bare below 7.57.0,
+    /// bracketed from it - chosen by `ResolvePin::entry` from the version this process captured.
     /// Skips where `::1` cannot be bound.
     #[test]
     fn a_v6_resolve_entry_dials_the_address_in_this_curls_syntax() {
@@ -3752,7 +3752,7 @@ mod tls_mode_tests {
     use super::*;
 
     /// **The fallback is the interesting half, and it is silent.** With no `roots.pem` beside the
-    /// binary a telemetry POST verifies against the television's own 2019 trust store — which works
+    /// binary a telemetry POST verifies against the television's own 2019 trust store - which works
     /// until a third party rotates to a root that firmware never shipped, and then stops working on
     /// every set at once with nothing to read. Pinned here so the day the bundle starts shipping,
     /// the change in behaviour is a test diff rather than a discovery.
@@ -3765,7 +3765,7 @@ mod tls_mode_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// …and a bundle that IS there is selected, by absolute path. FFmpeg's `$ORIGIN` lesson applies
+    /// ...and a bundle that IS there is selected, by absolute path. FFmpeg's `$ORIGIN` lesson applies
     /// to curl too: nothing beside this binary is on any search path, so the only workable form is
     /// the one `app_dir()` resolves at runtime.
     #[test]
@@ -3784,7 +3784,7 @@ mod tls_mode_tests {
     }
 
     /// A DIRECTORY named `roots.pem` is not a bundle. `exists()` would accept it and hand curl a
-    /// path it fails to read as error 77 — a send that dies at perform rather than falling back to
+    /// path it fails to read as error 77 - a send that dies at perform rather than falling back to
     /// the store that would have worked.
     #[test]
     fn a_directory_named_like_the_bundle_is_not_one() {

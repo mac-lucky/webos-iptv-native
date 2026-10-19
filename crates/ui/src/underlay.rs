@@ -1,29 +1,29 @@
-//! **THE UNDERLAY FIELD — an overlay inherits the light of whatever is under it, where it is.**
+//! **THE UNDERLAY FIELD - an overlay inherits the light of whatever is under it, where it is.**
 //!
 //! An overlay in this app has had two ways to relate to the page beneath it, and both throw away
 //! *where*:
 //!
-//! * a **scrim** — `theme::scrim_black(a)` over the whole screen — says nothing about the page at
+//! * a **scrim** - `theme::scrim_black(a)` over the whole screen - says nothing about the page at
 //!   all, so a modal over a green-lit hero and a modal over a blue-lit one are the same picture;
-//! * a **four-corner envelope** — four sampled corners keyed through [`AmbientWash`] — says the
+//! * a **four-corner envelope** - four sampled corners keyed through [`AmbientWash`] - says the
 //!   page is greenish, with four degrees of freedom. It cannot say that the green is on the LEFT
 //!   of the bottom edge and the red on the right, because a bilinear surface has no such shape in
 //!   it. (`RouteGround`'s own live-frame sample used to read this way, through the four
 //!   `glReadPixels` taps of `gfx::sample_modal_ambient`; PR2 stage B retired both in favour of the
 //!   field below, and [`UnderlayField::latch_from_corners`] is what a caller with no readable
-//!   frame — a route that opens before Home has drawn — still reaches for.)
+//!   frame - a route that opens before Home has drawn - still reaches for.)
 //!
 //! This is the third: a 15x8 grid reduced from the frame itself (`gfx::field_kick`),
 //! low-passed, graded, reconstructed to 60x32 and drawn as one magnified quad with the shared
-//! dither. **It is spatially faithful** — the green stays where the green is — and it costs one
+//! dither. **It is spatially faithful** - the green stays where the green is - and it costs one
 //! texture fetch a fragment, because the expensive part happened once, at the latch.
 //!
 //! **There is no blur pass and there must not be one.** A blur of the page is a different object:
-//! `docs/liquid-glass.md` sizes what it costs, and the thing it buys — letter-scale structure
-//! softened rather than destroyed — is exactly what a GROUND must not have. Reducing to 15x8 is a
+//! `docs/liquid-glass.md` sizes what it costs, and the thing it buys - letter-scale structure
+//! softened rather than destroyed - is exactly what a GROUND must not have. Reducing to 15x8 is a
 //! box filter with a support 128 screen pixels wide; titles, faces and poster edges cannot survive
 //! it, which is the property a four-corner wash always had and which this keeps while adding the
-//! one thing four corners lack — see [`RouteGround`](crate::route_screen::RouteGround), whose
+//! one thing four corners lack - see [`RouteGround`](crate::route_screen::RouteGround), whose
 //! ground this module has been since PR2 stage B.
 //!
 //! # The pipeline, and why each step is where it is
@@ -33,22 +33,22 @@
 //! renderer.
 //!
 //! 1. **Linearise.** Everything that follows is a WEIGHTED SUM, and a weighted sum of
-//!    display-encoded values is not a colour — it is an artefact of the transfer curve.
+//!    display-encoded values is not a colour - it is an artefact of the transfer curve.
 //!    `gfx::lin` is the one implementation (it is `gfx::diffuse_ground_mean`'s, factored out).
 //! 2. **Low-pass** the 15x8 grid with a separable Gaussian at [`SIGMA`] cells, edge-clamped. The
 //!    grid arrives from a box filter, whose frequency response has sidelobes; without this a
 //!    single bright poster on a cell boundary reads as a rectangle in the finished field, because
 //!    Catmull-Rom will happily interpolate a step.
-//! 3. **Grade** each cell — and through the SAME functions the four-corner wash uses
+//! 3. **Grade** each cell - and through the SAME functions the four-corner wash uses
 //!    ([`AmbientWash::keyed_one`]), not a copy of them, so a ground built here and a ground built
 //!    from an envelope are the same colour for the same source. That is what makes stage B's
 //!    migration of `RouteGround` a change of SHAPE and not of palette. The grade is defined on
-//!    display-encoded values (`GROUND_LUMA` is a Rec.709 ceiling over the stored codes — see its
+//!    display-encoded values (`GROUND_LUMA` is a Rec.709 ceiling over the stored codes - see its
 //!    doc), so this step encodes, grades and linearises again rather than pretending otherwise.
 //! 4. **Reconstruct** 15x8 → 60x32 with Catmull-Rom, clamped to the local min/max so a cubic
 //!    cannot overshoot a cell pair and invent a colour the page does not contain. Linear
 //!    extrapolation outside the grid, so the field does not flatten in the outer half-cell against
-//!    the screen edge — which is exactly where a page's own artwork usually is.
+//!    the screen edge - which is exactly where a page's own artwork usually is.
 //! 5. **Encode** to display RGBA8 and upload through `gfx::upload_rgba`, which already sets the
 //!    LINEAR + CLAMP_TO_EDGE quartet an NPOT texture REQUIRES on this driver.
 //!
@@ -56,7 +56,7 @@
 //!
 //! GL_LINEAR would magnify 15x8 for free. It magnifies BILINEARLY, which is C0: the derivative
 //! steps at every cell boundary, and a 128px-wide facet meeting its neighbour at a crease is
-//! visible on a 1080p panel as a faint quilt — the same defect that makes a four-corner wash the
+//! visible on a 1080p panel as a faint quilt - the same defect that makes a four-corner wash the
 //! *right* shape for four corners and the wrong one for 120 cells. Catmull-Rom is C1, so the
 //! reconstruction is done on the CPU, once, into a texture that bilinear magnification then only
 //! has to smooth 32x further. 4x per axis is where the crease stops being findable.
@@ -70,7 +70,7 @@ const W: usize = gfx::FIELD_W as usize;
 const H: usize = gfx::FIELD_H as usize;
 const N: usize = gfx::FIELD_CELLS;
 
-/// Output texels per cell, per axis — see the module doc's last section.
+/// Output texels per cell, per axis - see the module doc's last section.
 const UPSAMPLE: usize = 4;
 const TEX_W: usize = W * UPSAMPLE;
 const TEX_H: usize = H * UPSAMPLE;
@@ -80,7 +80,7 @@ const TEX_H: usize = H * UPSAMPLE;
 /// side of the screen into the opposite one. Larger and the field converges on its own mean, at
 /// which point 120 cells are an expensive way to store four corners.
 const SIGMA: f32 = 1.2;
-/// Taps either side of centre — `ceil(3*SIGMA)`, past which a Gaussian contributes under 1.1e-2 of
+/// Taps either side of centre - `ceil(3*SIGMA)`, past which a Gaussian contributes under 1.1e-2 of
 /// the kernel and cannot move an 8-bit code.
 const RADIUS: usize = 4;
 
@@ -89,7 +89,7 @@ const RADIUS: usize = 4;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Grade {
     /// A page GROUND: the source is artwork, so it is held under `GROUND_LUMA` and leaned from
-    /// `theme::SURFACE_APP` toward that colour by [`AmbientWash::GROUND_W`] — the legibility
+    /// `theme::SURFACE_APP` toward that colour by [`AmbientWash::GROUND_W`] - the legibility
     /// contract `widgets_ambient_ground_tests.rs` grades, inherited whole rather than restated.
     Ground,
     /// IDENTITY. A dim is drawn OVER the page it sampled, not in place of it, so capping and
@@ -99,7 +99,7 @@ pub enum Grade {
 }
 
 /// **What the field is being drawn AS.** Separate from [`Grade`] because they answer different
-/// questions — the grade is baked at the latch and the role is chosen per draw — and because a
+/// questions - the grade is baked at the latch and the role is chosen per draw - and because a
 /// dim's strength is a continuous knob while a ground's is not.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Role {
@@ -110,7 +110,7 @@ pub enum Role {
     /// A scrim that carries the page's own light. `weight` is how much of the field survives the
     /// black ink: `mix(theme::SCRIM_BLACK_INK, field, weight)`, which is a plain multiply because
     /// the ink is zero. **`weight == 0` is today's flat `theme::scrim_black` and must stay
-    /// BIT-IDENTICAL to it** — see [`plan`].
+    /// BIT-IDENTICAL to it** - see [`plan`].
     ///
     /// `RouteGround` (PR2 stage B) only ever draws [`Role::Ground`]; this variant's consumer is
     /// PR3's `ModalUnderlay` (`containers::modal::ModalStack::draw_scrims`), which constructs it as
@@ -123,8 +123,8 @@ pub enum Role {
 /// A value rather than four branches inside `draw`, because the one property that must not drift
 /// is unobservable from a host test the moment it is expressed as GL calls: at `weight == 0`, and
 /// on an unlatched field, this surface is the flat scrim the app already drew, to the last bit.
-/// A field tinted to `[0,0,0,a]` is NOT that — `wi_dither` would add its ±1 LSB of noise to a
-/// surface whose whole content is one code — so the flat path is a different draw, not a special
+/// A field tinted to `[0,0,0,a]` is NOT that - `wi_dither` would add its ±1 LSB of noise to a
+/// surface whose whole content is one code - so the flat path is a different draw, not a special
 /// case of the same one.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Draw {
@@ -134,7 +134,7 @@ pub enum Draw {
     Field([f32; 4]),
 }
 
-/// [`Draw`] for a `Role::Dim` — pure, and the home of the bit-identity contract above.
+/// [`Draw`] for a `Role::Dim` - pure, and the home of the bit-identity contract above.
 pub fn plan(latched: bool, weight: f32, alpha: f32) -> Draw {
     let w = weight.clamp(0.0, 1.0);
     if !latched || w <= 0.0 {
@@ -148,7 +148,7 @@ pub fn plan(latched: bool, weight: f32, alpha: f32) -> Draw {
 
 /// **A latched colour field of the page under an overlay.**
 ///
-/// It owns a GL texture, so it is not `Copy` — the owner holds it (a screen field; since PR2 stage
+/// It owns a GL texture, so it is not `Copy` - the owner holds it (a screen field; since PR2 stage
 /// B, [`RouteGround`](crate::route_screen::RouteGround) holds one this way, which is what
 /// makes RouteGround itself no longer `Copy` either) and dropping the owner frees the texture.
 pub struct UnderlayField {
@@ -159,7 +159,7 @@ pub struct UnderlayField {
     /// The 60x32 reconstruction, or 0 before the first latch. Re-specced in place on every latch
     /// (`upload_rgba` reuses `prev`), so a field costs one texture name for its whole life.
     tex: u32,
-    /// Rec.709 luma of every texel of that reconstruction, over its display CODES — what a panel's
+    /// Rec.709 luma of every texel of that reconstruction, over its display CODES - what a panel's
     /// luma ceiling is solved against ([`panel_plan`](Self::panel_plan)). Kept beside the texture
     /// rather than recomputed per draw: a panel asks every frame, the field changes only at a latch.
     luma: [u8; TEX_W * TEX_H],
@@ -180,20 +180,20 @@ pub enum FrameLatch {
     Refused,
 }
 
-/// **What [`UnderlayField::draw_panel`] resolves to, as a VALUE** — [`Draw`]'s counterpart for a
+/// **What [`UnderlayField::draw_panel`] resolves to, as a VALUE** - [`Draw`]'s counterpart for a
 /// popover's material, so the one decision a host test cannot see through GL (which window of the
 /// field, how bright) is gradeable without a context.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum PanelDraw {
     /// Nothing latched: the flat panel sheet (`theme::PANEL_TOP`/`PANEL_BOT`), never a blank.
     Flat,
-    /// The field's window `uv` — `(x, y, w, h)` of the panel over the screen size — multiplied by
+    /// The field's window `uv` - `(x, y, w, h)` of the panel over the screen size - multiplied by
     /// the opaque `tint`.
     Field { uv: [f32; 4], tint: [f32; 4] },
 }
 
 /// **The panel's window into the field**: its SCREEN rect over the screen size. The field maps the
-/// whole screen, so this is the only UV rect under which a cell stays where it is on the page —
+/// whole screen, so this is the only UV rect under which a cell stays where it is on the page -
 /// green under the panel's bottom-left is sampled at the panel's bottom-left.
 pub fn panel_uv(screen: Rect) -> [f32; 4] {
     let (sw, sh) = (crate::consts::SCR_W, crate::consts::SCR_H);
@@ -211,14 +211,14 @@ impl UnderlayField {
         }
     }
 
-    /// **Freeze the frame that has already been drawn — without ever waiting for it.** Idempotent
+    /// **Freeze the frame that has already been drawn - without ever waiting for it.** Idempotent
     /// while latched, which is what makes it safe to call from a `draw` that runs every frame.
     ///
     /// The page is reduced on the first call (`gfx::field_kick`) and read back on a LATER one, once
     /// the GPU has actually finished the reduction (`gfx::field_collect`; [`FrameLatch::Pending`]
-    /// until then). Reading it on the frame that asked — which this used to do whenever the
-    /// owner's surface was already visible — made the `glReadPixels` wait for everything the GPU
-    /// had queued: 26–37 ms of a modal's open frame on the television (2026-09-19). A field that
+    /// until then). Reading it on the frame that asked - which this used to do whenever the
+    /// owner's surface was already visible - made the `glReadPixels` wait for everything the GPU
+    /// had queued: 26-37 ms of a modal's open frame on the television (2026-09-19). A field that
     /// is not latched yet draws its owner's fallback (the flat ground, the flat panel sheet) for
     /// the frame or two the read takes, at the very bottom of an appear ramp.
     ///
@@ -257,12 +257,12 @@ impl UnderlayField {
         }
     }
 
-    /// **Latch from a four-corner envelope instead of the framebuffer** — the CPU source, for the
+    /// **Latch from a four-corner envelope instead of the framebuffer** - the CPU source, for the
     /// case that has no readable frame: a route that opens before Home has ever drawn.
     ///
     /// It deliberately does NOT low-pass. The source is already a bilinear surface, i.e. band-
     /// limited far below this grid, and the edge-clamped kernel would only flatten it against the
-    /// border — while this is precisely the path that has to agree with the `AmbientWash` it
+    /// border - while this is precisely the path that has to agree with the `AmbientWash` it
     /// stands in for. Grading the CORNERS and then interpolating is also the order `AmbientWash`
     /// uses, and the order matters: `ground_capped` is not linear.
     pub fn latch_from_corners(&mut self, corners: [[f32; 3]; 4], grade: Grade) {
@@ -272,7 +272,7 @@ impl UnderlayField {
         self.adopt(cells_from_corners(corners, grade));
     }
 
-    /// **Replace the latch with a grid somebody else already sampled** — the RE-latch, for an owner
+    /// **Replace the latch with a grid somebody else already sampled** - the RE-latch, for an owner
     /// whose page changed under a field that is already up (the container's, when the host
     /// snapshot is re-taken: `containers::modal::ModalUnderlay`).
     ///
@@ -285,7 +285,7 @@ impl UnderlayField {
         self.adopt(cells_from_frame(raw, grade));
     }
 
-    /// Re-arm. The texture name is kept — the next latch re-specs it — because a field that is
+    /// Re-arm. The texture name is kept - the next latch re-specs it - because a field that is
     /// reset is a field that is about to be latched again.
     pub fn reset(&mut self) {
         self.cells = [[0.0; 3]; N];
@@ -297,7 +297,7 @@ impl UnderlayField {
         self.latched
     }
 
-    /// **The field's own colour at one screen point**, display-encoded — the same contract as
+    /// **The field's own colour at one screen point**, display-encoded - the same contract as
     /// `RouteGround::sample` and `AmbientWash::sample`, and for the same caller: an edge fade that
     /// has to paint the exact colour of the ground it is cutting across.
     ///
@@ -309,7 +309,7 @@ impl UnderlayField {
         reconstruct(&self.cells, u, v).map(gfx::enc)
     }
 
-    /// **The one colour that stands for the whole field** — the mean taken in LINEAR light and
+    /// **The one colour that stands for the whole field** - the mean taken in LINEAR light and
     /// returned display-encoded, the same contract the old four-corner sampler's `key` field kept
     /// (mean-in-linear, encoded back), so `RouteGround::palette` keys a `ControlPalette` from this
     /// wherever it used to key one from that.
@@ -343,12 +343,12 @@ impl UnderlayField {
         }
     }
 
-    /// **A popover panel's material, decided** — see [`PanelDraw`]. `screen` is the panel's rect
+    /// **A popover panel's material, decided** - see [`PanelDraw`]. `screen` is the panel's rect
     /// as DRAWN (the cascade's translate folded in); `weight` is `theme::underlay::PANEL_TINT` or
     /// its sweep.
     ///
     /// The tint is one scalar for the whole window: `weight`, lowered just far enough that the
-    /// brightest texel the panel covers lands at `theme::underlay::PANEL_LUMA_MAX` — the ground's
+    /// brightest texel the panel covers lands at `theme::underlay::PANEL_LUMA_MAX` - the ground's
     /// `ground_capped` rule, applied per panel rather than per cell so that the field's shape
     /// under the panel survives the cap instead of being flattened by it.
     pub fn panel_plan(&self, screen: Rect, weight: f32) -> PanelDraw {
@@ -366,7 +366,7 @@ impl UnderlayField {
     }
 
     /// **Paint the field as a panel's material over `r`** (corner `radius`) through `p`. Returns
-    /// whether it drew; `false` — unlatched, or no program/texture — is the caller's cue to lay
+    /// whether it drew; `false` - unlatched, or no program/texture - is the caller's cue to lay
     /// down the flat sheet (`widgets::panel_ground`).
     pub fn draw_panel(&self, p: Painter, r: Rect, radius: f32, weight: f32) -> bool {
         let (_, screen, _) = p.to_screen(r);
@@ -416,11 +416,11 @@ impl Drop for UnderlayField {
     }
 }
 
-/// Upload the reconstruction, or — in a HOST TEST — do not.
+/// Upload the reconstruction, or - in a HOST TEST - do not.
 ///
 /// The same seam, and the same reason, as `gfx::delete_tex`'s `cfg(not(test))` arm: the test
 /// binary LINKS OpenGL but never creates a context, so the driver's per-thread dispatch table is a
-/// null vtable and `glTexImage2D` dereferences a fixed offset into it — an immediate SIGSEGV that
+/// null vtable and `glTexImage2D` dereferences a fixed offset into it - an immediate SIGSEGV that
 /// takes the whole test binary down. Everything a test wants to grade about this module is the
 /// arithmetic above the upload, and it is all reachable with `tex` left at 0.
 fn upload(prev: u32, px: &[u8]) -> u32 {
@@ -437,7 +437,7 @@ fn upload(prev: u32, px: &[u8]) -> u32 {
 
 // ── The pure pipeline ────────────────────────────────────────────────────────────────────────
 
-/// Steps 1–3 for a grid sampled off the framebuffer: linearise, low-pass, grade, and hand back
+/// Steps 1-3 for a grid sampled off the framebuffer: linearise, low-pass, grade, and hand back
 /// LINEAR graded cells.
 pub fn cells_from_frame(raw: &[[f32; 3]; N], grade: Grade) -> [[f32; 3]; N] {
     let lin: [[f32; 3]; N] = std::array::from_fn(|i| raw[i].map(gfx::lin));
@@ -446,7 +446,7 @@ pub fn cells_from_frame(raw: &[[f32; 3]; N], grade: Grade) -> [[f32; 3]; N] {
 }
 
 /// [`cells_from_frame`]'s counterpart for a four-corner envelope: grade the CORNERS, then evaluate
-/// the bilinear at the cell centres — the order and the space `AmbientWash` uses.
+/// the bilinear at the cell centres - the order and the space `AmbientWash` uses.
 ///
 /// Corner order is the painter's, and the wash's: top-left, top-right, bottom-right, bottom-left.
 pub fn cells_from_corners(corners: [[f32; 3]; 4], grade: Grade) -> [[f32; 3]; N] {
@@ -508,7 +508,7 @@ fn kernel() -> [f32; 2 * RADIUS + 1] {
 }
 
 /// Separable Gaussian over the grid, edge-clamped. Normalised, so a FLAT field is preserved
-/// exactly — a low-pass that invents or loses energy on a uniform input is a bug, not a taste.
+/// exactly - a low-pass that invents or loses energy on a uniform input is a bug, not a taste.
 pub fn low_pass(cells: &[[f32; 3]; N]) -> [[f32; 3]; N] {
     let k = kernel();
     let mut mid = [[0.0f32; 3]; N];
@@ -545,7 +545,7 @@ pub fn low_pass(cells: &[[f32; 3]; N]) -> [[f32; 3]; N] {
 /// One channel of the grid at integer cell `(i, j)`, with LINEAR EXTRAPOLATION outside it.
 ///
 /// Extrapolation rather than clamping, and it is the difference between a field that reaches the
-/// edge of the screen and one that goes flat for its outer half-cell — 64 screen pixels, which on
+/// edge of the screen and one that goes flat for its outer half-cell - 64 screen pixels, which on
 /// this page is where the artwork usually is. It also makes the reconstruction EXACT on linear
 /// data everywhere rather than only in the interior, which is what lets
 /// [`UnderlayField::latch_from_corners`] reproduce the bilinear it replaces.
@@ -571,7 +571,7 @@ fn cell_at(cells: &[[f32; 3]; N], i: isize, j: isize, ch: usize) -> f32 {
 /// Uniform Catmull-Rom (tension 1/2) through four knots, **clamped to the bracketing pair**.
 ///
 /// The clamp is the whole reason a cubic is safe here. Catmull-Rom overshoots a step by up to ~9%
-/// of it, and an overshoot in a colour field is not a ringing artefact you squint at — it is a
+/// of it, and an overshoot in a colour field is not a ringing artefact you squint at - it is a
 /// colour the page does not contain, sitting in a 128px-wide band. Bracketing by `p1..p2` costs
 /// two `min`/`max` and cannot touch data that is already monotone, which linear data always is.
 fn crom(p: [f32; 4], t: f32) -> f32 {
@@ -583,7 +583,7 @@ fn crom(p: [f32; 4], t: f32) -> f32 {
 }
 
 /// **The reconstructed field at `(u, v)` in `[0,1]²` of the rect, in LINEAR light.** Cell `(i, j)`
-/// sits at its CENTRE, `((i+0.5)/15, (j+0.5)/8)` — a cell is an area, not a lattice point, and
+/// sits at its CENTRE, `((i+0.5)/15, (j+0.5)/8)` - a cell is an area, not a lattice point, and
 /// putting the knots on the boundaries instead would shift the whole field half a cell left.
 pub fn reconstruct(cells: &[[f32; 3]; N], u: f32, v: f32) -> [f32; 3] {
     let tx = u.clamp(0.0, 1.0) * W as f32 - 0.5;
@@ -609,8 +609,8 @@ pub fn reconstruct(cells: &[[f32; 3]; N], u: f32, v: f32) -> [f32; 3] {
 /// COLUMN and a grid row, and is shared by every texel of that column. Computing it once per
 /// (row, column) and then running the y pass per texel performs exactly the arithmetic
 /// `reconstruct` does, in the same order, with a quarter of the cubics and none of the per-tap
-/// extrapolation — `a_separable_texture_is_reconstruct_to_the_bit` holds it to that. Evaluated per
-/// texel it was 7.5–8.6 ms of the frame a modal's dim first latched on the television
+/// extrapolation - `a_separable_texture_is_reconstruct_to_the_bit` holds it to that. Evaluated per
+/// texel it was 7.5-8.6 ms of the frame a modal's dim first latched on the television
 /// (2026-09-19), the one CPU cost left in a frame the GPU already fills.
 pub fn texture_rgba(cells: &[[f32; 3]; N]) -> [u8; TEX_W * TEX_H * 4] {
     // The grid rows a texel's y pass can reach: `j0 - 1 ..= j0 + 2` over every texel row.
@@ -646,7 +646,7 @@ pub fn texture_rgba(cells: &[[f32; 3]; N]) -> [u8; TEX_W * TEX_H * 4] {
     px
 }
 
-/// Texel `t` of `n` across a grid of `cells`: its left/top knot and the fraction past it —
+/// Texel `t` of `n` across a grid of `cells`: its left/top knot and the fraction past it -
 /// [`reconstruct`]'s own `(i0, fx)` for `u = (t + 0.5) / n`, by the same expressions.
 fn texel_knot(t: usize, n: usize, cells: usize) -> (isize, f32) {
     let u = (t as f32 + 0.5) / n as f32;

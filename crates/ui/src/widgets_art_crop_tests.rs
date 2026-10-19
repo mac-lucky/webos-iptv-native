@@ -15,14 +15,14 @@ fn headshot(key: &str) -> Art<'_> {
     Art::Person { sid: SRC, key, res: (300, 300) }
 }
 
-/// Texels per drawn pixel on each axis — equal ⇔ an even scale, i.e. no distortion.
+/// Texels per drawn pixel on each axis - equal ⇔ an even scale, i.e. no distortion.
 fn texel_scale(uv: [f32; 4], tw: f32, th: f32, r: Rect) -> (f32, f32) {
     (uv[2] * tw / r.w, uv[3] * th / r.h)
 }
 
 /// **The reported bug.** A cast headshot is requested at 300×300 with `minSize=1`, which COVERS the
 /// box, so a portrait photo decodes at 300×450. The tile used to sample the whole texture into the
-/// 190×190 circle — a vertical squash to two-thirds. It must now sample an even-scaled window that
+/// 190×190 circle - a vertical squash to two-thirds. It must now sample an even-scaled window that
 /// keeps the full width and rides high on the photo, at rest and through the focus pop.
 #[test]
 fn a_portrait_headshot_on_the_cast_row_is_cropped_not_squashed() {
@@ -40,8 +40,8 @@ fn a_portrait_headshot_on_the_cast_row_is_cropped_not_squashed() {
     }
 }
 
-/// Every surface that draws a person's photo draws it through `Art::Person` — the cast row, the
-/// person page's portrait and Search's person results — so all of them get the headshot crop.
+/// Every surface that draws a person's photo draws it through `Art::Person` - the cast row, the
+/// person page's portrait and Search's person results - so all of them get the headshot crop.
 #[test]
 fn every_person_photo_takes_the_headshot_crop_and_other_art_is_even() {
     assert_eq!(art_crop(&headshot("k")), crate::Crop::Headshot);
@@ -55,7 +55,7 @@ fn every_person_photo_takes_the_headshot_crop_and_other_art_is_even() {
 
 /// Art already at its tile's aspect is sampled whole, so posters in poster tiles and 16:9 stills in
 /// the episode filmstrip draw exactly as before; only art of ANOTHER aspect changes, and it
-/// changes from squashed to cropped — here the poster a landscape tile falls back to.
+/// changes from squashed to cropped - here the poster a landscape tile falls back to.
 #[test]
 fn art_at_its_tiles_aspect_is_untouched_and_a_poster_in_a_landscape_tile_is_cropped() {
     let poster = Rect::new(0.0, 0.0, 250.0, 375.0);

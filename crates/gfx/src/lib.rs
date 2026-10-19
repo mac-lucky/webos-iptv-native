@@ -21,13 +21,13 @@
 //! crate enables it in `[dev-dependencies]` only, so no shipped build sees it.
 
 pub mod dump; // dump mode's gfx half: prewarm drains to empty, GPU readiness forced (default off)
-pub mod egl; // boot-time EGL capability probe (extensions, swap behaviour, buffer age) — diagnostic only
+pub mod egl; // boot-time EGL capability probe (extensions, swap behaviour, buffer age) - diagnostic only
 pub mod gfx;
 #[cfg(feature = "devtriggers")]
 pub mod gpu_timer; // async EXT_disjoint_timer_query timing; no glFinish on the timing path
 #[cfg(feature = "devtriggers")]
 pub mod hwcnt; // direct userspace Mali r12p0 vinstr reader for the phase profiler
 pub mod img;
-pub mod overdraw; // dev-only DRAW-CLASS ledger + mask — the attribution instrument (docs/backdrop-blur-profiling.md Part 5)
-pub mod svg; // runtime SVG rasterizer FFI (src/svg.c / nanosvg) — vector icon assets
+pub mod overdraw; // dev-only DRAW-CLASS ledger + mask - the attribution instrument (docs/backdrop-blur-profiling.md Part 5)
+pub mod svg; // runtime SVG rasterizer FFI (src/svg.c / nanosvg) - vector icon assets
 pub mod text;

@@ -1,6 +1,6 @@
 //! **The drill-in page stack** the player's popovers share (`docs/player-submenus.md`): what a
 //! pushed page remembers of the page beneath it, so a pop brings that page back exactly as it was
-//! left, plus the two small pieces every such popover needs around it — the title band's
+//! left, plus the two small pieces every such popover needs around it - the title band's
 //! pointer-only key and handing the leaving page's table to the slide.
 //!
 //! It owns no UI and no table: the popover keeps its own [`FormTable`] and calls

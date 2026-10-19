@@ -1,9 +1,9 @@
 //! `Focusable` for the widgets (restructure spec §7.1, phase 3a): geometry IS `Focusable::place`.
 //!
 //! Each widget answers the query protocol through a small VIEW over its live state plus the
-//! frame arguments its draw takes — [`Shelf`] over a `CardRow`, [`Table`] over a `TableView`,
+//! frame arguments its draw takes - [`Shelf`] over a `CardRow`, [`Table`] over a `TableView`,
 //! [`TabRow`] over the shared top strip's drawn pills, [`Grid`] over a column of shelves, and
-//! [`Document`] over a `DocumentReader` — built by the screen for the frame, exactly as it builds
+//! [`Document`] over a `DocumentReader` - built by the screen for the frame, exactly as it builds
 //! the draw call. The rule that makes these honest is that the DRAW reads the same formula:
 //! `card_row::tile_rect` is what `cards::Shelf` places tiles by and what `Shelf::place` answers;
 //! `TableView::row_frame` is what `row_rect`/`hit_row` walk. A host test per widget pins the two
@@ -63,8 +63,8 @@ fn step_index<K: IndexElem>(entry: EntryId, k: FocusKey<K>, dir: Dir, n: usize, 
 }
 
 /// **Where a plain index ends and a key namespace begins.** A widget's items are keyed by their own
-/// index (`0..n`); everything else that shares the `u32` key space — the container's strip
-/// (`dispatch::STRIP_BASE`), a screen's footer / keypad / read-out controls, a settings band —
+/// index (`0..n`); everything else that shares the `u32` key space - the container's strip
+/// (`dispatch::STRIP_BASE`), a screen's footer / keypad / read-out controls, a settings band -
 /// carves its range at or above this, "far above any realistic roster length". The one rule it
 /// buys: a key at or above it is NOT an index into any widget and must never be treated as one.
 pub const NAMESPACE_FLOOR: u32 = 0x1000_0000;
@@ -75,7 +75,7 @@ pub const NAMESPACE_FLOOR: u32 = 0x1000_0000;
 /// - a stale index past the end (the list shrank under the cursor) clamps to the LAST item, the
 ///   nearest survivor;
 /// - a key from another namespace (see [`NAMESPACE_FLOOR`]) was never an index, so "clamp it to
-///   the end" is meaningless and lands focus on the last item by accident — it re-seats on the
+///   the end" is meaningless and lands focus on the last item by accident - it re-seats on the
 ///   FIRST, the widget's own default.
 ///
 /// Every `reconcile` that used to write `i.min(n - 1)` on a key it had not checked is this
@@ -303,7 +303,7 @@ where
 }
 
 /// A column of shelves (the home grid, the Library's shelves): one `Row` group per shelf, so a
-/// vertical move is the §7.3 step-3 geometric search landing by `Seat::Nearest` — which is
+/// vertical move is the §7.3 step-3 geometric search landing by `Seat::Nearest` - which is
 /// `card_row::column_near_x`'s contract, the rule the home grid has always used. Element keys
 /// are `row * stride + col`.
 pub struct Grid<'a> {
@@ -589,7 +589,7 @@ mod tests {
     }
 
     /// The one reconcile rule: a stale index clamps to the last item, a key from another namespace
-    /// (the strip's pill, a screen's control) re-seats on the first — never on the last by accident.
+    /// (the strip's pill, a screen's control) re-seats on the first - never on the last by accident.
     #[test]
     fn a_foreign_key_reseats_on_the_first_item_and_a_stale_index_on_the_last() {
         assert_eq!(clamp_plain_index(2, 4), 2, "inside the range is kept");

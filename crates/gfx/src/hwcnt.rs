@@ -344,7 +344,7 @@ impl Reader {
             // Do NOT hand this back: PUT_BUFFER validates the index too, so the return would fail
             // as well and leave the reader wedged mid-handshake. An out-of-range index means the
             // mapping contract this module asserts is not what the driver is honouring, which is
-            // unrecoverable by construction — the caller tears the reader down.
+            // unrecoverable by construction - the caller tears the reader down.
             return Err(format!("invalid HWCNT buffer index {}", meta.buffer_idx));
         }
 
@@ -385,7 +385,7 @@ pub fn shutdown() {
 
 /// The per-block `PRFCNT_EN` word (block header word 2), one entry per dump block.
 ///
-/// This is not decoration. On this Mali-T820 the TILER block comes back with `0x1f` — five groups
+/// This is not decoration. On this Mali-T820 the TILER block comes back with `0x1f` - five groups
 /// of four counters, so tiler words 20..63 are not enabled in hardware and `TILER_ACTIVE` (word 22)
 /// reads a flat zero no matter what the client bitmap asked for. Logging the mask is what tells a
 /// zero counter from a disabled one; without it the two are indistinguishable in the output.
@@ -440,7 +440,7 @@ pub const COUNTERS: [CounterSpec; 30] = [
     },
     // Verified against Arm's r12p0 T82x table, and STRUCTURALLY ZERO on this television anyway:
     // the tiler block reports `PRFCNT_EN = 0x1f`, so only words 4..19 are enabled in hardware and
-    // word 22 can never increment. It is kept, named, and reported so the zero is explicable —
+    // word 22 can never increment. It is kept, named, and reported so the zero is explicable -
     // `block_enables` is what tells "the tiler was idle" from "this counter is switched off".
     CounterSpec {
         name: "TILER_ACTIVE",
@@ -469,7 +469,7 @@ pub const COUNTERS: [CounterSpec; 30] = [
     },
     // Midgard's TRANSACTION ELIMINATION: the tile writeback unit CRCs each finished tile against
     // what is already in memory and SKIPS the write when they match. Arm names this counter as the
-    // way to detect an application redrawing an unchanged screen — which is precisely the question
+    // way to detect an application redrawing an unchanged screen - which is precisely the question
     // "would per-region damage tracking pay here" reduces to, and it is answerable without writing
     // any damage code. Word 21 is cross-checked against four independent tables (Arm's r7p0
     // `mali_kbase_gator_hwcnt_names.h`, the Khadas/Amlogic vendor tree's copy of it, gator's
@@ -628,7 +628,7 @@ mod tests {
     /// `tools/analyze-hwcnt.py` re-declares the counter table so an archived JSONL can be decoded
     /// on the host long after the build that captured it. Two hand-maintained copies of the same
     /// index list is exactly how the two wrong L2 words (45 for `L2_EXT_READ`, 49 for
-    /// `L2_EXT_WRITE`) survived being fixed in one place — the raw words outlive the run, so a
+    /// `L2_EXT_WRITE`) survived being fixed in one place - the raw words outlive the run, so a
     /// stale analyzer keeps mis-decoding captures that are otherwise still good.
     #[test]
     fn the_host_analyzer_decodes_the_same_words_as_the_app() {

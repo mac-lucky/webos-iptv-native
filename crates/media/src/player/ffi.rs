@@ -1,16 +1,16 @@
 // Copyright (c) 2026 Gleb Linnik
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Own Rust mirror of src/starfish.h, written from the public ABI contract.
-//! player::ffi — the starfish.c seam (sf_* / acb_* verbs). These stay C (the mangled-C++ + ACB
+//! player::ffi - the starfish.c seam (sf_* / acb_* verbs). These stay C (the mangled-C++ + ACB
 //! ABI). The library thread calls back into our sf_on_event / acb_on_event (defined in mod.rs).
 //! Signatures mirror `src/starfish.h` exactly; `long` is 32-bit on the arm target -> c_long.
 //!
 //! **Everything here but `load` and `unload` takes a [`MainThread`]** (`unload` takes an
 //! `UnloadTicket`, which only a `&MainThread` can issue, so a real stop's Unload can run on the
-//! `sf-unload` worker — `engine::PendingRelease`), because the seam has no locking of
+//! `sf-unload` worker - `engine::PendingRelease`), because the seam has no locking of
 //! its own: the ACB bind order is a bare call sequence, and `sf_feed` races the pump's own
 //! bookkeeping. The raw declarations live in a private `sys` module so the token is the only way
-//! to reach them — a `use super::ffi::sys` from elsewhere in `player/` does not compile, which is
+//! to reach them - a `use super::ffi::sys` from elsewhere in `player/` does not compile, which is
 //! what makes this a guarantee rather than a note.
 //!
 //! The wrappers are the methods of [`StarfishSink`], the television's `tv::sink::VideoSink`; the
@@ -28,7 +28,7 @@ use tv_base::task::MainThread;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_long, c_uint};
 
-/// The declarations themselves — private ON PURPOSE. See the module doc.
+/// The declarations themselves - private ON PURPOSE. See the module doc.
 mod sys {
     use std::os::raw::{c_char, c_int, c_long, c_uint};
 
@@ -86,10 +86,10 @@ pub struct StarfishSink;
 impl tv_platform::tv::sink::VideoSink for StarfishSink {
     /// **One of the two verbs of this seam that is NOT main-thread (the other is `unload`, on its
     /// `UnloadTicket`), and the missing token is how you can tell.** `Load` blocks for the pipeline construction and the library owns its own GMainContext
-    /// behind it, so it runs on the media worker (`threads::load_thread`) by design — putting it on
+    /// behind it, so it runs on the media worker (`threads::load_thread`) by design - putting it on
     /// the main thread would stall the frame loop for the whole load. What keeps that safe is NOT
-    /// `sf_ready()` — that reads true the moment the object is constructed, before the real Load call
-    /// returns (issue #74) — but the C seam's own `g_load_returned` gate inside `sf_ready_object()`,
+    /// `sf_ready()` - that reads true the moment the object is constructed, before the real Load call
+    /// returns (issue #74) - but the C seam's own `g_load_returned` gate inside `sf_ready_object()`,
     /// which refuses the other Starfish verbs until this call has returned. Rust tracks the same
     /// epoch boundary in Shared and the pump bounds both waits with `NATIVE_LOAD_BUDGET`.
     #[inline]
@@ -188,7 +188,7 @@ impl tv_platform::tv::sink::VideoSink for StarfishSink {
     /// The exported windowId the seam holds, or an empty string when none was created. Diagnostics
     /// only (`app::diagnostics`): it answers "did the window this firmware needs ever exist?", which is the
     /// first thing to check when webOS 5+ plays sound over a black screen. Points at the seam's own
-    /// long-lived buffer, so it is never NULL and never owned here. No token — it reads a static char[].
+    /// long-lived buffer, so it is never NULL and never owned here. No token - it reads a static char[].
     #[inline]
     fn window_id(&self) -> &'static CStr {
         // SAFETY: never NULL and always NUL-terminated (`g_window_id` is a zero-initialised char[64]).
@@ -196,7 +196,7 @@ impl tv_platform::tv::sink::VideoSink for StarfishSink {
     }
 
     /// `VP_EXPORTED` only. Create the exported window; the returned id must go into the Load payload
-    /// as `option.windowId`. Ordering matters — see the `MainThread` note in the module doc, and note
+    /// as `option.windowId`. Ordering matters - see the `MainThread` note in the module doc, and note
     /// this must happen BEFORE `load`, which runs on the media worker.
     #[inline]
     unsafe fn create_window(&self, _: &MainThread) -> *const c_char {

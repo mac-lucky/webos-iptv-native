@@ -1,7 +1,7 @@
 //! Application side of the private storage-helper protocol.
 //!
 //! A missing helper, a stale rendezvous, a refused activation and a corrupt canonical object are
-//! all unavailable storage — never an empty database.  Only the helper may decide that DB8 has no
+//! all unavailable storage - never an empty database.  Only the helper may decide that DB8 has no
 //! canonical object, after an authenticated `Hello` on the same stream as the `Load` reply.
 //! A helper that never connects gets one startup window. After that expires, each call tries
 //! once and returns unavailable immediately on failure, with activation hints rate-limited.

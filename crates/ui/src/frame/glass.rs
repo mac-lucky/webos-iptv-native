@@ -105,7 +105,7 @@ impl Default for GlassPlan {
 mod tests {
     //! Two properties, and both are about OWNERSHIP rather than about glass: that the dial's live
     //! state travels with the instance it was armed on (eight `static mut`s could not have this
-    //! test at all — a second plan would have read the first one's step), and that moving it
+    //! test at all - a second plan would have read the first one's step), and that moving it
     //! preserves the every-changed-present rule.
     use super::*;
 

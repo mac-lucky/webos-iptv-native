@@ -88,7 +88,7 @@ impl Viewport {
     }
 }
 
-/// **How the picture is placed on the screen** — the player's `…` > Aspect ratio. Per playback:
+/// **How the picture is placed on the screen** - the player's `...` > Aspect ratio. Per playback:
 /// every start is [`Auto`](AspectMode::Auto), and nothing is saved.
 ///
 /// It is expressed as the exported window's destination rect alone (`vp_place`'s source is

@@ -1,4 +1,4 @@
-//! The bounded diagnostic ring — **the log this app already writes, kept in memory**.
+//! The bounded diagnostic ring - **the log this app already writes, kept in memory**.
 //!
 //! There is no second logging system here and no new call site anywhere: `crate::eventlog::log` is the ONE
 //! sink every diagnostic line in the app passes through, and this taps it one line below
@@ -16,7 +16,7 @@
 //! bug into an unreproducible OOM.
 //!
 //! **Eviction is counted and reported.** `dropped` rides in the envelope, because "the window was
-//! too small" and "nothing happened before the bug" are the same silence otherwise — and the whole
+//! too small" and "nothing happened before the bug" are the same silence otherwise - and the whole
 //! promise of this feature is that pressing the button after reproducing a fault still captures
 //! what led to it.
 //!
@@ -30,7 +30,7 @@ use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
-/// Record ceiling. A few minutes of an ordinary session, and rather more of a settled screen —
+/// Record ceiling. A few minutes of an ordinary session, and rather more of a settled screen -
 /// which writes one heartbeat line a second.
 pub const MAX_RECORDS: usize = 4000;
 /// Byte ceiling over the record TEXT. 768 KiB compresses to well under the receiver's 4 MiB body
@@ -39,7 +39,7 @@ pub const MAX_BYTES: usize = 768 * 1024;
 
 #[derive(Clone)]
 pub struct Rec {
-    /// milliseconds since [`start_clock`] — the same monotonic base the heartbeat's own timestamps
+    /// milliseconds since [`start_clock`] - the same monotonic base the heartbeat's own timestamps
     /// come from, so a record correlates with `loop=`/`fps=`/`pos=` lines by eye.
     pub t_ms: u32,
     pub msg: String,
@@ -49,7 +49,7 @@ pub struct Rec {
 struct Ring {
     recs: VecDeque<Rec>,
     bytes: usize,
-    /// evicted since the last [`take`] — reported, never silently absorbed
+    /// evicted since the last [`take`] - reported, never silently absorbed
     dropped: u64,
 }
 
@@ -62,7 +62,7 @@ pub fn start_clock() {
     let _ = START.get_or_init(Instant::now);
 }
 
-/// Milliseconds since process start, saturating at `u32::MAX` (49 days — no session is that long,
+/// Milliseconds since process start, saturating at `u32::MAX` (49 days - no session is that long,
 /// and a saturating cast is still an honest reading rather than a wrapped one).
 pub fn t_ms() -> u32 {
     START
@@ -75,7 +75,7 @@ pub fn t_ms() -> u32 {
 /// Append one already-redacted line.
 ///
 /// Poison is stepped over rather than propagated: a panic in some other thread while it held this
-/// lock must not turn every subsequent `crate::eventlog::log` call into a second panic — the log is how the
+/// lock must not turn every subsequent `crate::eventlog::log` call into a second panic - the log is how the
 /// first one gets diagnosed.
 pub fn record(line: &str) {
     let t = t_ms();
@@ -150,7 +150,7 @@ mod tests {
         assert_eq!(recs[0].msg, format!("line {}", 10), "the oldest ten went");
     }
 
-    /// …and the BYTE cap does too, which a record count alone cannot express: 4000 records is
+    /// ...and the BYTE cap does too, which a record count alone cannot express: 4000 records is
     /// anywhere from 160 KB to several megabytes depending on which lines they are.
     #[test]
     fn the_byte_cap_binds_before_the_record_cap_on_long_lines() {
@@ -169,7 +169,7 @@ mod tests {
         assert!(dropped > 0, "and it said so");
     }
 
-    /// `dropped` is a delta since the last read, and a read does NOT empty the ring — a second
+    /// `dropped` is a delta since the last read, and a read does NOT empty the ring - a second
     /// press must still see the history the first one uploaded.
     #[test]
     fn dropped_is_a_delta_and_a_take_does_not_drain() {

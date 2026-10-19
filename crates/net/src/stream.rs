@@ -4,7 +4,7 @@
 //! The host is a **name or an address literal of either family**, resolved through `getaddrinfo`
 //! ([`resolve`]) and dialled down the whole returned chain ([`connect_any_result`]). It used to be
 //! four decimal octets parsed by hand into a `sockaddr_in`, which made a hostname and every IPv6
-//! server not "degraded" but impossible — the shape of the gap LG's checklist #43 CASE2 asks about.
+//! server not "degraded" but impossible - the shape of the gap LG's checklist #43 CASE2 asks about.
 //! What is still missing here is TLS: this arm stays cleartext, and an `https://` origin goes
 //! through libcurl ([`crate::net`]) instead.
 //!
@@ -29,20 +29,20 @@ static FD_GATE: Mutex<()> = Mutex::new(());
 pub struct HttpStream {
     /// The socket, reached from TWO threads: the demux thread reads (and owns closing) it,
     /// while the main thread interrupts it on a seek/teardown. It was a bare `c_int` mutated
-    /// from both sides behind two live `&mut`, and the interrupt was a `close(2)` — which on
+    /// from both sides behind two live `&mut`, and the interrupt was a `close(2)` - which on
     /// Linux does NOT wake a peer blocked in `recv`, so BACK during a stall waited out the
     /// 15 s SO_RCVTIMEO, and the freed fd NUMBER could be handed to a poster worker's
     /// `socket()` and then read into the video AU buffer. Now: atomic, `shutdown(2)` to
     /// interrupt (wakes the reader, keeps the number allocated), and exactly one closer via
     /// `take_fd`'s swap. See `http_shutdown` / `http_close`.
     fd: AtomicI32,
-    /// "A teardown asked this stream to stop" — set by [`http_shutdown`], never cleared by
+    /// "A teardown asked this stream to stop" - set by [`http_shutdown`], never cleared by
     /// [`http_open`].
     ///
     /// It exists because resolving gave the open something it never had: a NEXT address to try
     /// after a failed `connect`. A handshake aborted by `shutdown(2)` and an address that is simply
     /// dead are the same value at `connect`'s return, so without this latch a teardown fired during
-    /// attempt 1 of 2 is answered by dialling attempt 2 — the interrupt silently consumed, and a
+    /// attempt 1 of 2 is answered by dialling attempt 2 - the interrupt silently consumed, and a
     /// brand-new connection handed back to a caller that was being torn down. Reading the fd cannot
     /// stand in for it: between two attempts the fd is legitimately -1. Production boxes a fresh
     /// [`HttpStream`] per engine, so a leftover latch is not a later session to consume; clearing
@@ -60,7 +60,7 @@ pub struct HttpStream {
     /// defaults to keep-alive unless the server sent `Connection: close`.
     keep_alive: c_int,
     /// 1 once the body has been fully consumed and the fd is still open. A second open
-    /// may reuse only when this is set — an unread body would poison the next request.
+    /// may reuse only when this is set - an unread body would poison the next request.
     body_done: c_int,
     /// 1 once the current chunked-trailer line has seen a non-CR byte. Drain can return
     /// `HTTP_READ_DEADLINE` mid-trailer and resume on a later call; a stack `line_empty = true`
@@ -97,11 +97,11 @@ fn retry_interrupted_recv(result: isize, error: c_int) -> bool {
         && error == libc::EINTR
 }
 
-/// Case-insensitive search for an ASCII `needle` in a byte haystack — the header-block lookup
-/// that used to be `hdr.to_ascii_lowercase().find(…)`. Header field names are case-insensitive
+/// Case-insensitive search for an ASCII `needle` in a byte haystack - the header-block lookup
+/// that used to be `hdr.to_ascii_lowercase().find(...)`. Header field names are case-insensitive
 /// (RFC 9110 §5.1), so the search has to be; doing it in place drops the 64 KB-worst-case
-/// `String` the lowercase copy allocated on every single request, and — the point of the rewrite
-/// — needs no UTF-8 in the first place. Returns the offset into `hay`, which is an offset into
+/// `String` the lowercase copy allocated on every single request, and - the point of the rewrite
+/// - needs no UTF-8 in the first place. Returns the offset into `hay`, which is an offset into
 /// the ORIGINAL bytes (an ASCII-case fold cannot change any byte's length, but nothing here
 /// relies on that any more).
 fn find_ci(hay: &[u8], needle: &[u8]) -> Option<usize> {
@@ -137,8 +137,8 @@ impl HttpStream {
         self.body_done != 0
     }
     /// Reset every per-request field EXCEPT `fd` and `interrupted`. `http_open` used to
-    /// `write_bytes`-memset the whole struct, which wrote the ATOMIC fd non-atomically — and
-    /// momentarily as 0, i.e. stdin — while another thread could be loading it in
+    /// `write_bytes`-memset the whole struct, which wrote the ATOMIC fd non-atomically - and
+    /// momentarily as 0, i.e. stdin - while another thread could be loading it in
     /// `http_shutdown`. `fd` is reset separately through its atomic store.
     ///
     /// `buf` is deliberately NOT cleared: it is only ever read within `[bpos, blen)`, both of
@@ -194,19 +194,19 @@ pub fn log_endpoint(path: &str) -> String {
 /// report. Pure, so the decision can be graded on the host without a socket.
 ///
 /// [`http_read`] reports a clean end as 0 and a recv ERROR as -1 (a mid-body `SO_RCVTIMEO` firing,
-/// a reset), and the one-shot wrappers below hand back `Some(body)` for both — deliberately, since
+/// a reset), and the one-shot wrappers below hand back `Some(body)` for both - deliberately, since
 /// changing that would move every caller's behaviour. What the caller sees instead is a body short
 /// by however much never arrived: for a JSON caller that is a parse failure, which looks the same
 /// as a server that never answered. This line is the difference between those two.
 ///
 /// `sized` is the whole subtlety, and it is why a chunked response cannot report a short body on
-/// length. Chunked framing carries no `Content-Length` to fall short of — the sizes are in the
-/// body — and [`http_read`]'s chunked branch never consults the field, counting DECODED bytes into
+/// length. Chunked framing carries no `Content-Length` to fall short of - the sizes are in the
+/// body - and [`http_read`]'s chunked branch never consults the field, counting DECODED bytes into
 /// `consumed`. A server that sent both headers anyway would therefore have the test comparing two
 /// different quantities, so chunked is excluded outright rather than left to rely on
 /// `content_length` having stayed -1 (RFC 9112 §6: with both present the chunked framing wins and
-/// the length is ignored, which is what the read path already does). A close-delimited body — no
-/// length, not chunked — has no completeness test at all, so there only a recv error can say the
+/// the length is ignored, which is what the read path already does). A close-delimited body - no
+/// length, not chunked - has no completeness test at all, so there only a recv error can say the
 /// transfer ended early, and `want` says plainly that nothing knows how much was owed.
 fn short_body_line(
     method: &str,
@@ -235,11 +235,11 @@ fn short_body_line(
     ))
 }
 
-/// [`short_body_line`] applied to a finished stream — call it after the read loop, before or after
+/// [`short_body_line`] applied to a finished stream - call it after the read loop, before or after
 /// [`http_close`] (the fields it reads are counters, which `http_close` does not touch).
 ///
 /// `pub` because a caller composing this module's primitives into its own request (open, read the
-/// body, close — keeping the status AND the body, since a `401` is a credential problem and a
+/// body, close - keeping the status AND the body, since a `401` is a credential problem and a
 /// refusal is a reachability one) needs the notice too. The three fields it reads are private, so
 /// the notice could not be reproduced from outside.
 pub fn note_short_body(method: &str, path: &str, hs: &HttpStream, recv_err: bool) {
@@ -255,7 +255,7 @@ pub fn note_short_body(method: &str, path: &str, hs: &HttpStream, recv_err: bool
     }
 }
 
-/// crate-internal accessors (fields are private) — the player engine reads these.
+/// crate-internal accessors (fields are private) - the player engine reads these.
 #[inline]
 pub fn hs_content_length(hs: *const HttpStream) -> i64 {
     unsafe { (*hs).content_length }
@@ -306,7 +306,7 @@ unsafe fn socket_timeout(fd: c_int, opt: c_int) -> Option<std::time::Duration> {
 }
 
 /// When a checkpoint slice replaces a plain blocking call, `poll` no longer sees the socket's own
-/// inactivity option, so it is carried as an absolute bound from the start of the call — the same
+/// inactivity option, so it is carried as an absolute bound from the start of the call - the same
 /// span that option would have granted the blocking call it replaces. Only needed without a caller
 /// deadline: with one, the call was already a `poll` loop that ignores the option.
 unsafe fn idle_bound(fd: c_int, opt: c_int, deadline: Option<Instant>) -> Option<Instant> {
@@ -388,7 +388,7 @@ unsafe fn wait_fd(
 /// renew it.
 ///
 /// Bytes the kernel has already queued were RECEIVED before this call, and are handed over
-/// without asking anyone — the same standing `http_read_until` gives its header buffer. Only then
+/// without asking anyone - the same standing `http_read_until` gives its header buffer. Only then
 /// is the checkpoint asked, before blocking: asking first let a hold stop a transfer whose
 /// remainder had already arrived. Unarmed with no deadline, the wait is the plain blocking `recv`
 /// it always was; otherwise it is sliced at its `next_check`.
@@ -473,7 +473,7 @@ unsafe fn send_until(
     }
 }
 
-/// One raw body byte (buffered first, then socket) — for chunk framing.
+/// One raw body byte (buffered first, then socket) - for chunk framing.
 unsafe fn hs_getb(
     hs: &mut HttpStream,
     deadline: Option<Instant>,
@@ -571,7 +571,7 @@ unsafe fn hs_skip_chunked_trailers(
     }
 }
 
-/// Strip the optional whitespace (RFC 9110 §5.6.3's `OWS` — spaces and horizontal tabs only) from
+/// Strip the optional whitespace (RFC 9110 §5.6.3's `OWS` - spaces and horizontal tabs only) from
 /// both ends of a header token.
 fn trim_ows(v: &[u8]) -> &[u8] {
     let a = v.iter().take_while(|b| **b == b' ' || **b == b'\t').count();
@@ -643,24 +643,24 @@ unsafe fn finish_body(hs: &mut HttpStream) {
 
 /// Is this response body framed with the `chunked` transfer coding?
 ///
-/// This used to be `find_ci(hdr, b"\r\ntransfer-encoding: chunked")` — an exact compare against one
+/// This used to be `find_ci(hdr, b"\r\ntransfer-encoding: chunked")` - an exact compare against one
 /// spelling, so every legal variation of the same header missed and the body was then read as
 /// close-delimited with its chunk-size lines left INLINE in it. Silent corruption, not a failure:
-/// `Transfer-Encoding:chunked` (no space, which the grammar allows — OWS is optional after the
+/// `Transfer-Encoding:chunked` (no space, which the grammar allows - OWS is optional after the
 /// colon), `Transfer-Encoding: Chunked` (the VALUE is case-insensitive too, RFC 9110 §10.1.4, and
 /// `find_ci` folding the whole needle only made that one work by accident), a list such as
 /// `gzip, chunked`, or a second `Transfer-Encoding` line, since the field is a list that a sender
 /// may split across lines (RFC 9110 §5.3).
 ///
 /// So: walk every `Transfer-Encoding` line, split each on commas, and ask whether any token IS
-/// `chunked`. That is deliberately more permissive than the grammar — RFC 9112 §6.1 requires
-/// chunked to be the FINAL coding, so `chunked, gzip` is malformed — but a recipient that refuses
+/// `chunked`. That is deliberately more permissive than the grammar - RFC 9112 §6.1 requires
+/// chunked to be the FINAL coding, so `chunked, gzip` is malformed - but a recipient that refuses
 /// to see the chunk framing a sender did apply reads the sizes as body bytes, which is the worse of
 /// the two failures by a distance.
 ///
 /// The value offset is `NEEDLE.len()`, never a written-out number. `Content-Length`'s parse three
 /// lines down still carries a hand-counted `p + 17`, which is correct and is one edit away from not
-/// being — the literal and the constant that indexes past it cannot drift apart if only one of them
+/// being - the literal and the constant that indexes past it cannot drift apart if only one of them
 /// exists.
 fn header_is_chunked(hdr: &[u8]) -> bool {
     const NEEDLE: &[u8] = b"\r\ntransfer-encoding:";
@@ -687,7 +687,7 @@ fn header_is_chunked(hdr: &[u8]) -> bool {
 /// How long the handshake phase of ONE open may take, across EVERY address the host resolved to.
 ///
 /// Without a bound at all the app inherits the kernel's SYN-retry budget (~2 min on Linux), during
-/// which a blocked caller waits — an unreachable server (rebooting, on another VLAN, a DHCP
+/// which a blocked caller waits - an unreachable server (rebooting, on another VLAN, a DHCP
 /// re-lease) would stall rather than fail, and every request in a chain would pay it again.
 ///
 /// **8000 ms is an internet number.** Linux's first SYN retransmit is at 1 s, so one lost SYN plus
@@ -695,13 +695,13 @@ fn header_is_chunked(hdr: &[u8]) -> bool {
 /// gets reported unreachable. 8000 ms covers three SYN attempts (t = 0, 1, 3 s) and part of the
 /// fourth wait, which is about where a handshake that has not completed is not going to.
 ///
-/// **One number, and it is deliberately NOT derived from the address.** RFC1918 is not "near" — a
-/// NAT'd server reached over a VPN is private and far — so an address cannot tell you how much
+/// **One number, and it is deliberately NOT derived from the address.** RFC1918 is not "near" - a
+/// NAT'd server reached over a VPN is private and far - so an address cannot tell you how much
 /// patience a connection is worth. That policy is the caller's; this layer owes exactly one honest
 /// ceiling on how long a blocked caller can be held.
 ///
 /// **It is the budget for the whole chain, not per address**, so the worst-case freeze is this
-/// number however many addresses the resolver returned — a count this app does not control. The
+/// number however many addresses the resolver returned - a count this app does not control. The
 /// cost of that choice is that a first address which silently blackholes SYNs can spend the budget
 /// before a later one is tried. The common shape does not: an address with no route (the usual
 /// "this network has no IPv6 at all") fails `connect(2)` synchronously with ENETUNREACH in ~0 ms
@@ -758,7 +758,7 @@ enum ConnectAttempt {
 /// because it now comes out of `getaddrinfo` and may be a `sockaddr_in6`: the pair IS the
 /// `addrinfo`'s own `ai_addr`/`ai_addrlen`, forwarded without a copy and without this function
 /// having to know or test the family. A non-positive `timeout_ms` (the chain budget already spent)
-/// is clamped to 0 rather than passed on — `poll` reads a NEGATIVE timeout as "block forever",
+/// is clamped to 0 rather than passed on - `poll` reads a NEGATIVE timeout as "block forever",
 /// which would turn an exhausted budget into the unbounded wait this whole function removes.
 unsafe fn connect_timeout_cause(
     fd: c_int,
@@ -790,7 +790,7 @@ unsafe fn connect_timeout_cause(
         revents: 0,
     };
     // The budget as an absolute end, so a checkpoint slice's expiry (a recheck, then more
-    // waiting) cannot stretch it. Never negative — that is `poll`'s "wait forever".
+    // waiting) cannot stretch it. Never negative - that is `poll`'s "wait forever".
     let mut end = Instant::now() + std::time::Duration::from_millis(timeout_ms.max(0) as u64);
     loop {
         let Ok(slice) = pacer.before_wait() else {
@@ -821,7 +821,7 @@ unsafe fn connect_timeout_cause(
         }
         end = Instant::now(); // a signal ate the wait; poll once more without blocking again
     }
-    // Writable does not imply connected — SO_ERROR carries the verdict.
+    // Writable does not imply connected - SO_ERROR carries the verdict.
     let mut err: c_int = 0;
     let mut elen = std::mem::size_of::<c_int>() as libc::socklen_t;
     if libc::getsockopt(
@@ -855,7 +855,7 @@ unsafe fn connect_timeout(
     }
 }
 
-/// An address list from `getaddrinfo`, freed on drop — including on the early return every failed
+/// An address list from `getaddrinfo`, freed on drop - including on the early return every failed
 /// `connect` in [`connect_any_result`] can take. Only ever constructed around a NON-NULL head,
 /// because `freeaddrinfo(NULL)` is not a documented no-op the way `free(NULL)` is.
 struct AddrList {
@@ -870,9 +870,9 @@ impl Drop for AddrList {
 
 /// The bytes to hand `getaddrinfo` as its node: a v6 literal WITHOUT its brackets.
 ///
-/// The brackets belong to the URI authority grammar (RFC 3986 §3.2.2) — which is where they are
+/// The brackets belong to the URI authority grammar (RFC 3986 §3.2.2) - which is where they are
 /// needed, in the `Host:` header and in a URL, and why a URL reader hands one back bracketed. The
-/// resolver takes an ADDRESS, not an authority: `getaddrinfo("[::1]", …)` is
+/// resolver takes an ADDRESS, not an authority: `getaddrinfo("[::1]", ...)` is
 /// EAI_NONAME. Stripping here rather than asking every caller to remember means a bracketed host
 /// cannot silently become "that server does not resolve", which is a failure nothing in the log
 /// would distinguish from a real DNS failure.
@@ -883,19 +883,19 @@ fn resolver_node(host: &str) -> &str {
     }
 }
 
-/// Is `host` an address LITERAL rather than a name? Decides only which `getaddrinfo` flag is used —
+/// Is `host` an address LITERAL rather than a name? Decides only which `getaddrinfo` flag is used -
 /// see [`resolve`], where the distinction is load-bearing.
 ///
 /// `IpAddr`'s parse is the whole test, and it is strict in the way this needs: exactly four octets
 /// for v4 (so `1.2.3` and `999.1.2.3` are not addresses, matching the hand-rolled parse this
-/// replaced). A v6 literal may carry a `%zone` suffix — `fe80::1%eth0` — which `IpAddr` does not
+/// replaced). A v6 literal may carry a `%zone` suffix - `fe80::1%eth0` - which `IpAddr` does not
 /// parse but every resolver here does accept, so the zone is cut before asking.
 fn is_numeric_host(host: &str) -> bool {
     let bare = host.split('%').next().unwrap_or(host);
     bare.parse::<std::net::IpAddr>().is_ok()
 }
 
-/// The `Host:` header value for a request — built from what the CALLER named, and never from the
+/// The `Host:` header value for a request - built from what the CALLER named, and never from the
 /// address it resolved to.
 ///
 /// Emitting the address is what the code did before there was any resolution, when the two could
@@ -919,17 +919,17 @@ fn host_header(host: &str, port: c_int) -> String {
 /// Resolve an (already unbracketed) host and port into a connect-order address list.
 ///
 /// `AF_UNSPEC` + `SOCK_STREAM`, so the ORDER is the system's own destination-address policy
-/// (RFC 6724 under glibc) rather than a family this file picks — which is what makes IPv6 work at
+/// (RFC 6724 under glibc) rather than a family this file picks - which is what makes IPv6 work at
 /// all here instead of merely being expressible.
 ///
 /// The flags are the whole subtlety:
 ///
 /// * A **numeric literal takes `AI_NUMERICHOST`**, and that is a correctness fix rather than an
 ///   optimisation. `AI_ADDRCONFIG` suppresses AF_INET6 results on a host whose only IPv6 address is
-///   loopback, so `getaddrinfo("::1", …, AI_ADDRCONFIG)` legitimately resolves to NOTHING — which
+///   loopback, so `getaddrinfo("::1", ..., AI_ADDRCONFIG)` legitimately resolves to NOTHING - which
 ///   would make every v6 literal, and this file's own loopback tests, unresolvable on a perfectly
 ///   healthy machine. A literal has nothing to configure-filter in any case: the caller named one
-///   exact address. Keeping the old dotted-quad fast path free is the side effect — no NSS module
+///   exact address. Keeping the old dotted-quad fast path free is the side effect - no NSS module
 ///   is loaded and no packet is sent, so the per-seek AVIO reopen still costs what the hand-rolled
 ///   octet parse did.
 /// * A **name takes `AI_ADDRCONFIG`**, which is precisely what that flag is for: do not ask for an
@@ -942,11 +942,11 @@ fn host_header(host: &str, port: c_int) -> String {
 /// -1 whatever went wrong, so the distinction is logged at the call site rather than returned.
 ///
 /// **This call is BLOCKING and nothing in this file can interrupt it.** Every other wait in an open
-/// is bounded — `CONNECT_TIMEOUT_MS` for the handshake, `SO_RCVTIMEO` for the read — and every one
+/// is bounded - `CONNECT_TIMEOUT_MS` for the handshake, `SO_RCVTIMEO` for the read - and every one
 /// of them can be cut short by `http_shutdown`, because there is a descriptor published for it to
 /// shoot. There is none here: `getaddrinfo` owns its sockets. A NAME whose DNS server is not
 /// answering therefore holds the caller for the resolver's own budget, which under glibc is
-/// `timeout` × `attempts` × nameservers and defaults to 5 s × 2 each — far past anything this
+/// `timeout` × `attempts` × nameservers and defaults to 5 s × 2 each - far past anything this
 /// module bounds. Names are ordinary inputs now: control-plane calls reach this code on background
 /// workers and plaintext media reaches it on the demux thread, so resolution cannot freeze the
 /// SDL loop but can outlive the advertised connect budget or delay a worker join. An https origin
@@ -956,14 +956,14 @@ fn host_header(host: &str, port: c_int) -> String {
 unsafe fn resolve(host: &str, port: c_int) -> Option<AddrList> {
     // The offline reproduction (`/tmp/webosiptv-nowan`): a name that would have gone to the
     // resolver is refused here, exactly where a dead resolver would have refused it. A literal is
-    // untouched — the plaintext transport never needs DNS for one.
+    // untouched - the plaintext transport never needs DNS for one.
     if crate::net::refuse_name(host, (CONNECT_TIMEOUT_MS / 1000) as _) {
         return None;
     }
     // The port is range-checked HERE and not left to `AI_NUMERICSERV`, because the two platforms
     // disagree and the disagreement is SILENT. Darwin rejects an out-of-range numeric service;
     // glibc parses it with `strtoul`, applies no range check at all, and hands back
-    // `htons(70000)` — port 4464. That is bit for bit the truncation `(port as u16).to_be()` used
+    // `htons(70000)` - port 4464. That is bit for bit the truncation `(port as u16).to_be()` used
     // to do, so trusting the resolver would have MOVED this bug rather than fixed it, and moved it
     // somewhere worse: `cargo test` runs on Darwin, so the platform that silently truncates is
     // exactly the one no host test can see. A request that lands on a real service at the wrong
@@ -998,7 +998,7 @@ enum ConnectFailure {
 }
 
 /// Dial down the address chain until one answers, within `budget_ms` for the WHOLE walk. Returns
-/// the connected fd — also left PUBLISHED in `hs` — or the cause with `hs` closed. The legacy
+/// the connected fd - also left PUBLISHED in `hs` - or the cause with `hs` closed. The legacy
 /// test adapter below deliberately folds every failure back to `-1` for the focused walk tests.
 ///
 /// Trying only the first address would be today's single-address limit wearing a resolver. A name
@@ -1008,7 +1008,7 @@ enum ConnectFailure {
 /// Two of this file's invariants ride on every iteration, not just the first:
 ///
 /// * **The fd is published into `hs` BEFORE `connect`**, which is what makes the open interruptible
-///   at all — see [`http_open`]'s note, where the behaviour is measured on the TV's kernel with
+///   at all - see [`http_open`]'s note, where the behaviour is measured on the TV's kernel with
 ///   `tools/sockprobe.c` and is NOT what the Darwin host these tests run on does.
 /// * **Every failed attempt is retired through [`close_owned`], never a bare `close`.** A bare
 ///   close leaves a stale fd NUMBER armed in the atomic for the next `http_shutdown` to shoot after
@@ -1032,11 +1032,11 @@ unsafe fn connect_any_result(
         ai = a.ai_next;
         let fd = libc::socket(a.ai_family, a.ai_socktype, a.ai_protocol);
         if fd < 0 {
-            continue; // a family the kernel will not give us (no IPv6 in this build) — try the next
+            continue; // a family the kernel will not give us (no IPv6 in this build) - try the next
         }
-        hs.set_fd(fd); // PUBLISHED before connect, per attempt — see the doc above
+        hs.set_fd(fd); // PUBLISHED before connect, per attempt - see the doc above
                        // Clamped to the budget before the subtraction, so what `connect_timeout` is handed is in
-                       // [0, budget] whatever the clock did — a `u128` cast of a negative budget would otherwise
+                       // [0, budget] whatever the clock did - a `u128` cast of a negative budget would otherwise
                        // come back enormous and hand the LAST attempt an unbounded-looking wait.
         let spent = started.elapsed().as_millis().min(budget_ms.max(0) as u128) as c_int;
         match connect_timeout_cause(fd, a.ai_addr, a.ai_addrlen, budget_ms.max(0) - spent, pacer) {
@@ -1548,7 +1548,7 @@ fn http_open_with_timeouts(
         // Resolve FIRST, before any descriptor exists: the address family to open is the resolver's
         // answer, not this file's assumption, which is the whole of what makes an AF_INET6
         // connection possible. It also means an unresolvable host now fails with no socket ever
-        // created — where the hand-rolled octet parse it replaced failed one step later, after
+        // created - where the hand-rolled octet parse it replaced failed one step later, after
         // `socket()`, and had to retire an fd on the way out.
         let list = match resolve(resolver_node(&host_s), port) {
             Some(l) => l,
@@ -1569,7 +1569,7 @@ fn http_open_with_timeouts(
                 });
             }
         };
-        // PUBLISHED BEFORE CONNECT, on every attempt (`connect_any` does it) — which makes the
+        // PUBLISHED BEFORE CONNECT, on every attempt (`connect_any` does it) - which makes the
         // whole open interruptible by `http_shutdown`, and is why every failure path there and
         // below must retire it through `close_owned` rather than a bare `close`: a bare close
         // leaves a stale number armed in the atomic for the next interrupt to shoot, and leaves
@@ -1577,26 +1577,26 @@ fn http_open_with_timeouts(
         //
         // This was tried once and REVERTED (docs/async-model-decision.md): it made every reopen
         // interruptible while the pump was firing `http_shutdown` to service a SEEK, which cost
-        // `seek_inplace_h264`. That coupling is gone — 5938b5f/71929ee moved seeking into the
+        // `seek_inplace_h264`. That coupling is gone - 5938b5f/71929ee moved seeking into the
         // demux thread's own `av_seek_frame`, so the only `http_shutdown` left in the tree is
         // teardown's (`player/engine.rs`), where cutting an open short is precisely the intent.
         //
         // Worth publishing this early only because `shutdown(2)` aborts a handshake in progress on
-        // the TV's kernel — measured with `tools/sockprobe.c`, NOT assumed. Linux is documented to
+        // the TV's kernel - measured with `tools/sockprobe.c`, NOT assumed. Linux is documented to
         // fail this with ENOTCONN and the host (Darwin) does something different again, so the
         // question could not be settled by reading or by `cargo test`. If that ever stops holding,
         // publishing after `connect_timeout` still buys the 15 s `SO_RCVTIMEO` window, which is
         // the bulk of the win.
         //
         // Also the path a teardown takes: `http_shutdown` aborts the handshake, and `connect_any`
-        // reports the failure one poll later — and, seeing the interrupt latch, stops walking
+        // reports the failure one poll later - and, seeing the interrupt latch, stops walking
         // rather than answering the teardown with the next address.
         //
         // The latch is read on BOTH sides of the walk, which is what makes "a shutdown anywhere in
         // an open aborts that open" true rather than nearly true. Before: `resolve` holds no
         // descriptor, so a teardown during it has nothing to shoot and would otherwise be answered
         // by connecting anyway. After: `connect_any` has a window of its own between `socket()` and
-        // the publish, and — on Darwin, per `tools/sockprobe.c` — an aborted handshake can even
+        // the publish, and - on Darwin, per `tools/sockprobe.c` - an aborted handshake can even
         // report SUCCESS, which no `connect` return value would catch.
         if hs.interrupted() {
             return Err(HttpOpenError::Aborted); // torn down while resolving; no descriptor existed
@@ -1684,7 +1684,7 @@ unsafe fn perform_http_request(
     } else {
         "Accept: */*\r\n"
     };
-    // `Host:` is the ORIGIN, never the address `connect_any` reached — see `host_header`.
+    // `Host:` is the ORIGIN, never the address `connect_any` reached - see `host_header`.
     let host_hdr = host_header(host_s, port);
     // The process's one name, as the curl paths send it (`net::apply_user_agent`); none before boot.
     let ua = crate::net::user_agent_header_line();
@@ -1776,8 +1776,8 @@ unsafe fn perform_http_request(
     // Parse status line + Content-Length + chunked. HEADERS ARE BYTES, not UTF-8 (RFC 9110
     // §5.5: field values are octets, and a recipient must not reject the message for them).
     // This used to run on `from_utf8(...).unwrap_or("")`, which meant ONE stray byte anywhere
-    // in the block — a Latin-1 character in a filename echoed back in a header, a mojibake
-    // title in a custom header — collapsed the WHOLE header block to "", left
+    // in the block - a Latin-1 character in a filename echoed back in a header, a mojibake
+    // title in a custom header - collapsed the WHOLE header block to "", left
     // `status` at 0, and made the `status < 200` check below close a perfectly good 200 and
     // report it as a transport failure. The bytes we actually care about are all ASCII, so
     // reading them as bytes costs nothing and cannot be poisoned from a distance.
@@ -1790,7 +1790,7 @@ unsafe fn perform_http_request(
         let ndig = rest.iter().take_while(|b| b.is_ascii_digit()).count();
         // RFC 9110 §15: status-code is exactly 3DIGIT. Requiring that (rather than folding a
         // digit run of any length) keeps the well-formed case bit-identical while making the
-        // accumulate below unable to overflow. Anything else stays 0 — which is what the old
+        // accumulate below unable to overflow. Anything else stays 0 - which is what the old
         // `parse().unwrap_or(0)` produced for a malformed line too, and 0 fails the check
         // below exactly as before.
         hs.status = if ndig == 3 {
@@ -2087,7 +2087,7 @@ fn body_take(n: usize, remaining: i64) -> usize {
 }
 
 /// Close the socket, once. Only the OWNING thread (the one doing the reads) may call this,
-/// or the main thread AFTER that worker has been joined — a `close` racing a live reader frees
+/// or the main thread AFTER that worker has been joined - a `close` racing a live reader frees
 /// the fd number for another thread's `socket()` to claim. To interrupt a reader that is still
 /// running, use [`http_shutdown`].
 unsafe fn close_owned(hs: &HttpStream) {
@@ -2112,19 +2112,19 @@ pub fn http_body_done(hs: *const HttpStream) -> bool {
     unsafe { (*hs).body_is_done() }
 }
 
-/// **What a transport holds of the current response body beyond what its reader has taken** —
+/// **What a transport holds of the current response body beyond what its reader has taken** -
 /// the one question `ff.rs`'s acquisition asks both transports before it may abandon a fetch.
 /// A body is complete when it is RECEIVED, not when FFmpeg has read it: a server may burst a
 /// paused remainder, and a burst sitting in a buffer is already paid for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BodyReceipt {
-    /// Body bytes received and not yet read — never framing, never past a declared length.
+    /// Body bytes received and not yet read - never framing, never past a declared length.
     pub ahead: i64,
     /// The transport proved the body's end: every declared byte, the chunked terminator, or a
     /// successful transfer. Never a failure, which is not an end.
     pub finished: bool,
-    /// Answering took a transfer step (curl's `perform`): bytes were received — on https,
-    /// decrypted — by the query itself, and the read that later copies them out will not see
+    /// Answering took a transfer step (curl's `perform`): bytes were received - on https,
+    /// decrypted - by the query itself, and the read that later copies them out will not see
     /// that work. The caller counts the query's time as body transfer time exactly then.
     pub stepped: bool,
 }
@@ -2418,11 +2418,11 @@ pub fn http_drain_available(hs: *mut HttpStream, dst: &mut [u8]) -> c_int {
 }
 
 /// Interrupt a read in progress WITHOUT closing: `shutdown(2)` wakes a peer blocked in `recv`
-/// (which `close(2)` does not — that was the 15 s freeze on BACK during a stall) and leaves the
+/// (which `close(2)` does not - that was the 15 s freeze on BACK during a stall) and leaves the
 /// descriptor allocated, so its number cannot be recycled into another thread's socket while
 /// the reader is still touching it. The reader then sees EOF and closes it itself.
 ///
-/// It also LATCHES the interrupt, unconditionally — including when the fd is already -1, which is
+/// It also LATCHES the interrupt, unconditionally - including when the fd is already -1, which is
 /// the point. A `connect_any` walk between two attempts holds no descriptor, so a teardown landing
 /// in that window has nothing to shut down and would otherwise be lost entirely; the latch is what
 /// stops the next address from being dialled. See [`HttpStream::interrupted`].
@@ -2436,7 +2436,7 @@ pub fn http_shutdown(hs: *mut HttpStream) {
         // Re-read UNDER the gate. The `take_fd` swap alone makes exactly one caller close, but it
         // does not make this pair atomic: read the number, lose the CPU, and by the time the
         // syscall runs the owner may have closed it and another thread's `socket()` may have been
-        // handed the same number — so the interrupt lands on an unrelated, healthy connection.
+        // handed the same number - so the interrupt lands on an unrelated, healthy connection.
         // Holding the gate across BOTH the read and the syscall is what removes that window,
         // because the only close is under the same gate.
         let fd = (*hs).fd();
@@ -2446,21 +2446,21 @@ pub fn http_shutdown(hs: *mut HttpStream) {
     }
 }
 
-/// Serialises `shutdown(2)` against `close(2)` on a stream's descriptor — see [`http_shutdown`].
+/// Serialises `shutdown(2)` against `close(2)` on a stream's descriptor - see [`http_shutdown`].
 ///
 /// One process-wide gate rather than a field on `HttpStream`: the struct is `#[repr(C)]` and built
 /// by zeroing a `Box` (`http_stream_boxed`), so a `Mutex` field would have to be constructed
 /// instead of zeroed, and a zeroed `Mutex` is not a thing to rely on. Contention is not a concern
-/// either — between them these two run a handful of times per playback, and each holds the gate for
+/// either - between them these two run a handful of times per playback, and each holds the gate for
 /// exactly one syscall on an already-open descriptor. Deliberately NOT taken by `set_fd`/`fd()`:
 /// `hs_getb` loads the fd per byte on the chunked path, which is why it stays an atomic.
 
 
-/// A boxed HttpStream in the CLOSED state (fd = -1, never 0 — a stray close on a zeroed box
+/// A boxed HttpStream in the CLOSED state (fd = -1, never 0 - a stray close on a zeroed box
 /// would take stdin), so http_close is a no-op until
 /// http_open assigns a real fd. The player engine pre-allocates the demux/cue sockets
 /// before the worker threads open them; a plain zeroed box leaves fd = 0, and a
-/// teardown before (or without) http_open would then close(0) the process's stdin —
+/// teardown before (or without) http_open would then close(0) the process's stdin -
 /// and free fd 0 for a later socket() to reuse and be wrongly closed. The zero fill is written
 /// directly into the heap allocation: spelling this as `Box::new(mem::zeroed())` materialises a
 /// 64 KiB temporary on debug-build worker stacks before moving it into the box.

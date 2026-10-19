@@ -63,7 +63,7 @@ pub fn paging(content_h: f32, view_h: f32, step: f32) -> (f32, usize) {
     (max_scroll, (max_scroll / step).ceil() as usize + 1)
 }
 
-/// The scroll offset page `page` rests at — `(page-1)` whole steps, clamped to the travel. Pure.
+/// The scroll offset page `page` rests at - `(page-1)` whole steps, clamped to the travel. Pure.
 pub fn scroll_at(page: usize, max_scroll: f32, step: f32) -> f32 {
     ((page.max(1) - 1) as f32 * step).min(max_scroll).max(0.0)
 }
@@ -93,7 +93,7 @@ pub fn content_h(paras: &[&str], w: f32, lead: f32) -> f32 {
 /// The scrolling prose: every paragraph stacked at `-scroll`, inside a hard scissor at `view`.
 ///
 /// **The clip is the hard cut; the DISSOLVE is the text's own glyphs fading**, via
-/// [`TextView::edge_fade`], against the surface behind them — nothing is painted over the glass.
+/// [`TextView::edge_fade`], against the surface behind them - nothing is painted over the glass.
 /// Each edge appears only when there is prose on the far side of it. Set and clear of the clip are
 /// paired in this one function, because the scissor is global GL state.
 pub fn draw(p: Painter, paras: &[&str], lead: f32, view: Rect, scroll: f32, max_scroll: f32) {
@@ -121,7 +121,7 @@ pub fn draw_rail(p: Painter, view: Rect, content_right: f32, page: usize, pages:
     widgets::scroll_rail(p, Rect::new(content_right - widgets::RAIL_W, view.y, widgets::RAIL_W, view.h), page, pages);
 }
 
-/// The cursor and the spring that chases it — the state both panels record.
+/// The cursor and the spring that chases it - the state both panels record.
 pub struct ProseScroll {
     /// The current page, 1-based. The spring chases [`scroll_at`] of it, rather than the page being
     /// derived from the scroll: paging is the input, and a spring still travelling must not be read
@@ -142,7 +142,7 @@ impl ProseScroll {
     }
 
     /// UP/DOWN page the viewport; any other key is inert. Returns whether the cursor moved. May run
-    /// one past the last page for a single frame — [`Self::follow`] pulls it back. `probe` names the
+    /// one past the last page for a single frame - [`Self::follow`] pulls it back. `probe` names the
     /// spring for the animation probe.
     pub fn step_page(&mut self, sym: c_uint) -> bool {
         let next = match sym {

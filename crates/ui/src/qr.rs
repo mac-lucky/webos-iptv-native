@@ -6,7 +6,7 @@ use super::label::HAlign;
 use super::text_view::TextView;
 
 /// Caption-sized link text with a 32 px cap-top pitch. At the shared 24 px face this leaves
-/// roughly 10–14 px of visible air between address lines, without a paragraph-sized gap.
+/// roughly 10-14 px of visible air between address lines, without a paragraph-sized gap.
 const LINK_LINE_H: f32 = theme::size::CAPTION as f32 + theme::space::XS;
 
 /// The QR allocation is unchanged; text rectangles describe their actual cap-band extents.

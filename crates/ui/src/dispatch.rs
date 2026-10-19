@@ -1,4 +1,4 @@
-//! The frame — ONE algorithm (spec §3.3), generic over the `Host` bundle and a `Rig` that owns
+//! The frame - ONE algorithm (spec §3.3), generic over the `Host` bundle and a `Rig` that owns
 //! whatever the dispatcher does not: the stores and the other addressable machines, the mounter,
 //! the views, the measure, the adapters, and the three privileged OS calls (`ls2_pump`,
 //! `opaque_route`, `clear_opaque_region`) which `app/run.rs` implements and this module only
@@ -6,10 +6,10 @@
 //!
 //! The ten steps over one frame, with the step budgets, the parked structural ops, the carry-over
 //! that never drops, the single NAV COMMIT with its reserved post-commit budget, the present
-//! decision and the prepare/draw pair — over the container tree (`ui::containers::Navigation`,
+//! decision and the prepare/draw pair - over the container tree (`ui::containers::Navigation`,
 //! phase 3b: tabs → one shared stack → the shared modal stack, minting every `EntryId` and
 //! `InstanceId`). A structural op is REQUESTED at commit and applies at its transition's commit
-//! point — a cut now, a dip at its floor — and comes back as `Life` steps this module executes:
+//! point - a cut now, a dip at its floor - and comes back as `Life` steps this module executes:
 //! mount through the one `Mounter`, deliver the §3.4 sequence in the post-commit drain, retire
 //! bodies. The activity table (§8.3) is read off the modal stack's host fold: a Frozen host
 //! receives no `Tick`, a Cached or Replaced host does not prepare, a Replaced host does not draw.
@@ -189,7 +189,7 @@ pub struct FocusAnswer<K> {
 pub struct NoTap;
 impl<H: Host> Tap<H> for NoTap {}
 
-/// The adapter drain order (spec §3.3 step 3): one rank per PUMP in the legacy loop's order — a
+/// The adapter drain order (spec §3.3 step 3): one rank per PUMP in the legacy loop's order - a
 /// store with two pumps has two ranks, so the list is a permutation of the loop and nothing is
 /// named twice. Results are delivered by `(completion_frame, rank, arrival_index)`.
 pub const ADAPTER_RANKS: [&str; 11] = [
@@ -259,7 +259,7 @@ pub trait Rig<H: Host> {
     fn clear_opaque_region(&mut self);
     /// The clock for `Budget` (one reading per take).
     fn now_us(&self) -> u64;
-    /// BACK at the root of the root stack (§3.4): the application decides — the platform's Home
+    /// BACK at the root of the root stack (§3.4): the application decides - the platform's Home
     /// on the television (`root_back_tests`); nothing, by default, in a fixture.
     fn back_at_root(&mut self) {}
 }
@@ -314,14 +314,14 @@ pub struct FrameReport {
     pub steps_post: u32,
     pub carried: usize,
     pub queue_hwm: usize,
-    /// Bodies mounted this frame, each with its `Screen::name()` — the cold-open clock's START
+    /// Bodies mounted this frame, each with its `Screen::name()` - the cold-open clock's START
     /// (`diag::heartbeat::ColdOpens`). The name rides along because by the time anything
     /// downstream reads this the body is behind the tree, and asking the tree for it would be a
     /// second lookup that can fail (the body may already be gone).
     pub mounted: Vec<(InstanceId, &'static str)>,
     /// Bodies whose Unmount step completed and may now be pruned, not merely queued.
     pub unmounted: Vec<InstanceId>,
-    /// Bodies that DREW this frame, in draw order — the cold-open clock's STOP.
+    /// Bodies that DREW this frame, in draw order - the cold-open clock's STOP.
     pub drawn: Vec<InstanceId>,
     pub dropped_deliveries: u32,
     /// The logical-state hash, on an event frame.
@@ -375,8 +375,8 @@ pub struct Dispatcher<H: Host> {
     /// Deliveries dropped since the heartbeat last read them (`take_heartbeat_counters`).
     dropped_deliveries: u32,
     /// The cold-open instrument (spec §8.4). It lives here rather than beside the loop's other
-    /// instruments because both of its events are the dispatcher's — a mount at nav commit and a
-    /// draw in the page/surface pass — and neither is visible from outside one `FrameReport`.
+    /// instruments because both of its events are the dispatcher's - a mount at nav commit and a
+    /// draw in the page/surface pass - and neither is visible from outside one `FrameReport`.
     cold: tv_base::diag::heartbeat::ColdOpens,
     render_breach_logged: bool,
     /// The input owner answered `Handled::No` to a BACK: resolve it over its stack at commit.
@@ -448,7 +448,7 @@ where
     }
 
     /// Does the dispatcher OWN the input right now (phase 5b, the coexistence seam): the input
-    /// owner is a surface, or a page whose focus comes from the engine — i.e. anything but a
+    /// owner is a surface, or a page whose focus comes from the engine - i.e. anything but a
     /// screen that still declares `FocusSource::Legacy` (the player, until phase 12). The legacy
     /// loop hands its keys and pointer to `frame_with` while this answers `true` and keeps them
     /// for its own ladders otherwise.
@@ -608,7 +608,7 @@ where
         self.nav.top_page().and_then(|e| e.inst.as_ref()).map(|i| i.id)
     }
 
-    /// **The top page's ARGUMENT** — "which page is on top", asked of the container rather than of
+    /// **The top page's ARGUMENT** - "which page is on top", asked of the container rather than of
     /// a mirror kept beside it (spec §15.2). It answers before the body is mounted, which
     /// [`Self::top_screen`] cannot: an entry minted this frame has an argument and no instance
     /// until the commit's `Mount` step has run.
@@ -616,11 +616,11 @@ where
         self.nav.top_page().map(|e| &e.arg)
     }
 
-    /// The top page's argument, or — while there is NO top page yet — the page the first nav
+    /// The top page's argument, or - while there is NO top page yet - the page the first nav
     /// commit is about to mount (the last parked `Root`/`Push`/`Replace`/`SelectTab`). A caller
     /// that runs BEFORE the frame's commit (the bridge's chrome capture) asks this rather than
-    /// [`Self::top_arg`], which is `None` on a boot's first frame — the route is parked, not
-    /// mounted — and would make that frame look like no page at all. Once a page is up this IS
+    /// [`Self::top_arg`], which is `None` on a boot's first frame - the route is parked, not
+    /// mounted - and would make that frame look like no page at all. Once a page is up this IS
     /// `top_arg`: a push parked behind it changes the chrome at its own commit, not a frame early.
     pub fn top_or_mounting_arg(&self) -> Option<&H::Arg> {
         self.top_arg().or_else(|| self.parked.iter().rev().find_map(|(s, _)| match &s.fx {
@@ -629,7 +629,7 @@ where
         }))
     }
 
-    /// …and its `ScreenId`, the identity every argument of one screen shares.
+    /// ...and its `ScreenId`, the identity every argument of one screen shares.
     pub fn top_id(&self) -> Option<tv_machine::machine::ScreenId> {
         use super::screen::ScreenArg;
         self.top_arg().map(|a| a.id())
@@ -645,7 +645,7 @@ where
     /// Asked by `app::bridge::sync_page`, whose whole job is to put the committed route's page on
     /// top: a page op parked by the loop itself (`Nav::Open`'s `Push`, `Nav::Back`'s `Pop`) is
     /// already that decision, and a second one would duplicate the page. A parked SURFACE op is
-    /// not — `Navigation::moves_page` is the one classifier, so this and the commit that routes
+    /// not - `Navigation::moves_page` is the one classifier, so this and the commit that routes
     /// the op give the same answer. It used to match `Fx::Nav(_)` flatly, which made
     /// `exit_player`'s `NavOp::Dismiss` of an open player panel suppress the page sync for the
     /// very frame that carried the post-player route.
@@ -662,7 +662,7 @@ where
             .and_then(|e| self.input.engine.current(InputOwner::Entry(e)))
     }
 
-    /// **Which page element, if any, the opener lift repaints this frame** — the ONE decision the
+    /// **Which page element, if any, the opener lift repaints this frame** - the ONE decision the
     /// lift and the page pass share (`(host page, element)`; `Self::draw_opener_lift` reads
     /// this). The lift is the opener tile drawn again above the dim *because it is the focused
     /// one*. That stops being true the moment the menu is dismissed: `ModalStack::dismiss` hands
@@ -738,7 +738,7 @@ where
     }
 
     /// The outgoing top screen's return state (spec §6.1 tier 2): focus off the engine, and
-    /// [`Screen::memory`] off the screen itself — the same "ask the owner, never assume" rule
+    /// [`Screen::memory`] off the screen itself - the same "ask the owner, never assume" rule
     /// [`Screen::state`]/`crumb` already follow. `top_screen()` is `None` only before the very
     /// first mount, when there is nothing to remember either.
     pub fn return_state(&self) -> ReturnState<H::Elem, H::Memory> {
@@ -784,7 +784,7 @@ where
     /// **Is this frame's picture a hardware VIDEO PLANE?** (spec §9, §16 risk 10.)
     ///
     /// TWO terms, and both are required. The top page must ANSWER
-    /// [`RenderStrategy::VideoPlane`] — a declaration about what it draws, not about where it is —
+    /// [`RenderStrategy::VideoPlane`] - a declaration about what it draws, not about where it is -
     /// and the plane must actually be BOUND, which arrives as the gate's
     /// [`PresentEvent::VideoPlane`](tv_machine::present::PresentEvent::VideoPlane) input from the one
     /// machine that owns that bit. Either term alone is wrong: the player page is up for the whole
@@ -793,9 +793,9 @@ where
     /// [`RenderStrategy::Page`] because that page still paints chrome, shelves and the hero scrim;
     /// punch-through is the page's own clear, not this predicate.
     ///
-    /// What it decides, in this file: nothing below the top page ticks or draws — `(Frozen,
+    /// What it decides, in this file: nothing below the top page ticks or draws - `(Frozen,
     /// Replaced)` in §6.2's vocabulary, applied to everything UNDER the page rather than to the
-    /// page itself — because there is nothing to see under a hole punched in the surface. The
+    /// page itself - because there is nothing to see under a hole punched in the surface. The
     /// other half, the four framebuffer-sampling doors, is armed for the length of the draw and
     /// enforced in `gfx::video_plane_refuses`.
     pub fn video_plane_frame(&self) -> bool {
@@ -845,9 +845,9 @@ where
         self.frame_with(rig, tick, inputs, results, tap, true)
     }
 
-    /// Steps 1–9, and step 10 only if `draw`. The legacy loop (phase 5b onwards) runs the
+    /// Steps 1-9, and step 10 only if `draw`. The legacy loop (phase 5b onwards) runs the
     /// dispatcher's frame at its NAV COMMIT and draws the tree LATER, at the positional point
-    /// its own frame reserves for the surfaces, on its own present gate — so it asks for the
+    /// its own frame reserves for the surfaces, on its own present gate - so it asks for the
     /// steps without the draw here and calls [`Self::draw`] there. The prepare pass still runs
     /// here when the dispatcher's gate presents; `draw` runs it itself when it did not.
     pub fn frame_with(
@@ -1039,7 +1039,7 @@ where
             });
         }
         // 4. one Tick: containers before pages. The transition and every surface's motion step
-        //    first (a Closing surface unconditionally); then every ACTIVE body per §8.3 — a page
+        //    first (a Closing surface unconditionally); then every ACTIVE body per §8.3 - a page
         //    under a Frozen fold receives nothing.
         {
             let Dispatcher { nav, present, .. } = self;
@@ -1063,8 +1063,8 @@ where
             .take(if self.nav.tabs.stack.transition.draws_below() && !self.video_plane_frame() {
                 2
             } else {
-                // §9: `(Frozen, …)` on everything below a bound video plane. A page that cannot be
-                // seen must not be stepped either — its springs would run out their travel behind
+                // §9: `(Frozen, ...)` on everything below a bound video plane. A page that cannot be
+                // seen must not be stepped either - its springs would run out their travel behind
                 // the picture and land settled, so the cross-fade back out of the player would
                 // begin already over.
                 1
@@ -1127,7 +1127,7 @@ where
         report.steps_pre = tv_base::diag::spans::span("dpre", || self.drain(rig, &parts, MAX_STEPS_PRE, &mut report, tap));
         report.queue_hwm = report.queue_hwm.max(queued_before);
 
-        // 7. NAV COMMIT — one per frame — then the post-commit drain on its own budget
+        // 7. NAV COMMIT - one per frame - then the post-commit drain on its own budget
         let owner_before = self.owner();
         tv_base::diag::spans::span("dcommit", || self.commit(rig, &parts, &mut report));
         let parts = self.parts(tick); // the owner may have changed at commit
@@ -1181,7 +1181,7 @@ where
             self.carried_streak = 0;
         }
         self.last_carried = report.carried;
-        // …and the drops, for the heartbeat's `dropped=`. The field on `self` accumulates until
+        // ...and the drops, for the heartbeat's `dropped=`. The field on `self` accumulates until
         // the heartbeat drains it (`take_heartbeat_counters`), and it is folded HERE, from the
         // report, rather than beside each `report.dropped_deliveries += 1`: there are eight of
         // those sites and only one of them ever incremented both, so `Dispatcher::dropped_deliveries`
@@ -1216,7 +1216,7 @@ where
         let will_present = self.present.take(tick.ms) || self.budget.has_queued_work();
         tap.present(f, will_present, why);
         // `prepare_does_not_change_the_logical_state_hash` (§5.4): a prepare pass touches render
-        // resources only — graded on every presenting frame of a debug build
+        // resources only - graded on every presenting frame of a debug build
         #[cfg(debug_assertions)]
         let hash_before_prepare = self.state_hash();
 
@@ -1243,7 +1243,7 @@ where
     }
 
     /// Step 9's prepare pass: the top page unless its host fold is Cached or Replaced, then
-    /// every surface, then the rig's own render cache — inside the budget's frame.
+    /// every surface, then the rig's own render cache - inside the budget's frame.
     fn prepare_pass(&mut self, rig: &mut dyn Rig<H>, tick: Tick) {
         self.prepared = true;
         let (_, host_render) = self.nav.modals.host_policy();
@@ -1255,8 +1255,8 @@ where
         // one iteration**, sharing the one budget: this pass (the owned screens', which spends
         // nothing today) and the loop's own around the render cache's upload step, opened later
         // and therefore the origin the uploads are admitted against. Two openings cost the
-        // instruments nothing — `take_frame_stats` accumulates until its reader drains it, and
-        // `begin_frame` resets only the quotas and the solo latch — and they collapse to one
+        // instruments nothing - `take_frame_stats` accumulates until its reader drains it, and
+        // `begin_frame` resets only the quotas and the solo latch - and they collapse to one
         // when the dispatcher owns the whole frame.
         self.budget.begin_frame(rig.now_us());
         // The cold-open line's `prepared=` term (§8.4): the budget's refusal count as this
@@ -1294,7 +1294,7 @@ where
 
     /// Step 10 on a frame the CALLER presents (the legacy loop's own gate, phase 5b): the
     /// prepare pass first if this frame's steps did not run it, then the draw. The surfaces
-    /// alone or the whole tree — `pages` says whether the page pass is drawn here too (the
+    /// alone or the whole tree - `pages` says whether the page pass is drawn here too (the
     /// legacy loop draws its own pages and reserves this call for the dispatcher's surfaces
     /// and its OWNED pages).
     pub fn draw(&mut self, rig: &mut dyn Rig<H>, pages: bool) -> FrameReport {
@@ -1400,7 +1400,7 @@ where
             super::popover::host::release();
             tv_gfx::gfx::release_offscreen();
         } else if !video_plane && self.video_plane_last {
-            // …and the blur chain is built again as the plane goes, not on the first menu after
+            // ...and the blur chain is built again as the plane goes, not on the first menu after
             // it: `gfx::init_blur` says why that frame must not pay for it.
             tv_gfx::gfx::rebuild_offscreen();
         }
@@ -1458,8 +1458,8 @@ where
         // this frame's deadline is rediscovered next frame without stale cross-navigation state.
         //
         // The same pass runs over the TOP page while an image stands in for it (the IN half and
-        // the hold after it). That is where a destination's content lands — a detail page's
-        // metadata arrives after its floor — and nothing else draws the page until the one
+        // the hold after it). That is where a destination's content lands - a detail page's
+        // metadata arrives after its floor - and nothing else draws the page until the one
         // replacement capture. Without it that capture rasterised every newly landed string in a
         // single frame: 47 strings, 48 ms of an 84 ms frame, measured on the television. The
         // quiescence predicate waits for this queue, so the capture finds the text resident.
@@ -1505,7 +1505,7 @@ where
         // the page pass: the top page (and, under a push, the level beneath it), unless the
         // host fold REPLACED it
         if pages && host_render != HostRender::Replaced {
-            // §9: `(…, Replaced)` on everything below a bound video plane — the level a push or
+            // §9: `(..., Replaced)` on everything below a bound video plane - the level a push or
             // pop transition would otherwise draw beneath the top one. Drawing it would put a page
             // on the panel UNDER a hole, i.e. over the film.
             let draws_below = nav.tabs.stack.transition.draws_below() && !video_plane;
@@ -1531,7 +1531,7 @@ where
                     // where no image exists yet. The visible pass captures it, at full alpha.
                     let visible_live = paint.draws_live()
                         || (paint == PagePaint::Capture && !capture && !source_pass);
-                    // …which leaves the CAPTURE frames with no image to replay, so a source walk
+                    // ...which leaves the CAPTURE frames with no image to replay, so a source walk
                     // draws the page about to be captured, live at full alpha; the dip alpha rides
                     // the glass composite as for a held image (`backdrop_layers`). Drawing nothing
                     // left the blur replay to filter the PREVIOUS source on the floor frame.
@@ -1606,11 +1606,11 @@ where
             }
             // **The surfaces' modal dim, last thing in the page pass** (§6.2, §8.3). It is here
             // and not with each panel because the dim has to be on the framebuffer BEFORE any
-            // surface's glass grabs its backdrop — see `ModalStack::draw_scrims`, which owns the
+            // surface's glass grabs its backdrop - see `ModalStack::draw_scrims`, which owns the
             // rule and the one style it does not apply to. `surface_scope` is the freeze lift the
             // paint needs: a page served from its cached quad refuses every fill, and this is the
             // frame's first `popover::host::live()`, which is also what defines the host snapshot
-            // as the UNDIMMED page — and the instant the dims' inherited field is read from
+            // as the UNDIMMED page - and the instant the dims' inherited field is read from
             // (`ModalUnderlay`), for the same reason.
             if Z::DIM < ceiling {
                 let _dim_layer = backdrop::layer(Z::DIM, false);
@@ -1633,9 +1633,9 @@ where
             set.frame_cache_bytes = set.frame_cache_bytes.max(super::frame::FRAME_CACHE_BYTES);
         }
         // the surfaces, bottom to top; a later stop is above an earlier one. Each is handed the
-        // stack's ONE underlay field — brought up to date by the dims above (from the undimmed
+        // stack's ONE underlay field - brought up to date by the dims above (from the undimmed
         // page, or the playing item's envelope, which may be the one kept from an earlier open or
-        // preloaded ahead of it) — which is what a popover panel's ground is drawn from
+        // preloaded ahead of it) - which is what a popover panel's ground is drawn from
         // (`widgets::panel_ground`). Disjoint fields of the stack: the field is only read here.
         let modals = &mut nav.modals;
         let field = modals.underlay.field();
@@ -1647,7 +1647,7 @@ where
             if let Some(inst) = s.entry.inst.as_mut() {
                 let _surface_scope = rig.surface_scope();
                 // §4.4: a spring stepped while a SURFACE draws is the panel's, and an
-                // `idle::invalidate` it raises is the panel's damage — the same attribution the
+                // `idle::invalidate` it raises is the panel's damage - the same attribution the
                 // step above gets. The page pass runs in NO scope, so the page's own motion and
                 // damage stay the page's and `popover::host_refresh` can still see them.
                 let _own = crate::popover::own_motion();
@@ -1656,7 +1656,7 @@ where
                 surface_cx.owner = InputOwner::Entry(s.entry.id);
                 surface_cx.focus = input.engine.read(surface_cx.owner);
                 // **A held surface records its text; it rasterises none of it.** It is at appear
-                // 0 on the frames it is held (`PopoverMotion::held`) — invisible — and the first
+                // 0 on the frames it is held (`PopoverMotion::held`) - invisible - and the first
                 // of them also renders the host snapshot, the heaviest GPU frame a modal has.
                 // Drawn live there, a cold Settings rasterised and uploaded 21 strings into that
                 // frame. Walked through the recorder, the strings are queued, drained below under
@@ -1679,7 +1679,7 @@ where
                 }
                 report.drawn.push(inst.id);
                 stops.extend(f.into_stops());
-                // (b) is a count of THIS SURFACE's own backing renders, asked of the surface —
+                // (b) is a count of THIS SURFACE's own backing renders, asked of the surface -
                 // not a literal `1`, which is what made "more than one render per surface"
                 // unspellable and the rule inert. A surface served from the shared FrameCache
                 // owns none and reports 0.
@@ -1710,8 +1710,8 @@ where
         if tv_gfx::gfx::blur_source_pass() { report.render_set = set; return; }
         set.extra_bytes = super::tex::resident_bytes() + glass.as_ref().map_or(0, |g|g.sources.borrow().resident_bytes());
         if let Err(breach) = set.check() {
-            // The policy itself is `frame::on_breach` — assert on the host, log once on a
-            // television — so that both halves are reachable from a test.
+            // The policy itself is `frame::on_breach` - assert on the host, log once on a
+            // television - so that both halves are reachable from a test.
             if let Some(line) = super::frame::on_breach(&breach, &mut self.render_breach_logged) {
                 rig.log(&line);
             }
@@ -1852,7 +1852,7 @@ where
 
     /// A step's emissions: the structural three are PARKED at once (so a key that opens a page
     /// mounts it this frame even when the drain's budget was spent before the FIFO reached its
-    /// op — `a_key_that_opens_a_page_mounts_in_the_same_frame`). Immediate input operations
+    /// op - `a_key_that_opens_a_page_mounts_in_the_same_frame`). Immediate input operations
     /// precede the next input: releases see their arms, and text sees its field/keyboard state.
     pub fn absorb(&mut self, out: Vec<Stamped<H>>) {
         let mut immediate_input = Vec::new();
@@ -1866,7 +1866,7 @@ where
                 // The engine has ALREADY moved focus; every later delivery reads the new key. At
                 // the FIFO tail this announcement queued behind the frame's Tick, so the owner
                 // ticked an unannounced focus as a settled restore and then re-popped it when the
-                // notification arrived — the All grid's outgoing tile snapped to rest and its rows
+                // notification arrived - the All grid's outgoing tile snapped to rest and its rows
                 // jumped (`a_key_moves_focus_and_announces_it_before_the_frames_tick`).
                 Fx::Deliver(_, Delivery::Screen(ScreenEvent::FocusMoved { .. })) if s.from == MachineId::Input => immediate_input.push(s),
                 Fx::App(ref app_fx) => {
@@ -2000,10 +2000,10 @@ where
                 } else {
                     tv_machine::present::Scope::Page
                 });
-                // …and the `tv_machine::idle` half of the same attribution, which is the one a screen's
+                // ...and the `tv_machine::idle` half of the same attribution, which is the one a screen's
                 // OWN springs reach: an owned screen animates through `gfx::spring`, which reports
                 // to `tv_machine::idle` and not to this gate (the Library notes no `Motion` at all). Held
-                // for the body — a guard, so the early return below cannot leak the scope.
+                // for the body - a guard, so the early return below cannot leak the scope.
                 let _own = is_surface.then(crate::popover::own_motion);
                 let Some(inst) = nav.instance_mut(id) else {
                     present.set_scope(tv_machine::present::Scope::Page);
@@ -2158,11 +2158,11 @@ where
                                 });
                             }
                         }
-                        // An edge-rule BACK is a BACK KEY, not a container op — so it takes the
+                        // An edge-rule BACK is a BACK KEY, not a container op - so it takes the
                         // road a real BACK press takes and the OWNER gets first refusal. It is
                         // re-delivered as a synthetic `Key::Back` at `Edge::Down`, and only
-                        // `execute_deliver`'s existing unhandled-BACK arm — the same one a
-                        // physical BACK goes through — turns a refusal into `pending_back`.
+                        // `execute_deliver`'s existing unhandled-BACK arm - the same one a
+                        // physical BACK goes through - turns a refusal into `pending_back`.
                         //
                         // It used to set `pending_back` here, which skipped the owner entirely,
                         // and `Navigation::back` answers `Dismissed` for ANY surface owner
@@ -2173,14 +2173,14 @@ where
                         // `right_enters_a_document_and_left_walks_all_the_way_back_out` is the
                         // legacy behaviour it broke; that module and its test went out of the tree
                         // with phase 5b, and `screens/settings.rs`'s composed LEFT-road tests are
-                        // what execute the same property now — do not go looking for the old name).
+                        // what execute the same property now - do not go looking for the old name).
                         // Every other owner is unchanged, because a
                         // screen that does not answer a BACK still ends at `pending_back`.
                         //
                         // Three details are load-bearing:
                         //  * `Edge::Down`, never the incoming edge. A held LEFT arrives as
                         //    `Edge::Repeat`, and both a screen's BACK arm and the unhandled-BACK
-                        //    detection match the DOWN edge only — forwarding a Repeat would be
+                        //    detection match the DOWN edge only - forwarding a Repeat would be
                         //    delivered to nobody and silently swallow the press.
                         //  * `at_edge: true`, which is what this flag is for ("re-delivered to
                         //    the owner's step"). It cannot loop: `after_step`'s only `at_edge`
@@ -2344,7 +2344,7 @@ where
 
     /// NAV COMMIT (§3.3 step 7, §3.4): the parked ops are REQUESTED on the tree (a cut applies
     /// now, a transition at its floor), the tree's due ops apply, and every resulting lifecycle
-    /// step is executed here — mounts through the `Mounter`, events queued for the post-commit
+    /// step is executed here - mounts through the `Mounter`, events queued for the post-commit
     /// drain. A structural op emitted DURING that drain is parked for the NEXT frame (one commit
     /// per frame).
     fn commit(&mut self, rig: &mut dyn Rig<H>, parts: &CxParts<H::Elem>, report: &mut FrameReport) {
@@ -2452,7 +2452,7 @@ where
             let mut fx = Effects::new(&mut out, MachineId::Instance(id), present);
             mounter.mount(id, &entry.arg, &entry.ret, &cx, &mut fx)
         };
-        // read before the body moves into the tree — the cold-open clock's start (§8.4)
+        // read before the body moves into the tree - the cold-open clock's start (§8.4)
         let name = screen.name();
         if let Some(entry) = self.nav.entry_mut(eid) {
             entry.inst = Some(Instance {
@@ -2582,17 +2582,17 @@ where
 }
 
 // ==============================================================================================
-// §7.3 — an edge-rule BACK takes the BACK KEY's road
+// §7.3 - an edge-rule BACK takes the BACK KEY's road
 // ==============================================================================================
 
 /// What `EdgeRule::Nav(NavOpKind::Back)` does when a direction runs off a group that declares it
-/// — which is what LEFT resolves to on the Settings family's table and document groups, and on
+/// - which is what LEFT resolves to on the Settings family's table and document groups, and on
 /// anything else that follows its crumb leftwards.
 ///
 /// It cannot be graded through `ui::fixture`'s screens: every group there declares
 /// `EdgeRule::Geometric` on all four sides, so no key any fixture screen can be sent ever reaches
-/// the arm under test. The bundle is still `FixtureHost` — the `Arg`, the views and the measure
-/// are the fixture's — but this module brings its own `Mounter` (a `Rig` is the only way to
+/// the arm under test. The bundle is still `FixtureHost` - the `Arg`, the views and the measure
+/// are the fixture's - but this module brings its own `Mounter` (a `Rig` is the only way to
 /// choose one) and one screen with a `Nav(Back)` rule on its LEFT edge, carrying an inner DEPTH
 /// it walks down exactly as `screens::settings::RouteSurface` walks its own stack: it HANDLES a
 /// BACK while it has depth and DECLINES one at its root.
@@ -2738,12 +2738,12 @@ mod cold_open_tests {
             vec!["coldopen screen=home ms=0 prepared=true".to_string()],
         );
 
-        // …and never again for that instance, however many frames it goes on drawing for
+        // ...and never again for that instance, however many frames it goes on drawing for
         d.frame(&mut rig, tick(16), vec![], vec![], &mut NoTap);
         d.frame(&mut rig, tick(32), vec![], vec![], &mut NoTap);
         assert!(d.take_cold_open_lines().is_empty(), "one line per MOUNT, not per frame");
 
-        // A second screen mounted later reports its own word — and its own CLOCK, which is the
+        // A second screen mounted later reports its own word - and its own CLOCK, which is the
         // half `ms=0` above cannot show. This mount lands on a frame the present gate refuses
         // (a structural op that damaged nothing), so the body has not drawn yet and owes no line;
         // the next frame that presents is the one it opens on, 16 ms later.
@@ -2784,9 +2784,9 @@ mod edge_back_tests {
         read_memory: Option<u32>,
         /// The screen's own inner stack depth; 1 is its root, where BACK is declined.
         depth: usize,
-        /// Every `Key::Back` at `Edge::Down` this screen was stepped with…
+        /// Every `Key::Back` at `Edge::Down` this screen was stepped with...
         backs: u32,
-        /// …and how many of those carried `at_edge: true`, i.e. came from the engine's edge rule
+        /// ...and how many of those carried `at_edge: true`, i.e. came from the engine's edge rule
         /// rather than off the remote.
         at_edge_backs: u32,
     }
@@ -2819,7 +2819,7 @@ mod edge_back_tests {
                 kind: GroupKind::Column,
                 seat: Seat::First,
                 reachable: AxisMask::BOTH,
-                // `[up, down, left, right]` — LEFT follows the crumb, which is the rule under test.
+                // `[up, down, left, right]` - LEFT follows the crumb, which is the rule under test.
                 edge: [
                     EdgeRule::Geometric,
                     EdgeRule::Geometric,
@@ -3173,7 +3173,7 @@ mod edge_back_tests {
 
     /// Seat focus on the owner's one element, as the test's PREMISE. Without it the first
     /// direction would be spent by `move_dir`'s no-focus fallback (it seats and returns `Moved`),
-    /// which never reaches an edge rule at all — so the assertion would be about seating rather
+    /// which never reaches an edge rule at all - so the assertion would be about seating rather
     /// than about the arm under test.
     fn seat(d: &mut Dispatcher<FixtureHost>, entry: EntryId) {
         d.set_focus(Some(FocusKey { entry, elem: 0 }));
@@ -3181,7 +3181,7 @@ mod edge_back_tests {
 
     /// **The blocker, first half.** LEFT off a group whose left edge rule is `Nav(Back)` reaches
     /// the owner's `step` as a synthetic BACK, and a screen that HANDLES it walks its own inner
-    /// stack. The surface stays up and keeps input — where the engine's old shortcut
+    /// stack. The surface stays up and keeps input - where the engine's old shortcut
     /// (`pending_back` straight from the edge rule) sent the press to `Navigation::back`, which
     /// answers `Dismissed` for any surface owner whatever its depth.
     #[test]
@@ -3207,7 +3207,7 @@ mod edge_back_tests {
         assert_ne!(d.nav.modals.top().unwrap().phase, Phase::Closing);
     }
 
-    /// **The blocker, second half** — and the half that must NOT change. At its own root the
+    /// **The blocker, second half** - and the half that must NOT change. At its own root the
     /// screen declines the synthetic BACK, and the unhandled-BACK path the physical key already
     /// used dismisses the surface, on the same frame's NAV COMMIT.
     #[test]
@@ -3244,7 +3244,7 @@ mod edge_back_tests {
     }
 
     /// Every OTHER owner is unchanged. A page-stack owner that declines the synthetic BACK pops
-    /// its stack exactly as a physical BACK does…
+    /// its stack exactly as a physical BACK does...
     #[test]
     fn an_edge_rule_back_still_pops_a_page_stack() {
         let (mut d, mut rig) = booted();
@@ -3258,7 +3258,7 @@ mod edge_back_tests {
         assert!(!r.back_at_root, "a pop is not the platform's BACK");
     }
 
-    /// …and at the root of the root stack it is still the APPLICATION's answer (the platform's
+    /// ...and at the root of the root stack it is still the APPLICATION's answer (the platform's
     /// Home), reported once and asked of the rig exactly once.
     #[test]
     fn an_edge_rule_back_at_the_root_is_still_the_applications() {

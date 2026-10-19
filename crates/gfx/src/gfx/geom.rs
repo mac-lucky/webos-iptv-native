@@ -14,7 +14,7 @@
 /// splits its vertical overflow between top and bottom.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Crop {
-    /// Even: art whose subject is wherever the artist put it — posters, stills, extras, avatars.
+    /// Even: art whose subject is wherever the artist put it - posters, stills, extras, avatars.
     Centre,
     /// A person's photo. A portrait headshot has the face in its upper third, so an even crop into
     /// a circle keeps the chest and cuts the forehead; this takes a fifth of the overflow off the
@@ -62,7 +62,7 @@ impl Rect {
     pub fn contains(&self, px: f32, py: f32) -> bool {
         px >= self.x && px <= self.x + self.w && py >= self.y && py <= self.y + self.h
     }
-    /// scale about center — reproduces the C card pop exactly (cx = x-(w-W)/2).
+    /// scale about center - reproduces the C card pop exactly (cx = x-(w-W)/2).
     #[inline]
     pub fn scaled(&self, s: f32) -> Rect {
         let (w, h) = (self.w * s, self.h * s);
@@ -78,7 +78,7 @@ impl Rect {
     pub fn inset(&self, d: f32) -> Rect {
         Rect::new(self.x + d, self.y + d, self.w - 2.0 * d, self.h - 2.0 * d)
     }
-    /// This rect FILLED by a `tw × th` source with its aspect preserved and centred — the
+    /// This rect FILLED by a `tw × th` source with its aspect preserved and centred - the
     /// `background-size: cover` rule, and the counterpart of the CONTAIN math
     /// `ui::hero_logo::fit` does (that one keeps a logo INSIDE its column;
     /// this one overflows a picture PAST its frame so the frame is never
@@ -86,7 +86,7 @@ impl Rect {
     /// rect: a source that is not the frame's aspect is SQUASHED, and an episode still is a video
     /// frame whose aspect we do not control.
     ///
-    /// A degenerate source (either dimension ≤ 0 — i.e. the texture has not decoded yet, so
+    /// A degenerate source (either dimension ≤ 0 - i.e. the texture has not decoded yet, so
     /// `widgets::resolve_tex_wh` answers 0) returns the frame UNCHANGED, so a caller drawing before
     /// the size is known gets today's stretch rather than a zero-area quad that blanks the backdrop.
     ///
@@ -107,7 +107,7 @@ impl Rect {
         )
     }
     /// The UV window `(u0, v0, su, sv)` of a `tw × th` source that COVERS this rect with its aspect
-    /// preserved — [`cover`](Self::cover) expressed as a crop of the texture instead of an overflow
+    /// preserved - [`cover`](Self::cover) expressed as a crop of the texture instead of an overflow
     /// of the quad. That is the form a CLIPPED picture needs: a card's rounded rect or a headshot's
     /// circle is masked by the rect itself, so the only way to keep the frame fully painted without
     /// squashing the source is to sample less of it. `crop` says where the kept window sits.
@@ -127,12 +127,12 @@ impl Rect {
             let su = box_a / src_a;
             [(1.0 - su) * 0.5, 0.0, su, 1.0]
         } else {
-            // taller (or equal — `sv` is then 1 and the window is the identity)
+            // taller (or equal - `sv` is then 1 and the window is the identity)
             let sv = src_a / box_a;
             [0.0, (1.0 - sv) * crop.top_share(), 1.0, sv]
         }
     }
-    /// The overlap of two rects — the part of `self` that `o` lets through. A miss returns a
+    /// The overlap of two rects - the part of `self` that `o` lets through. A miss returns a
     /// ZERO-SIZE rect (never a negative one), so `w > 0` is a clean "any of this is visible?"
     /// test. This is how a scissor-clipped strip records what it actually drew: hit-testing the
     /// clipped rect instead of the laid-out one is what stops an off-screen item staying
@@ -146,7 +146,7 @@ impl Rect {
         );
         Rect::new(x0, y0, (x1 - x0).max(0.0), (y1 - y0).max(0.0))
     }
-    /// The smallest rect holding both — a group's extent from its elements (`ui::geom`).
+    /// The smallest rect holding both - a group's extent from its elements (`ui::geom`).
     #[inline]
     pub fn union(&self, o: Rect) -> Rect {
         let (x0, y0) = (self.x.min(o.x), self.y.min(o.y));
@@ -155,7 +155,7 @@ impl Rect {
     }
 }
 
-/// A uniform scale `s` about the fixed point `(ox, oy)` — the `ui::Painter`'s visual zoom, and the
+/// A uniform scale `s` about the fixed point `(ox, oy)` - the `ui::Painter`'s visual zoom, and the
 /// ONE implementation of "grow a rect about a point" (`Painter::place` for every primitive,
 /// `text::draw_text` for a glyph quad, `ui::text_lift::lifted` for focus geometry). `s == 1.0` is
 /// the identity and every method returns its input untouched.

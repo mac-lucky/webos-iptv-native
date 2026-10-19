@@ -1,4 +1,4 @@
-//! player::shared — the engine's cross-thread transport, callback and clock state. Every field
+//! player::shared - the engine's cross-thread transport, callback and clock state. Every field
 //! replaces a `volatile` global from playback.c and is an atomic or a Mutex (never a bare value).
 //! One long-lived `static SHARED` in mod.rs outlives every start/stop
 //! cycle and is *reset*, never freed. Native callbacks additionally carry the exact `Load` epoch:
@@ -15,15 +15,15 @@ use std::time::{Duration, Instant};
 /// **The names the CONTAINER gives its audio tracks**, in file order.
 ///
 /// Published once by the demuxer when it opens a stream (`ff`), read by the in-player track menu.
-/// Both `Vec`s are dense — a track the file does not name contributes an EMPTY string rather than
-/// being skipped — because position is the whole join: the N-th entry is the N-th stream of that
+/// Both `Vec`s are dense - a track the file does not name contributes an EMPTY string rather than
+/// being skipped - because position is the whole join: the N-th entry is the N-th stream of that
 /// type. Skipping unnamed tracks would silently shift every name after the first untagged one onto
 /// its neighbour, which is worse than showing none.
 #[derive(Default)]
 pub struct TrackNames {
     pub audio: Vec<String>,
     /// Each audio track's `language` tag (ISO 639-2 in Matroska/MP4: `eng`, `ger`), `""` when the
-    /// file has none — dense and in file order, like the names.
+    /// file has none - dense and in file order, like the names.
     pub audio_langs: Vec<String>,
 }
 
@@ -41,7 +41,7 @@ impl TrackNames {
 /// **One chapter of the open file**, as its container lists it (Matroska `Chapters`, MP4 chapter
 /// track): where it starts on the content timeline and what the file calls it.
 ///
-/// `title` is the file's own text, from a stranger's file — show it, never log it. Empty when the
+/// `title` is the file's own text, from a stranger's file - show it, never log it. Empty when the
 /// chapter has no title. Published by the demuxer when it opens a part ([`super::chapters`]),
 /// sorted by `start_ms`, an empty list for a file without chapters.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -130,15 +130,15 @@ impl ClockState {
 
 /// issue #74 D.1: whether the epoch's Starfish `Load` call has returned yet. Mirrors, on the Rust
 /// side, the `g_load_returned` flag `starfish.c`'s `sf_ready_object()` now requires alongside
-/// `SMP_READY()` — every session begins `InFlight`, and `threads::load_thread` flips it to
+/// `SMP_READY()` - every session begins `InFlight`, and `threads::load_thread` flips it to
 /// `Returned` right after the real, synchronous `sf_load` call comes back, before
 /// anything else runs. `pump.rs`'s `loadCompleted` arm requires
-/// `Shared::native_load_returned` before it may even poll `sf_is_load_completed` — that poll is
+/// `Shared::native_load_returned` before it may even poll `sf_is_load_completed` - that poll is
 /// itself a concurrent Starfish call and used to be exactly what raced `Load`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LoadCall {
     InFlight,
-    /// `at` is when the flip happened (`mark_native_load_returned`'s own `Instant::now()`) — the
+    /// `at` is when the flip happened (`mark_native_load_returned`'s own `Instant::now()`) - the
     /// zero point for the OTHER half of issue #74 D.1's budget: `pump.rs` bounds "Load never
     /// returns" from `load_issued_at`, and separately bounds "Load returned but loadCompleted
     /// never arrives" from this timestamp, on a fresh `NATIVE_LOAD_BUDGET` window rather than
@@ -169,7 +169,7 @@ enum NativeSessionPhase {
         /// from a SUPERSEDED session can never flip this for a newer one, because
         /// `mark_native_load_returned`/`native_load_returned` both require `epoch == active`.
         load_call: LoadCall,
-        /// When this epoch's `Load` was issued — for the "native: Load returned after Nms" log.
+        /// When this epoch's `Load` was issued - for the "native: Load returned after Nms" log.
         load_issued_at: Instant,
     },
     /// Firmware's synchronous UNLOADCOMPLETED callback was observed. This is independent lifecycle
@@ -189,10 +189,10 @@ enum NativeSessionPhase {
     },
     /// A real stop handed this epoch's ready object to the OFF-FRAME release (`engine`'s
     /// `PendingRelease`): its `Unload` is running on a worker while the main thread has already
-    /// reset the session for whatever comes next. The admission rule is `Abandoned`'s — only the
+    /// reset the session for whatever comes next. The admission rule is `Abandoned`'s - only the
     /// firmware's UNLOADCOMPLETED is admitted, recorded in `unload_completed` rather than as a move
     /// to `Unloaded` so that [`Shared::reset_session`] (which preserves this phase) cannot erase the
-    /// evidence the release then reads — and no new native session may begin until the release has
+    /// evidence the release then reads - and no new native session may begin until the release has
     /// retired it.
     Releasing {
         epoch: u32,
@@ -288,7 +288,7 @@ pub enum PlayCompletion {
 
 /// What playback is actually doing, as one value the UI can render from.
 ///
-/// This replaces the old single `seeking` boolean, which was only ever set by `request_seek` —
+/// This replaces the old single `seeking` boolean, which was only ever set by `request_seek` -
 /// so `player::loading()` was **false for the whole initial load** and the `Spinner` that has sat
 /// in `player_hud.rs` all along never fired on first play. The HUD drew a live-looking transport
 /// at 0:00 / -0:00 instead, which is the half of the frozen-HUD report that is not blocking I/O.
@@ -304,7 +304,7 @@ pub enum PlaybackState {
     /// what to play is still being resolved above the media layer (the application publishes it
     /// while it asks its addons; the media layer never sets it)
     Resolving = 1,
-    /// engine started, pipeline not yet loaded — the HTTP GET + Starfish `Load` window
+    /// engine started, pipeline not yet loaded - the HTTP GET + Starfish `Load` window
     Connecting = 2,
     /// loaded and fed, but no frame has been presented yet
     Buffering = 3,
@@ -370,7 +370,7 @@ impl PlaybackState {
         )
     }
     /// The one-line status the HUD shows beside the spinner. A `&'static CStr` (the house idiom
-    /// for UI strings) so the draw path allocates nothing — this is read 60x/second for the whole
+    /// for UI strings) so the draw path allocates nothing - this is read 60x/second for the whole
     /// load window, and indefinitely in `Error`.
     pub fn caption(self) -> &'static std::ffi::CStr {
         match self {
@@ -395,7 +395,7 @@ pub struct Shared {
     pub pres_fed: AtomicI64,
     pub frames: AtomicI32, // bf_frames
     /// **Has this SESSION ever put a picture on the panel?** Set by the frame-presented callback
-    /// beside `frames`, cleared ONLY by [`Shared::reset_session`] — so it survives a seek, which
+    /// beside `frames`, cleared ONLY by [`Shared::reset_session`] - so it survives a seek, which
     /// `frames` deliberately does not: `pump` zeroes `frames` as *part of applying* a seek, which
     /// makes "we have never shown a frame" and "we just seeked" indistinguishable through it. The
     /// HUD's one rule for which surface owns the "pipeline is working" read-out keys on this bit;
@@ -405,12 +405,12 @@ pub struct Shared {
     /// **The raw pts of the first audio AU the demuxer pushed since its last open or seek**.
     /// Written by `ff::demux` BEFORE that push, so the feed thread that pops the AU
     /// sees it. The audio lane uses it to tell the real start of a late audio track (an MKV
-    /// audio `Delay` of several seconds) from stale pre-seek audio, which looks the same — far
-    /// ahead of the video — but never carries this pts (see `engine::feed_audio_lane`). `i64::MIN`
+    /// audio `Delay` of several seconds) from stale pre-seek audio, which looks the same - far
+    /// ahead of the video - but never carries this pts (see `engine::feed_audio_lane`). `i64::MIN`
     /// before one, since a real pts may be negative.
     pub first_audio_pts: AtomicI64,
     /// **Why the NEXT rebuild is happening, when the viewer's audio-track pick is the cause**: the
-    /// read-out beside the load spinner says "Switching audio…" instead of "Buffering…". A
+    /// read-out beside the load spinner says "Switching audio..." instead of "Buffering...". A
     /// [`AudioSwitch`] value. `Picked` (set by `player::request_audio_track` once its reload is
     /// queued) becomes `Reloading` when the engine reloads (`reset_session_for_reload`) and
     /// `None` at that session's first presented frame or at a full `reset_session` (a failure
@@ -440,7 +440,7 @@ pub struct Shared {
 
     // main/pump (M) -> demux (D)
     // The demux seek target in content-ns (-1 = none). The pump publishes it and the demux
-    // thread consumes it with an av_seek_frame between two reads — it is the ENTIRE direct-play
+    // thread consumes it with an av_seek_frame between two reads - it is the ENTIRE direct-play
     // seek mechanism, and also carries the resume offset armed before the first read. Nothing
     // interrupts the demuxer to make this happen; a `seek_byte` reopen trigger and a `next_url`
     // used to sit alongside it for that, and neither could ever fire (see ff.rs).
@@ -473,16 +473,16 @@ pub struct Shared {
     /// audio streams and no video stream. `ff: no video stream` alone reads as a demuxer fault;
     /// this lets the read-out name the file. Set by the demux thread beside `demux_failed`.
     pub demux_no_video: AtomicBool,
-    /// `sf_load` returned 0 — the pipeline REFUSED the Load payload.
+    /// `sf_load` returned 0 - the pipeline REFUSED the Load payload.
     ///
     /// Without this the pump has no way to learn it: `load_thread` logged the result and dropped
-    /// it, `loadCompleted` never arrives, and `Stage::Loading` is never left — so the player sits
+    /// it, `loadCompleted` never arrives, and `Stage::Loading` is never left - so the player sits
     /// on a spinner forever with no error and no timeout. A rejected payload is the most likely
     /// shape of a webOS-5-specific failure (a key the newer pipeline will not accept), which makes
     /// this exactly the case that must be visible.
     pub load_failed: AtomicBool,
     /// issue #74 D.1.4: set alongside `load_failed` ONLY by the two `NATIVE_LOAD_BUDGET` expiry
-    /// arms in `pump.rs` — never by a synchronous Load refusal (`sf_load` returning 0) or a
+    /// arms in `pump.rs` - never by a synchronous Load refusal (`sf_load` returning 0) or a
     /// `type=18` pipeline refusal, both of which set `load_failed` alone. This is what lets
     /// `error_shape` tell a k5lp-style hang apart from an ordinary firmware refusal on the wire,
     /// as `FailureKind::LoadTimeout` rather than the generic `FailureKind::TvPipeline`.
@@ -495,14 +495,14 @@ pub struct Shared {
     /// the session exactly as an app switch does and rebuilds it on the viewer's next press.
     pub decoder_revoked: AtomicBool,
     /// issue #74 D.1: the epoch this session last logged "native: loadCompleted while Load in
-    /// flight — deferring" for — 0 = never. `epoch` is monotonic and never 0 for a real session
+    /// flight - deferring" for - 0 = never. `epoch` is monotonic and never 0 for a real session
     /// ([`NativeSessionState::next`] skips 0 on wraparound), so comparing against this is enough
     /// to log the deferral exactly once per session without needing an `Engine` field: the pump's
     /// `loadCompleted` arm can be entered many times while `Load` is in flight, and only the
     /// first should log.
     pub native_load_deferred_logged_epoch: AtomicU32,
     /// issue #74 D.1: the elapsed milliseconds `mark_native_load_returned` measured at the moment
-    /// it flipped `load_call` to `Returned` — captured there (by `threads::load_thread`) rather
+    /// it flipped `load_call` to `Returned` - captured there (by `threads::load_thread`) rather
     /// than re-derived on a later pump tick, since a later tick would over-count by however long
     /// the pump took to run again. `pump.rs` reads this once, for the "native: Load returned
     /// after Nms" log, exactly when it observes the deferral epoch marker above matching its own.
@@ -520,7 +520,7 @@ pub struct Shared {
     /// The demux thread is inside `av_seek_frame` (D -> M). A Matroska file's FIRST seek reads its
     /// Cues (at the END of the file, ~102 GB into a UHD remux) and seeks back: three range reopens
     /// before the call returns, seconds on a slow debrid host. The pump's stuck watchdog does not
-    /// count that time — retrying or reloading into it only aborts a reopen that was landing.
+    /// count that time - retrying or reloading into it only aborts a reopen that was landing.
     pub demux_seeking: AtomicBool,
     /// Running estimate of one range reopen's latency on this playback's server, in ms (0 = no
     /// sample yet). Written by `ff::seek_cb` on the demux thread only; the pump scales the stuck
@@ -532,7 +532,7 @@ pub struct Shared {
     /// The DECODED FRAME SIZE, published by the demuxer once the video stream is known.
     ///
     /// Exists for the webOS 5+ exported window, whose `SDL_webOSSetExportedWindow(id, src, dst)`
-    /// wants the frame you are FEEDING as `src` and the on-screen rect as `dst` — the pair is what
+    /// wants the frame you are FEEDING as `src` and the on-screen rect as `dst` - the pair is what
     /// expresses scaling. webOS 4's `AcbAPI_setDisplayWindow` takes only a destination, so nothing
     /// needed this before and the exported path was written passing the authoring canvas (1920x1080)
     /// for both. That is wrong for every 4K direct play, which is most of them.
@@ -572,17 +572,17 @@ pub struct Shared {
     // Values the render path (and the opted-in handled-error snapshot) need that live on the
     // Engine, republished from the pump.
     // The render path holds no `&mut PlayerAdapter` and so cannot reach the `Engine` at all (when
-    // the slot was a `static mut` it could, and a second live borrow was instant UB) — so it reads
+    // the slot was a `static mut` it could, and a second live borrow was instant UB) - so it reads
     // these instead.
     //
     // STRICTLY ONE-WAY: written by the pump and seam, read only for observation. Nothing in the
     // playback state machine may ever branch on one, or a diagnostic becomes load-bearing.
-    /// `Stage` as u8 — where the bind/play sequence has got to. Unlike the expensive queue
+    /// `Stage` as u8 - where the bind/play sequence has got to. Unlike the expensive queue
     /// mirrors below, this scalar is always current enough for a terminal error report even when
     /// Stats for Nerds is closed.
     pub dg_stage: AtomicU8,
     /// Starfish callbacks seen this session. A count of 0 with a completed Load is the pipeline
-    /// never speaking to us — the sharpest single symptom there is. The TYPE of the last callback
+    /// never speaking to us - the sharpest single symptom there is. The TYPE of the last callback
     /// is deliberately not kept: the numbering shifts between webOS 4 and 5+ above 0x1c, so a
     /// displayed type would be a confident lie on the firmware we cannot test. `dg_cb_err` latches
     /// the one type that means the same on both.
@@ -602,17 +602,17 @@ pub struct Shared {
     /// session, and the index says whether it was immediate or after a long healthy run.
     pub dg_cb_err: AtomicI32,
     pub dg_cb_err_at: AtomicU32,
-    /// The firmware's own error NUMBER (`num`) of that same first `ty == 18` callback — the
+    /// The firmware's own error NUMBER (`num`) of that same first `ty == 18` callback - the
     /// `601` of `type=18 num=601 Resource Allocation Error`. Latched together with `dg_cb_err`
     /// (first one wins, so a later callback cannot overwrite the explanation) and cleared where
     /// that clears. Already clamped to the `i32` range: it is the one number a handled `tv_pipeline`
     /// report carries about the refusal, never the callback's string. A SYNCHRONOUS Load refusal
-    /// (`sf_load` returning 0) has no number to latch — Starfish's `Load` hands back a bare
-    /// success flag, and the other refusals inside `sf_load` are the seam's own lifecycle gates —
+    /// (`sf_load` returning 0) has no number to latch - Starfish's `Load` hands back a bare
+    /// success flag, and the other refusals inside `sf_load` are the seam's own lifecycle gates -
     /// so a session that failed that way leaves this at 0 ("none recorded").
     pub dg_cb_err_num: AtomicI32,
     /// The media GET's HTTP status and the bytes actually delivered to the demuxer. Written by the
-    /// DEMUX thread — the third writer of this block. 0/0 = no connection was ever made, which is
+    /// DEMUX thread - the third writer of this block. 0/0 = no connection was ever made, which is
     /// a different failure from a connection that answered 401.
     pub dg_http_status: AtomicI32,
     pub dg_net_rx: AtomicI64,
@@ -620,18 +620,18 @@ pub struct Shared {
     /// libcurl code (0 = none recorded), the transfer's age in ms (-1 = unknown) and whether the
     /// reopen that follows a failed read was refused as well. Written by the demux thread beside
     /// `demux_io_failed` (`ff::frame_read_failed`), read by the handled playback error as a
-    /// class and an age bucket — never as these numbers.
+    /// class and an age bucket - never as these numbers.
     pub dg_transport_rc: AtomicI32,
     pub dg_transport_age_ms: AtomicI64,
     pub dg_transport_reopen_failed: AtomicBool,
     /// SDL ticks when `loadCompleted` landed, and when `frames` last CHANGED. A photograph has no
     /// time axis: "Load completed, 0 frames" is innocent at 2 s and damning at 4 minutes, and the
-    /// panel cannot tell the difference without these. Stamped in the pump, never in `app::diagnostics` —
+    /// panel cannot tell the difference without these. Stamped in the pump, never in `app::diagnostics` -
     /// a stats-local timer would start when the panel is OPENED, so a four-minute hang would
     /// photograph as twelve seconds.
     pub dg_load_at: AtomicU32,
     pub dg_frame_at: AtomicU32,
-    /// **The video plane's own cadence** — the three counters behind the heartbeat's `vtick=`/`vgap=`.
+    /// **The video plane's own cadence** - the three counters behind the heartbeat's `vtick=`/`vgap=`.
     ///
     /// They exist because every other frame number in this app is about the GRAPHICS plane. `fps=`
     /// counts our GL swaps and `worstframe=` times our own draw, and both stay a flat 60/0.5 ms
@@ -640,7 +640,7 @@ pub struct Shared {
     /// the `ty == 0` callback, so that is where these are stamped.
     ///
     /// Written on the LIBRARY thread (`sf_on_event`), drained on the main thread
-    /// ([`crate::player::vplane_take`]) — hence a drained COUNT rather than a delta of
+    /// ([`crate::player::vplane_take`]) - hence a drained COUNT rather than a delta of
     /// [`frames`](Self::frames), which a seek resets underneath a reader.
     ///
     /// `dg_vpres_at` is the previous presentation's stamp and MUST be zeroed wherever `frames` is
@@ -663,7 +663,7 @@ pub struct Shared {
     /// The codec strings this session actually put in the Starfish Load payload, as small codes
     /// (0 = none/not built; video: `engine::LoadVideo::diag_code`, audio: `stream::AudioFeed::payload`).
     ///
-    /// Codes rather than strings so they need no lock on the render path — and the PAYLOAD's view
+    /// Codes rather than strings so they need no lock on the render path - and the PAYLOAD's view
     /// rather than a re-derivation, because the whole class of bug here is the payload disagreeing
     /// with the stream. `dg_load_a == 0` is `needAudio:false`, which is a complete answer to
     /// "there is no sound": the pipeline was never asked for any.
@@ -784,10 +784,10 @@ impl Shared {
         Some(epoch)
     }
 
-    /// Mark `epoch`'s Starfish `Load` call as returned (issue #74 D.1) — called by
+    /// Mark `epoch`'s Starfish `Load` call as returned (issue #74 D.1) - called by
     /// `threads::load_thread` immediately after the real, blocking `sf_load` call comes back.
     /// Returns the elapsed time since the session's
-    /// Load was issued, for the "native: Load returned after Nms" log — `None` when `epoch` no
+    /// Load was issued, for the "native: Load returned after Nms" log - `None` when `epoch` no
     /// longer owns the `Active` phase (a superseded/already-retired session; nothing to mark).
     pub fn mark_native_load_returned(&self, epoch: u32) -> Option<Duration> {
         let mut state = self
@@ -842,14 +842,14 @@ impl Shared {
         )
     }
 
-    /// How long ago `epoch`'s Starfish `Load` call returned — `None` when `epoch` no longer owns
+    /// How long ago `epoch`'s Starfish `Load` call returned - `None` when `epoch` no longer owns
     /// the `Active` phase, OR when its Load has not returned yet (still `LoadCall::InFlight`,
-    /// which the OTHER budget window — [`native_load_elapsed`] — covers).
+    /// which the OTHER budget window - [`native_load_elapsed`] - covers).
     ///
     /// This is the second half of issue #74 D.1's budget (`load-returned-log-is-conditional-on-
     /// loadcompleted-and-unbounded-after`): `native_load_elapsed` is measured from
     /// `load_issued_at` and never resets, so by the time Load actually returns it may already
-    /// read close to `NATIVE_LOAD_BUDGET` — reusing it to bound the WAIT FOR `loadCompleted`
+    /// read close to `NATIVE_LOAD_BUDGET` - reusing it to bound the WAIT FOR `loadCompleted`
     /// would leave that second wait almost no budget of its own on a Load that took a while to
     /// return. This gives that wait a fresh full window, timed from the moment Load returned.
     pub fn native_load_returned_elapsed(&self, epoch: u32) -> Option<Duration> {
@@ -868,7 +868,7 @@ impl Shared {
     }
 
     /// How long `epoch`'s Load has been in flight (or took, once returned), for `pump.rs`'s
-    /// D.1.4 timeout — `None` once `epoch` no longer owns the `Active` phase (retired/superseded;
+    /// D.1.4 timeout - `None` once `epoch` no longer owns the `Active` phase (retired/superseded;
     /// there is nothing left to time out).
     pub fn native_load_elapsed(&self, epoch: u32) -> Option<Duration> {
         let state = self
@@ -888,7 +888,7 @@ impl Shared {
     /// Test-only injection point for `pump.rs`'s D.1.4 budget arm (`load-budget-expiry-path-
     /// itself-has-no-test`, a fix-wave finding): rewinds `epoch`'s recorded `load_issued_at` by
     /// `by`, so `native_load_elapsed` reads at least `by` older without a real 20s wait. Returns
-    /// `false` when `epoch` no longer owns the `Active` phase (nothing to backdate) — callers
+    /// `false` when `epoch` no longer owns the `Active` phase (nothing to backdate) - callers
     /// must treat that as a precondition failure, not a silent no-op, per this project's
     /// silent-instrument rule (AGENTS.md).
     #[cfg(all(any(test, feature = "test-support"), feature = "hostsim"))]
@@ -914,7 +914,7 @@ impl Shared {
     /// (`load-returned-log-is-conditional-on-loadcompleted-and-unbounded-after`): rewinds
     /// `epoch`'s recorded `LoadCall::Returned` timestamp by `by`, so `native_load_returned_elapsed`
     /// reads at least `by` older without a real wait. Requires `epoch` to already have returned
-    /// (`LoadCall::Returned`) — `false` otherwise, including when it is still `InFlight` or the
+    /// (`LoadCall::Returned`) - `false` otherwise, including when it is still `InFlight` or the
     /// phase is no longer `Active`, per this project's silent-instrument rule (AGENTS.md).
     #[cfg(all(any(test, feature = "test-support"), feature = "hostsim"))]
     pub fn test_backdate_native_load_returned(&self, epoch: u32, by: Duration) -> bool {
@@ -1230,7 +1230,7 @@ impl Shared {
         ((packed >> 32) as u32 as i32, packed as u32 as i32)
     }
 
-    /// [`Self::reset_session`] for a RELOAD of the same item — everything a fresh Load must not
+    /// [`Self::reset_session`] for a RELOAD of the same item - everything a fresh Load must not
     /// inherit is cleared; the file's duration survives. The demuxer re-publishes duration when it reopens, a few hundred ms
     /// later, and until then a zero here is a playbar drawn at position ÷ 0 (`engine::teardown`
     /// has the account).
@@ -1264,7 +1264,7 @@ impl Shared {
         ) {
             native.phase = NativeSessionPhase::Idle;
         }
-        // the diagnostics mirror is per-session too — a stale bind outcome from the last item is
+        // the diagnostics mirror is per-session too - a stale bind outcome from the last item is
         // exactly the misleading answer the read-out exists to avoid
         self.dg_stage.store(0, Ordering::Relaxed);
         self.dg_cb_count.store(0, Ordering::Relaxed);
@@ -1296,7 +1296,7 @@ impl Shared {
         self.playpos_ns.store(0, Ordering::Relaxed);
         self.pres_fed.store(0, Ordering::Relaxed);
         self.frames.store(0, Ordering::Relaxed);
-        // a fresh session has shown nothing yet — keep this adjacent to `frames` in all three
+        // a fresh session has shown nothing yet - keep this adjacent to `frames` in all three
         // places (declaration, `new`, here): a reload that forgot the bit would silently suppress
         // the centred read-out for the rest of the app's life.
         self.seen_frame.store(false, Ordering::Relaxed);
@@ -1311,7 +1311,7 @@ impl Shared {
         self.load_completed.store(false, Ordering::Relaxed);
         // issue #74 D.1: both are only ever cleared by the loadCompleted arm that consumes them
         // (pump.rs), so a session torn down after logging the deferral but before that arm runs
-        // would otherwise leave them set — a later session's "native: Load returned after Nms"
+        // would otherwise leave them set - a later session's "native: Load returned after Nms"
         // could then report a PREVIOUS session's duration, or skip its own deferral log because
         // the epoch marker still matched. Clear both here, unconditionally, like every other
         // per-session diagnostic above.
@@ -1328,7 +1328,7 @@ impl Shared {
         self.seek_target_ns.store(-1, Ordering::Relaxed);
         self.seeking.store(false, Ordering::Relaxed);
         self.seek_display_ns.store(-1, Ordering::Relaxed);
-        // NB: desired_audio_idx is NOT reset here — it persists across seeks/reloads so a
+        // NB: desired_audio_idx is NOT reset here - it persists across seeks/reloads so a
         // native audio-track choice survives seeking. It is reset on a new item.
         self.pb_state
             .store(PlaybackState::Idle as u8, Ordering::Relaxed);
@@ -1619,7 +1619,7 @@ pub struct Transport {
     pub seek_to_ns: AtomicI64, // g_seek_to_ns (UI seek request, -1 = none)
     // Seek requests received since the pump last APPLIED one. seek_to_ns only ever holds the
     // newest target, so without this counter a coalesced burst is indistinguishable from a
-    // single tap after the fact — the pump reports `coalesced=` from it (see pump.rs).
+    // single tap after the fact - the pump reports `coalesced=` from it (see pump.rs).
     pub seek_reqs: AtomicU32,
 }
 
@@ -1727,7 +1727,7 @@ impl Transport {
     ///
     /// **`scrub_ns` is NOT among them any more** (restructure §2.3, phase 9). The scrub preview is
     /// the `PlayerScreen`'s own `scrub.ns` and this atomic is the PUBLISHED copy of it, so a store
-    /// here was a second owner writing over the first — and it was redundant besides: every seek
+    /// here was a second owner writing over the first - and it was redundant besides: every seek
     /// that can cause a reload is asked for by that screen, which retires its own preview in the
     /// same step (`commit_scrub`; through phase 12 `app::playback::commit_seek` did it instead,
     /// which was the same cross-owner write one level down). The one reload nobody asks for (the
@@ -1749,7 +1749,7 @@ impl Transport {
         self.seek_preroll_owned.store(-1, Ordering::Relaxed);
         // The pipeline a mute belonged to is unloaded with the stop; the next one starts unmuted.
         self.preroll_volume.store(PREROLL_VOLUME_NONE, Ordering::Relaxed);
-        // …and not `scrub_ns`, for `reset_for_reload`'s reason: a new session is a fresh
+        // ...and not `scrub_ns`, for `reset_for_reload`'s reason: a new session is a fresh
         // `PlayerScreen` (or, on an auto-advance chain, `start_playback`'s in-place reset of the
         // live one), and both publish `Scrub::IDLE` themselves.
         self.seek_to_ns.store(-1, Ordering::Relaxed);
@@ -1759,7 +1759,7 @@ impl Transport {
 
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-/// **`Bound` is the ACB bind, and the webOS 5 path SKIPS it** — `VP_EXPORTED` goes
+/// **`Bound` is the ACB bind, and the webOS 5 path SKIPS it** - `VP_EXPORTED` goes
 /// `Playing -> Streaming` directly, because there is no bind sequence to be in the middle of.
 /// So `stage >= Bound` means "bound or later" on webOS 4 and "is Streaming" on webOS 5; a new
 /// test against it has to decide which of those it wants.
@@ -1991,10 +1991,10 @@ mod tests {
     ///
     /// The whole diagnostics mirror is write-here-read-there by construction, so a field that is
     /// declared, cleared in `reset_session`, and read by the panel compiles, runs, and is silently
-    /// WRONG — there is no unused-field warning for it and no other test can see it. That is not
+    /// WRONG - there is no unused-field warning for it and no other test can see it. That is not
     /// hypothetical: `dg_place_rv`, `dg_placed_w`, `dg_placed_h` and `dg_splice` shipped exactly
     /// like that. `place_rv` stayed at its `i32::MIN` "never called" sentinel forever, so the
-    /// read-out rendered `Placed: not placed` in DANGER bold on every webOS 5+ television — a
+    /// read-out rendered `Placed: not placed` in DANGER bold on every webOS 5+ television - a
     /// fabricated fault, on the one firmware family we cannot test, aimed at the wrong layer.
     ///
     /// Source-level rather than behavioural because the writers live behind the ACB/Starfish seam,
@@ -2003,7 +2003,7 @@ mod tests {
     #[test]
     fn every_diagnostics_mirror_field_has_a_writer() {
         const SHARED_SRC: &str = include_str!("shared.rs");
-        // ff.rs is the THIRD writer of this block — the demux thread stamps the HTTP status and
+        // ff.rs is the THIRD writer of this block - the demux thread stamps the HTTP status and
         // the bytes it received. A writer file missing from this list reads exactly like a field
         // with no writer, so adding one here is part of adding one there.
         const WRITERS: [&str; 4] = [
@@ -2039,7 +2039,7 @@ mod tests {
 
     /// The one invariant that cannot be recovered from if it breaks, and breaks SILENTLY: a session
     /// boundary must forget this session's picture. `seen_frame` is set once, off-thread, and is
-    /// never cleared anywhere else — so a `reset_session` that dropped it would leave it true for
+    /// never cleared anywhere else - so a `reset_session` that dropped it would leave it true for
     /// the rest of the process's life, and every subsequent cold start would show only the 12px
     /// transport mark instead of the centred read-out. Graded together with `frames`, because the
     /// two are only meaningful as a pair (see `Shared::seen_frame`).

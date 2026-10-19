@@ -14,7 +14,7 @@
 //! range: every seek is its own `Range`, and a fixed one from a playlist would corrupt the demuxer's
 //! view of the file).
 //!
-//! **Redirects.** Every hop of a stream's redirect chain gets the headers — a live-TV URL that
+//! **Redirects.** Every hop of a stream's redirect chain gets the headers - a live-TV URL that
 //! redirects to its CDN needs the same `User-Agent` there. The credential headers
 //! ([`CREDENTIAL`]: `Authorization`, `Proxy-Authorization`, `Cookie`) are the exception: they go to
 //! the stream's own origin only and are dropped from a hop to another origin, which is what

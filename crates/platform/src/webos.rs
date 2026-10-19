@@ -5,7 +5,7 @@
 //!
 //! Until now the only thing it asked was "does `libAcbAPI` exist" (`starfish.c`'s `vp_mode`), which
 //! splits the world at exactly webOS 5.0 and nowhere else. That was enough while 4.x was the only
-//! target. It is not enough now: Kodi — which plays video on 5, 6 and 10 — carries gates at
+//! target. It is not enough now: Kodi - which plays video on 5, 6 and 10 - carries gates at
 //! `>= 6` (audio re-setup) and `< 11` / `>= 11` (a seek fallback, a changed signature), and with a
 //! single boolean those are literally inexpressible here.
 //!
@@ -26,7 +26,7 @@
 //!
 //! The CODENAME is the more useful half and is why this reads the file rather than a version
 //! service: webosbrew's own compatibility data buckets firmware by codename, one library set per
-//! bucket (their `library-version` guide — `goldilocks` is 4.0~4.4, `goldilocks2` 4.5~4.10). So
+//! bucket (their `library-version` guide - `goldilocks` is 4.0~4.4, `goldilocks2` 4.5~4.10). So
 //! logging it says which of THEIR buckets a report belongs to, not just a number.
 //!
 //! Parsed by hand because this is a flat object of string values and a parser that cannot fail is
@@ -53,7 +53,7 @@ fn field<'a>(s: &'a str, key: &str) -> Option<&'a str> {
     Some(&rest[open..close])
 }
 
-/// Everything [`probe`] extracts, as a pure function of the file's text — so the parse is testable
+/// Everything [`probe`] extracts, as a pure function of the file's text - so the parse is testable
 /// without a filesystem, and an unreadable file and an unparseable one land on the same value.
 fn parse(s: &str) -> Info {
     let get = |k: &str| field(s, k).unwrap_or_default().to_string();
@@ -93,7 +93,7 @@ pub fn probe() {
     crate::tv::device::publish_info(info);
     let device_info = probe_hw();
     crate::tv::device::publish_probe(crate::tv::device::Probe { os_info, device_info });
-    // What this set decodes — after `publish_info`, which its VP9 bit-depth reads.
+    // What this set decodes - after `publish_info`, which its VP9 bit-depth reads.
     crate::devcaps::probe();
     probe_jail();
 }
@@ -104,7 +104,7 @@ pub fn probe() {
 const DEVICE_INFO: &str = "/var/run/nyx/device_info.json";
 
 /// Pure, and tolerant of which spelling a firmware uses: nyx has carried both snake_case and
-/// camelCase for these keys across releases, and we have exactly one device to check against — so
+/// camelCase for these keys across releases, and we have exactly one device to check against - so
 /// each field takes the first spelling that answers rather than betting on one.
 fn parse_hw(s: &str) -> Hardware {
     let first = |keys: &[&str]| -> String {
@@ -135,7 +135,7 @@ fn os_info_from(text: Option<&str>) -> (Info, NyxFile) {
 
 /// PURE: the SoC class from `/etc/prefs/properties/machineName`, for a set whose
 /// `device_info.json` names none. The file is a flat text value whose leading run of lowercase
-/// letters and digits is the board family (`k5lp`, `k3lp`, `o22`…), the same prefix
+/// letters and digits is the board family (`k5lp`, `k3lp`, `o22`...), the same prefix
 /// [`is_realtek_k5lp_family`] matches; anything after it (a variant suffix, a separator, a build
 /// tag) is not reported. Bounded to eight characters and ASCII alphanumerics so the result can
 /// only ever be a short class name, never free text; empty when the name does not start like one.
@@ -196,16 +196,16 @@ fn probe_hw() -> NyxFile {
 //
 // **Community-tier evidence, not an LG or webosbrew formal spec.** On 2019-model Realtek-SoC
 // webOS 4.x sets whose board name starts `k5lp` or `k3lp`, the DEFAULT jailer profile
-// (`native_devmode` — exactly how this app is installed) omits `/dev/rtkmem`, a device node the
+// (`native_devmode` - exactly how this app is installed) omits `/dev/rtkmem`, a device node the
 // video-output init path needs. Sources: webosbrew/webos-homebrew-channel PR #202 ("For 2019
 // models with k5lp SoC, default jailer config (native_devmode) misses /dev/rtkmem causing A/V
 // related apps to crash (e.g. Kodi, Moonlight)"), and ss4s's own detection
 // (`modules/webos/utils/jail_check.c`), which reads exactly the file below then probes exactly
 // the path below. A GitHub PR plus another open-source project's own probe is real, but it is
-// still one project's finding rather than a vendor statement — every log line and read-out
+// still one project's finding rather than a vendor statement - every log line and read-out
 // sentence built on this states what was FOUND, never asserts a diagnosis as certain fact.
 
-/// A flat text value (unlike the two JSON files above) — one line naming the board/SoC family.
+/// A flat text value (unlike the two JSON files above) - one line naming the board/SoC family.
 const MACHINE_NAME: &str = "/etc/prefs/properties/machineName";
 
 /// The device node whose absence is the reported root cause. See the section doc above.
@@ -219,7 +219,7 @@ fn read_machine_name() -> String {
         .unwrap_or_default()
 }
 
-/// PURE: does this machine name belong to the affected 2019 Realtek family? Exact PREFIX match —
+/// PURE: does this machine name belong to the affected 2019 Realtek family? Exact PREFIX match -
 /// the two SoC name spellings webosbrew's PR names, and nothing broader: a name that merely
 /// *contains* one of them without starting with it does not match, and neither does a case
 /// variant this platform has never been observed to write.
@@ -227,11 +227,11 @@ pub fn is_realtek_k5lp_family(machine_name: &str) -> bool {
     machine_name.starts_with("k5lp") || machine_name.starts_with("k3lp")
 }
 
-/// Read the machine name and, only on a matching SoC, probe `/dev/rtkmem` with `access(2)` —
+/// Read the machine name and, only on a matching SoC, probe `/dev/rtkmem` with `access(2)` -
 /// once per boot, from [`probe`]'s own boot slot, so it shares that call's ordering guarantee
 /// (before the first Load can be attempted). Logs UNCONDITIONALLY, beside the `webos:` line:
 /// `devjail: soc=<name> rtkmem=ok|missing|n/a`. `<name>` is the raw, trimmed file content, or
-/// empty when the file could not be read — logged honestly rather than invented, the same rule
+/// empty when the file could not be read - logged honestly rather than invented, the same rule
 /// [`probe`] and [`probe_hw`] already follow for their own unreadable files.
 fn probe_jail() {
     let name = read_machine_name();
@@ -255,7 +255,7 @@ fn probe_jail() {
 
 /// **Show the television's own Home, and keep running.**
 ///
-/// This is what BACK does when the app's navigation has nowhere left to go — see `app.rs`'s
+/// This is what BACK does when the app's navigation has nowhere left to go - see `app.rs`'s
 /// `back_at_root`. It is NOT a quit: the process stays alive, webOS backgrounds it (`0x103`/`0x104`
 /// reach the SDL loop, and `0x105`/`0x106` when the launcher tile brings it back), and the app
 /// comes back as the SAME LIVE PROCESS. Not necessarily to the same picture, and not necessarily to
@@ -269,11 +269,11 @@ fn probe_jail() {
 /// LG's own back-button guide states the behaviour the platform performs when BACK is pressed at
 /// an app's entry page: *"a popup asking whether to exit the app is displayed on webOS TV 6.0 or
 /// higher, or the **Home launcher is launched** on webOS TV 5.0 or lower"*
-/// (<https://webostv.developer.lge.com/develop/guides/back-button>, LG vendor documentation — it
+/// (<https://webostv.developer.lge.com/develop/guides/back-button>, LG vendor documentation - it
 /// describes the WEB runtime's `webOS.platformBack()`, which a native app cannot call, but it is
 /// LG stating what the ROOT press means on this platform). The dev set is 4.10.2, so "launch the
 /// Home launcher" is the behaviour to reproduce, and the app's previous "Exit WebosIptv?" question
-/// was the webOS 6+ shape applied to a webOS 4 television — and it quit, which even there is only
+/// was the webOS 6+ shape applied to a webOS 4 television - and it quit, which even there is only
 /// one of the two answers.
 ///
 /// # The two mechanisms, in the order they are tried
@@ -282,12 +282,12 @@ fn probe_jail() {
 ///    and method this repo already drives against this television from the Makefile and
 ///    `tools/tv-session.sh` (`launch`, `closeByAppId`), so the bus, the method and the payload
 ///    shape are device-proven; only the id is new. **Device-verified 2026-09-04 (webOS 4.10.2):**
-///    `SAM accepted in 16ms`, and the launcher comes up as the RIBBON over the app — the app stays
+///    `SAM accepted in 16ms`, and the launcher comes up as the RIBBON over the app - the app stays
 ///    on screen behind it, keeps drawing, keeps its pid, receives NO `LIFECYCLE: background`, and a
 ///    SAM `launch` of the app's own id brings it back with no ribbon. That is what the HOME key
 ///    does on this firmware, so it is the behaviour; this doc used to say launching Home
 ///    "backgrounds us", which is the webOS 5+ full-screen launcher's shape and not this set's. It
-///    took a plain anonymous `LSRegister` to get there — [`ls2`]'s module doc has the table of
+///    took a plain anonymous `LSRegister` to get there - [`ls2`]'s module doc has the table of
 ///    what the hub answers to each registration shape.
 /// 2. **Minimize the surface.** `SDL_MinimizeWindow`, which on LG's SDL fork reaches the webOS
 ///    shell. The fork does bind that protocol: the harvested `libSDL2-2.0.so.0.4.1` off this set
@@ -297,20 +297,20 @@ fn probe_jail() {
 ///    with `WL_WEBOS_SHELL_SURFACE_STATE_MINIMIZED = 1` is LG's own protocol
 ///    (`wayland-webos-shell-client-protocol.h` / `webos-shell.xml` in the NDK sysroot), and it is
 ///    what Kodi's webOS port drives from its `SetMinimized`. What is NOT proven from the binary is
-///    that LG's fork wires `SDL_MinimizeWindow` to it — the library is stripped and the driver's
-///    hook is an internal function pointer — so this is the FALLBACK and not the mechanism: SDL's
+///    that LG's fork wires `SDL_MinimizeWindow` to it - the library is stripped and the driver's
+///    hook is an internal function pointer - so this is the FALLBACK and not the mechanism: SDL's
 ///    own contract makes an unimplemented hook a silent no-op, which is the correct failure here.
 ///
 /// If BOTH legs fail the user stays exactly where they were, which is the right last resort: the
 /// alternative is ending the process, and "must not terminate the application" is the whole of what
 /// was asked for. `SDL_MinimizeWindow` returns void, so the app cannot even know the second leg
-/// failed — the log line says what was ASKED, never that it worked, and the screenshot is what
+/// failed - the log line says what was ASKED, never that it worked, and the screenshot is what
 /// says whether it did.
 ///
 /// `/tmp/webosiptv-gohome=<sam|minimize>` forces one leg, so both can be exercised in one device
 /// session instead of only whichever happens to answer first. Compiled out under `RELEASE=1`.
 ///
-/// **Not rate-limited here** — [`crate::tv::home::take_root_press`] is, and `app.rs` claims the
+/// **Not rate-limited here** - [`crate::tv::home::take_root_press`] is, and `app.rs` claims the
 /// press through it before it does anything else, `auth::cancel` included. Call this only having
 /// claimed one.
 pub fn go_home() {
@@ -352,7 +352,7 @@ pub fn poll_home() {
 /// The Home launcher's app id.
 ///
 /// Community tier (webosbrew's commands cheatsheet and the widely copied
-/// `luna-send … /launch '{"id":"com.webos.app.home"}'` recipe), which is why the reply is graded
+/// `luna-send ... /launch '{"id":"com.webos.app.home"}'` recipe), which is why the reply is graded
 /// rather than assumed: a wrong id comes back `returnValue: false` and falls through to the
 /// minimize leg instead of leaving the user on a screen whose BACK did nothing.
 const HOME_APP_ID: &str = "com.webos.app.home";
@@ -539,7 +539,7 @@ extern "C" {
     fn SDL_MinimizeWindow(win: *mut std::os::raw::c_void);
 }
 
-/// Hand this module the SDL window, once, at boot — `textinput::bind`'s shape and for its reason:
+/// Hand this module the SDL window, once, at boot - `textinput::bind`'s shape and for its reason:
 /// the window is created deep inside `plex_run` and the platform call needs it a long way from
 /// there.
 #[cfg(all(not(feature = "hostsim"), not(any(test, feature = "test-support"))))]
@@ -568,13 +568,13 @@ pub fn bind_window(_win: *mut std::os::raw::c_void) {}
 ///
 /// | registration | answer |
 /// |---|---|
-/// | `LSRegisterApplicationService(app_id, app_id)` | `-1028 Attempted to register for a service name that already exists` — this PROCESS already holds the app id: `ls-monitor -l` lists it beside an anonymous client, both ours, from boot; ACB is the one component handed the app id (`AcbAPI_initialize`, `player::acb_init` at boot) |
-/// | `LSRegisterApplicationService(NULL, app_id)` | `-1027 Invalid permissions for (null)` — the `""` name has no permissions entry |
+/// | `LSRegisterApplicationService(app_id, app_id)` | `-1028 Attempted to register for a service name that already exists` - this PROCESS already holds the app id: `ls-monitor -l` lists it beside an anonymous client, both ours, from boot; ACB is the one component handed the app id (`AcbAPI_initialize`, `player::acb_init` at boot) |
+/// | `LSRegisterApplicationService(NULL, app_id)` | `-1027 Invalid permissions for (null)` - the `""` name has no permissions entry |
 /// | **`LSRegister(NULL)`** | registered, and `com.webos.applicationManager/getForegroundAppInfo` answered it |
 ///
 /// So every caller registers as a plain anonymous client, [`register`]. The role file still
-/// decides what such a client may CALL — the probe proves SAM's read-only method; `launch_home`
-/// grades the reply of the one that matters — and the hub's refusal, when there is one, travels
+/// decides what such a client may CALL - the probe proves SAM's read-only method; `launch_home`
+/// grades the reply of the one that matters - and the hub's refusal, when there is one, travels
 /// in [`RegisterFail`] to the caller's log line instead of being freed. Anonymous clients do not
 /// collide with each other, so nothing here is serialised; a registration lives for one caller's
 /// use and is unregistered on drop, as both copies always did.
@@ -588,13 +588,13 @@ pub mod ls2 {
     ///
     /// **Be honest about what this costs when it is SPENT**: the call runs on the SDL main thread,
     /// so a bus that never answers stops event handling, updates, drawing and the remote FIFO for
-    /// the whole budget — about 36 frames at 60 Hz, not the "one dropped frame" this comment
+    /// the whole budget - about 36 frames at 60 Hz, not the "one dropped frame" this comment
     /// claimed when it was written. It is not an end-to-end ceiling either: registration,
     /// cancellation and unregistration sit outside it.
     ///
     /// It is still the right shape, for two reasons. The press being served is a request to LEAVE,
     /// so the frames being missed are the last ones anybody looks at; and the healthy path does not
-    /// spend this — `go_home` logs the measured round trip on every call precisely so the budget
+    /// spend this - `go_home` logs the measured round trip on every call precisely so the budget
     /// stops being a guess. [`crate::tv::home::take_root_press`]'s cooldown is what bounds the
     /// failing path.
     const BUDGET: Duration = Duration::from_millis(600);
@@ -634,7 +634,7 @@ pub mod ls2 {
             token: *mut libc::c_ulong,
             error: *mut LSError,
         ) -> bool;
-        /// `LSCallOneReply` with `applicationID` attached to the message — `luna-send -a <id>`'s
+        /// `LSCallOneReply` with `applicationID` attached to the message - `luna-send -a <id>`'s
         /// call. Signature from `luna-service2/lunaservice.h`; exported by the NDK's
         /// `libluna-service2.so.3`.
         fn LSCallFromApplicationOneReply(
@@ -669,7 +669,7 @@ pub mod ls2 {
         true
     }
 
-    /// The app id as a C string, for [`probe`]'s app-service shapes — `register` itself passes
+    /// The app id as a C string, for [`probe`]'s app-service shapes - `register` itself passes
     /// no name at all (module doc).
     fn app_id_cstring() -> Result<CString, RegisterFail> {
         CString::new(tv_base::paths::app_id()).map_err(|_| RegisterFail::Setup {
@@ -678,7 +678,7 @@ pub mod ls2 {
         })
     }
 
-    /// The hub's own account of a failure, for a log line — `LSError` is freed by the caller and
+    /// The hub's own account of a failure, for a log line - `LSError` is freed by the caller and
     /// its message with it, which is how the register refusal went unexplained for a device session.
     fn error_text(error: &LSError) -> String {
         if error.message.is_null() {
@@ -719,15 +719,15 @@ pub mod ls2 {
     }
 
     /// A live registration on the bus, with the private glib context its replies arrive on.
-    /// Drop unregisters it and frees the context — or, should the hub refuse the unregister,
+    /// Drop unregisters it and frees the context - or, should the hub refuse the unregister,
     /// leaks the context on purpose rather than free storage a live handle is attached to.
     pub struct Registration {
         handle: *mut c_void,
         context: *mut c_void,
     }
 
-    /// Register as a plain anonymous client — the one shape the hub accepts from this process
-    /// (module doc) — on a private glib context.
+    /// Register as a plain anonymous client - the one shape the hub accepts from this process
+    /// (module doc) - on a private glib context.
     pub fn register() -> Result<Registration, RegisterFail> {
         let mut error: LSError = unsafe { std::mem::zeroed() };
         unsafe { LSErrorInit(&mut error) };
@@ -781,7 +781,7 @@ pub mod ls2 {
                 unsafe { g_main_context_unref(self.context) };
             } else {
                 // A handle that would not unregister is still attached to this context, so the
-                // context is leaked rather than freed under it — a bounded leak, once per failed
+                // context is leaked rather than freed under it - a bounded leak, once per failed
                 // teardown, against a use-after-free (Codex review, 2026-09-04).
                 tv_base::eventlog::log(&format!(
                     "ls2: unregister refused — leaking its glib context ({})",
@@ -793,7 +793,7 @@ pub mod ls2 {
     }
 
     /// Why a call produced no reply. **Not one value**, because the ways this fails are different
-    /// bugs and only one of them is about the service being called — and the person reading the
+    /// bugs and only one of them is about the service being called - and the person reading the
     /// log will not be the person who wrote this.
     pub enum Fail {
         /// The bus, glib or the call itself never got as far as being sent. The stage names which,
@@ -815,14 +815,14 @@ pub mod ls2 {
 
     impl Registration {
         /// One call, one reply, waited for up to `budget` on this registration's own context. An
-        /// `Err` never means "the method said no" — a refusal comes back as the platform's own JSON
+        /// `Err` never means "the method said no" - a refusal comes back as the platform's own JSON
         /// in the `Ok`, for the caller to grade.
         pub fn call(&self, uri: &str, payload: &str, budget: Duration) -> Result<String, Fail> {
             self.call_with(uri, payload, None, budget)
         }
 
         /// [`call`](Self::call) with `app_id` attached to the message as its application id
-        /// (`LSCallFromApplicationOneReply`) — what a service that attributes by caller identity
+        /// (`LSCallFromApplicationOneReply`) - what a service that attributes by caller identity
         /// (the notification service's `sourceId` check) reads when this handle has no service
         /// name. Whether the hub honours that from a jailed app is the question
         /// [`crate::webos::toast`]'s probe asks.
@@ -907,7 +907,7 @@ pub mod ls2 {
                 reset(&mut error);
                 // A successful cancel removes the callback; a REFUSED one leaves it registered,
                 // and then the slot has to stay valid for as long as this handle might dispatch
-                // into it — which is the registration's lifetime, so it is leaked (Codex review,
+                // into it - which is the registration's lifetime, so it is leaked (Codex review,
                 // 2026-09-04: dropping it regardless was a use-after-free on a retained handle).
                 if !unsafe { LSCallCancel(self.handle, token, &mut error) } {
                     tv_base::eventlog::log(&format!(
@@ -926,15 +926,15 @@ pub mod ls2 {
         }
     }
 
-    /// Register, call, wait up to [`BUDGET`], unregister — the main-thread shape.
+    /// Register, call, wait up to [`BUDGET`], unregister - the main-thread shape.
     pub(super) fn call_once(uri: &str, payload: &str) -> Result<String, Fail> {
         let registration = register()?;
         registration.call(uri, payload, BUDGET)
     }
 
     /// `/tmp/webosiptv-gohome=probe`: try every registration shape the role file could accept, log
-    /// what the hub answers to each — the LSError text this app freed unread for a whole device
-    /// session — and, through whichever registered, ONE read-only SAM call. Evidence, not a leg:
+    /// what the hub answers to each - the LSError text this app freed unread for a whole device
+    /// session - and, through whichever registered, ONE read-only SAM call. Evidence, not a leg:
     /// its answer is the table in the module doc and decided [`register`]'s shape, and it runs
     /// jailed as the app, under the app's uid and exe path, the only place the hub's answer means
     /// anything. Kept so the next firmware can be asked the same question in one root press.
@@ -1016,9 +1016,9 @@ mod tests {
     use super::*;
 
     /// **The boot's device probe reads the codec table too.** It did not: `devcaps::probe` had no
-    /// caller after the port, so `devcaps::caps()` was always the assumed profile — no AV1, no
-    /// VP9, no DTS row — and the beta refused every AV1 stream on an LG C1 whose own table lists a
-    /// 4096x2304@60 AV1 decoder (`session: start refused — VideoUnsupported("av1")`).
+    /// caller after the port, so `devcaps::caps()` was always the assumed profile - no AV1, no
+    /// VP9, no DTS row - and the beta refused every AV1 stream on an LG C1 whose own table lists a
+    /// 4096x2304@60 AV1 decoder (`session: start refused - VideoUnsupported("av1")`).
     #[test]
     fn the_device_probe_also_reads_the_codec_table() {
         probe();
@@ -1075,7 +1075,7 @@ mod tests {
         assert_eq!(field(REAL, "core_os_release"), Some("4.10.2-31"));
     }
 
-    /// An empty value is a value, not a miss — `webos_prerelease` is empty on a shipping set.
+    /// An empty value is a value, not a miss - `webos_prerelease` is empty on a shipping set.
     #[test]
     fn an_empty_string_value_parses_as_empty() {
         assert_eq!(field(REAL, "webos_prerelease"), Some(""));
@@ -1109,7 +1109,7 @@ mod tests {
         assert_eq!(parse_hw(camel).hw_revision, "2.0");
     }
 
-    /// Unknown is EMPTY, never a guess — and never a panic, since this runs during boot.
+    /// Unknown is EMPTY, never a guess - and never a panic, since this runs during boot.
     #[test]
     fn an_unreadable_device_info_yields_an_empty_record() {
         let hw = parse_hw("not json at all");
@@ -1189,14 +1189,14 @@ mod tests {
         assert!(i.release.is_empty() && i.codename.is_empty());
     }
 
-    /// A two-component release still yields its major — LG has shipped "6.0" as well as "4.10.2".
+    /// A two-component release still yields its major - LG has shipped "6.0" as well as "4.10.2".
     #[test]
     fn a_short_release_still_gives_a_major() {
         assert_eq!(parse(r#"{"webos_release": "6.0"}"#).major, 6);
         assert_eq!(parse(r#"{"webos_release": "10.0.1"}"#).major, 10);
     }
 
-    /// The predicate the jail pre-flight gates on. Exact-prefix, and nothing broader — see the
+    /// The predicate the jail pre-flight gates on. Exact-prefix, and nothing broader - see the
     /// function's own doc for why "contains" is deliberately excluded.
     #[test]
     fn is_realtek_k5lp_family_matches_only_the_named_prefixes() {

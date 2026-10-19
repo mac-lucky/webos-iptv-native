@@ -6,7 +6,7 @@
 // one. Each band is a uniform pair rather than a bespoke uniform per caller so the three fades can
 // combine (a line that is both the truncated last one AND crossing a viewport edge dissolves on
 // both axes at once). All three are OFF by default ((0,0), since the gate is `to > from`) and an
-// off band costs one scalar compare, not a texture sample — kept off fs_text.frag so every ordinary
+// off band costs one scalar compare, not a texture sample - kept off fs_text.frag so every ordinary
 // glyph on this fill-rate-bound panel doesn't pay for any of it.
 precision mediump float;
 varying highp vec2 v_tuv;

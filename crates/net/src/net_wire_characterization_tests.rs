@@ -161,7 +161,7 @@ fn a_header_line_that_would_split_the_request_is_refused() {
 /// host a `Location:` names (it strips only `Authorization` and `Cookie`, and the television's 7.53.1
 /// does not strip even those across hosts), so a request that follows redirects may carry no header of
 /// the caller's but the capability ones (`headers::FORWARDABLE`: `Accept`, `Accept-Language`, which
-/// say nothing about who asks — an artwork request's WebP-first `Accept`): anything else is refused
+/// say nothing about who asks - an artwork request's WebP-first `Accept`): anything else is refused
 /// whole, nothing dialled, even beside an `Accept`. The same block on a redirect-free request is sent.
 #[test]
 fn a_request_that_follows_redirects_is_refused_when_it_carries_a_caller_header() {

@@ -1,24 +1,24 @@
 //! The focus ENGINE (restructure spec §7.3), owned by `Input`: THE current `FocusKey` per input
-//! scope and every group's remembered cursor — the only focus state there is; screens keep no
+//! scope and every group's remembered cursor - the only focus state there is; screens keep no
 //! copy and read `cx.focus`. It never mutates a screen: it asks the owner's `Focusable` (the
 //! §7.1 query protocol) and answers with a `FocusMoved` the OWNER acts on (scrolling the target
 //! into view is the owner's, on that event).
 //!
 //! Movement, in the spec's order: (1) the owner's `step` had first refusal (the dispatcher's
 //! job, before this is asked); (2) the current group's `neighbour`; (3) at an edge, a declared
-//! `Link` wins, else the group's `EdgeRule` for that side — `Geometric` is the search for the
+//! `Link` wins, else the group's `EdgeRule` for that side - `Geometric` is the search for the
 //! destination group, nearest by axis distance weighted 3:1 against orthogonal offset from the
 //! current element's PLACED rect (`At::SpringTarget`: two fast presses resolve against where
 //! focus is GOING) over every group's extent, excluding groups whose `reachable` mask omits the
-//! axis; (4) landing by the destination's `Seat` — `Nearest` and `Projected` through the
+//! axis; (4) landing by the destination's `Seat` - `Nearest` and `Projected` through the
 //! container's own `seat` (`column_near_x`'s contract), `Remembered` from the remembered
-//! cursor — except that an UP/DOWN press into a card lattice (`ElemKind::Card` `Row` or `Grid`)
+//! cursor - except that an UP/DOWN press into a card lattice (`ElemKind::Card` `Row` or `Grid`)
 //! lands through `seat` too, on the card above or below the cursor ("down, right, up" closes a
-//! square) — `RememberedFirst` is the explicit linked-heading door (remembered cursor, then the
+//! square) - `RememberedFirst` is the explicit linked-heading door (remembered cursor, then the
 //! first element), `RememberedNear{rows}` only within `rows` element-widths, `First` at the
 //! extent's head;
 //! (5) the engine records the move and emits it; (6) after a landing, the owner's pure
-//! `reconcile(want)` — if the answer differs, `FocusMoved{by: Reconcile}` (the Slot→Item
+//! `reconcile(want)` - if the answer differs, `FocusMoved{by: Reconcile}` (the Slot→Item
 //! promotion is exactly this); (7) scope: the input owner's groups only.
 
 use std::hash::Hash;
@@ -48,7 +48,7 @@ pub enum Outcome<K> {
     Nothing,
 }
 
-/// The current key per input scope plus every group's remembered cursor — logical state
+/// The current key per input scope plus every group's remembered cursor - logical state
 /// (hashed, restored, recorded). Explicitly ordered sequences, never a map (§5.4).
 pub struct FocusEngine<K> {
     scopes: Vec<(InputOwner, FocusKey<K>, Option<GroupId>)>,
@@ -181,7 +181,7 @@ impl<K: Copy + Eq + Hash> FocusEngine<K> {
         self.read_snapshots.retain(|(e, _)| *e != entry);
     }
 
-    /// Seat focus on entering a screen (§3.4 `Enter`): a fresh enter lands by the target — an
+    /// Seat focus on entering a screen (§3.4 `Enter`): a fresh enter lands by the target - an
     /// element outright, or a container group's `Seat` policy from the extent's head; a restore
     /// asks `reconcile` about the return key first.
     pub fn enter<H: Host<Elem = K>>(
@@ -205,7 +205,7 @@ impl<K: Copy + Eq + Hash> FocusEngine<K> {
                 (self.seat_in(f, &groups, spec, from, None, cx), By::Restore)
             }
             // A page being shown for the first time in this visit: bypass `seat_in` entirely so
-            // `Seat::Remembered` (the table default) cannot read a sibling page's cursor back —
+            // `Seat::Remembered` (the table default) cannot read a sibling page's cursor back -
             // this is `Seat::First`'s own arm, reused rather than reinvented, because the
             // question here ("ignore what's remembered") is the container's, not the group's
             // policy, and only the container knows a page has never been seen (`FocusTarget`'s
@@ -213,7 +213,7 @@ impl<K: Copy + Eq + Hash> FocusEngine<K> {
             //
             // `FirstInGroupAnimated` is the same seat reported as `By::Dir` instead of
             // `By::Restore`: a strip pill's cover-and-mint always arrives FROM the visible strip,
-            // so it is exactly as deliberate as a directional move into the same group — see the
+            // so it is exactly as deliberate as a directional move into the same group - see the
             // variant's doc on `machine.rs` for why `By::Restore` there was the tab-switch
             // focus-jump bug. Both are "never seen", so both take the empty-page arm below.
             (None, FocusTarget::FirstInGroup(g) | FocusTarget::FirstInGroupAnimated(g)) => {
@@ -221,7 +221,7 @@ impl<K: Copy + Eq + Hash> FocusEngine<K> {
                     // A never-seen page with nothing to seat yet (its rows land async). The
                     // scope's current key is the OUTGOING page's, and a family whose pages share
                     // one `EntryId` (the Settings surface) would read it as a row of this page
-                    // once rows land — clamped onto its last row. Nothing of this page is
+                    // once rows land - clamped onto its last row. Nothing of this page is
                     // focused, so the scope says so and the page seats its own first landing.
                     self.clear(owner);
                     return Outcome::Nothing;
@@ -318,7 +318,7 @@ impl<K: Copy + Eq + Hash> FocusEngine<K> {
         }
     }
 
-    /// A direction the owner declined (§7.3 steps 2–5).
+    /// A direction the owner declined (§7.3 steps 2-5).
     pub fn move_dir<H: Host<Elem = K>>(
         &mut self,
         owner: InputOwner,
@@ -345,7 +345,7 @@ impl<K: Copy + Eq + Hash> FocusEngine<K> {
         if let Step::Move(k) = f.neighbour(cur, dir, cx) {
             return self.set(owner, k, Some(cur_group), By::Dir);
         }
-        // (3) a declared Link wins…
+        // (3) a declared Link wins...
         if let Some(l) = links.iter().find(|l| l.from == cur_group && l.dir == dir) {
             if let Some(spec) = groups.iter().find(|s| s.id == l.to && s.len > 0) {
                 let from = f.place(&cur.elem, cx, At::SpringTarget).unwrap_or(Placed {
@@ -358,7 +358,7 @@ impl<K: Copy + Eq + Hash> FocusEngine<K> {
                 return self.set(owner, key, Some(spec.id), By::Dir);
             }
         }
-        // …else the group's edge rule for that side
+        // ...else the group's edge rule for that side
         let Some(cur_spec) = groups.iter().find(|s| s.id == cur_group) else {
             return Outcome::Nothing;
         };
@@ -440,11 +440,11 @@ impl<K: Copy + Eq + Hash> FocusEngine<K> {
 /// The index of `dir` in a `GroupSpec::edge` (`[up, down, left, right]`).
 /// The one case where a `Seat::Remembered` group does NOT answer with its remembered cursor: an
 /// UP/DOWN press crossing into a lattice of cards (a shelf `Row` or a poster `Grid`). The reader
-/// is moving to the card above or below the one they are on — "down, right, up" must close a
-/// square (0.7.0 field report) — so the container's own projection (`seat`, `column_near_x`'s
+/// is moving to the card above or below the one they are on - "down, right, up" must close a
+/// square (0.7.0 field report) - so the container's own projection (`seat`, `column_near_x`'s
 /// contract) is the answer, exactly as for `Seat::Nearest`. Everything the remembered cursor
 /// exists for is untouched: a sideways door (the Library rail → its grid), an entry, restore or
-/// fallback (`dir` is `None`), a selector or chip row (`ElemKind::Control` — its remembered
+/// fallback (`dir` is `None`), a selector or chip row (`ElemKind::Control` - its remembered
 /// element IS the selection), a `Column` (menus, tables), and `RememberedNear`, which already
 /// decides by distance.
 fn projects_across(spec: &GroupSpec, dir: Option<Dir>) -> bool {
@@ -465,7 +465,7 @@ fn side(dir: Dir) -> usize {
 
 /// The `ContainerGroup`/`FirstInGroup` group lookup, shared: the named group, or the engine's
 /// last-resort fallback to the first non-empty group (logged once by the caller's `fell_back`
-/// path elsewhere) — `None` for no candidate at all, and `None` again for a candidate that is
+/// path elsewhere) - `None` for no candidate at all, and `None` again for a candidate that is
 /// empty, since a `spec.len == 0` group has nowhere for either target to land.
 fn resolve_group(groups: &[GroupSpec], g: GroupId) -> Option<&GroupSpec> {
     let spec = groups.iter().find(|s| s.id == g).or_else(|| groups.iter().find(|s| s.len > 0))?;
@@ -506,7 +506,7 @@ pub fn geometric<'a>(groups: &'a [GroupSpec], cur: GroupId, from: Rect, dir: Dir
             Dir::Left => from.x - (e.x + e.w),
         };
         // in the direction at all: the group's CENTRE is past the source's centre (a group that
-        // overlaps the source along the axis — a toolbar spanning the grid's width — is above
+        // overlaps the source along the axis - a toolbar spanning the grid's width - is above
         // or below it, never beside it)
         let ahead = match dir {
             Dir::Down => e.cy() > cy,
@@ -538,7 +538,7 @@ pub fn geometric<'a>(groups: &'a [GroupSpec], cur: GroupId, from: Rect, dir: Dir
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tree {
-    //! A materialised focus tree — the ONE place one exists, as a test adapter for the golden
+    //! A materialised focus tree - the ONE place one exists, as a test adapter for the golden
     //! tables. Elements are `group * 1000 + index`; every group's elements are rects.
     use super::*;
     use crate::fixture::FixtureHost;
@@ -550,7 +550,7 @@ pub mod tree {
         pub rects: Vec<Rect>,
         /// `(row, col)` holes for a `Grid`.
         pub holes: Vec<(usize, usize)>,
-        /// The group's `SpringTarget` placement differs from the drawn one by this x offset — a
+        /// The group's `SpringTarget` placement differs from the drawn one by this x offset - a
         /// shelf whose scroll spring has a target the drawn scroll has not reached yet.
         pub target_dx: f32,
         /// `reconcile` answers: `(want, answer)` pairs (a Slot→Item promotion, a reorder).
@@ -702,7 +702,7 @@ pub mod tree {
                 }
                 GroupKind::Document => match dir {
                     Dir::Up | Dir::Down if n > 1 => {
-                        // a document "scrolls inside" — its one element stays; here the rects are
+                        // a document "scrolls inside" - its one element stays; here the rects are
                         // pages of it and the last is its end
                         let j = if dir == Dir::Down { i + 1 } else { i.wrapping_sub(1) };
                         if j < n {
@@ -850,7 +850,7 @@ mod tests {
     }
 
     /// `every_stop_times_every_direction_on_the_fixture_trees`: no panic, and every answer is
-    /// either a key the tree places or an edge rule — from every element, in every direction.
+    /// either a key the tree places or an edge rule - from every element, in every direction.
     #[test]
     fn every_stop_times_every_direction_on_the_fixture_trees() {
         rig!(m, v, cx);
@@ -881,7 +881,7 @@ mod tests {
         rig!(m, v, cx);
         let (_, t) = trees().into_iter().find(|(n, _)| *n == "rows").unwrap();
         let mut e = FocusEngine::new();
-        // row 5: tiles at x=300,520,740 (w 200); row 6: pitch 240 from x=60 → centres 170,410,650,890…
+        // row 5: tiles at x=300,520,740 (w 200); row 6: pitch 240 from x=60 → centres 170,410,650,890...
         e.set(OWNER, key(E, 5, 2), Some(GroupId(5)), By::Restore); // centre x = 840
         let out = e.move_dir(OWNER, &t, &[], Dir::Down, &cx);
         let Outcome::Moved { to, by, .. } = out else {
@@ -915,7 +915,7 @@ mod tests {
     }
 
     /// `Seat::Remembered` is UNCONDITIONAL: the table's remembered row is re-entered even when
-    /// it is far off the viewport (the owner then reveals it — a different path from shelf to
+    /// it is far off the viewport (the owner then reveals it - a different path from shelf to
     /// shelf, by construction).
     #[test]
     fn remembered_entry_reveals_an_off_screen_element() {
@@ -957,11 +957,11 @@ mod tests {
         assert_eq!(split(to.elem), (2, 5), "within one tile: the remembered one");
     }
 
-    /// **Field report, 0.7.0 (Movies / TV Shows):** "you cannot select tiles like in a square —
+    /// **Field report, 0.7.0 (Movies / TV Shows):** "you cannot select tiles like in a square -
     /// down, right, up. Expected: up selects the tile above the current one. Currently: you get
     /// any previous focus tile." Two card rows that both re-enter by `Seat::Remembered`: DOWN,
     /// RIGHT, UP must close the square on the tile directly above, never on the upper row's
-    /// remembered cursor — and the same holds into a card GRID from a card row above it.
+    /// remembered cursor - and the same holds into a card GRID from a card row above it.
     #[test]
     fn down_right_up_closes_the_square_on_the_tile_above_not_the_remembered_one() {
         rig!(m, v, cx);
@@ -979,7 +979,7 @@ mod tests {
         assert_eq!(walk(Dir::Down), (2, 2));
         assert_eq!(walk(Dir::Right), (2, 3));
         assert_eq!(walk(Dir::Up), (1, 3), "UP lands on the tile above, not row 1's remembered tile 2");
-        // …and the square keeps closing after the lower row has a remembered cursor of its own
+        // ...and the square keeps closing after the lower row has a remembered cursor of its own
         assert_eq!(walk(Dir::Right), (1, 4));
         assert_eq!(walk(Dir::Down), (2, 4), "DOWN lands under the cursor, not on row 2's remembered 3");
         // into and out of a card grid: its remembered cell never outranks the cell below/above
@@ -991,7 +991,7 @@ mod tests {
     }
 
     /// What `Seat::Remembered` still answers after the square fix: every entry the source's
-    /// position does NOT name — a horizontal door into a card grid (the rail→grid return), a
+    /// position does NOT name - a horizontal door into a card grid (the rail→grid return), a
     /// vertical entry into a CONTROL row (a selector re-entered on its selection), a table.
     #[test]
     fn remembered_still_answers_horizontal_doors_selectors_and_tables() {
@@ -1138,7 +1138,7 @@ mod tests {
     }
 
     /// A store landing: `reconcile` promotes a Slot to the Item that now fills it, and a reorder
-    /// keeps the film's key — both as explicit `Reconcile` moves.
+    /// keeps the film's key - both as explicit `Reconcile` moves.
     #[test]
     fn slot_to_item_promotion_is_an_explicit_reconcile() {
         rig!(m, v, cx);
@@ -1221,7 +1221,7 @@ mod tests {
         let b = mk(2, Rect::new(0.0, 300.0, 100.0, 100.0));
         let groups = [mk(0, from), a, b];
         assert_eq!(geometric(&groups, GroupId(0), from, Dir::Down).map(|g| g.id), Some(GroupId(1)));
-        // …and a group ABOVE is never a Down destination
+        // ...and a group ABOVE is never a Down destination
         let up = mk(3, Rect::new(0.0, -300.0, 100.0, 100.0));
         let groups = [mk(0, from), up];
         assert!(geometric(&groups, GroupId(0), from, Dir::Down).is_none());
@@ -1232,7 +1232,7 @@ mod tests {
     /// family, where every nested page shares one `EntryId` (the surface's own) and every page's
     /// table shares `GroupId(0)` (`RouteSurface::run_inner`, `FocusTarget`'s doc on `machine.rs`).
     /// A push used to ask `enter` for `FocusTarget::ContainerGroup`, whose `Seat::Remembered` arm
-    /// in `seat_in` reads `remembered_in(entry, group)` back unconditionally — the OUTGOING
+    /// in `seat_in` reads `remembered_in(entry, group)` back unconditionally - the OUTGOING
     /// page's row, because the incoming page presents the identical `(EntryId, GroupId)` key. On
     /// a real TV: OK on Settings' second row pushed Legal already seated on Legal's own second
     /// row. `FirstInGroup` is the fix, and this proves the three-way split it creates has to hold
@@ -1240,7 +1240,7 @@ mod tests {
     /// remembered cursor recorded for that very key; `ContainerGroup` on the SAME engine state
     /// must still land on the remembered element, because an ordinary re-entry (Left off a
     /// neighbouring group back into this table) has to keep working; and an explicit `restored`
-    /// key must outrank both — the pop path's `FocusTarget::Elem`, already correct and not to be
+    /// key must outrank both - the pop path's `FocusTarget::Elem`, already correct and not to be
     /// disturbed by this fix.
     #[test]
     fn first_in_group_ignores_a_remembered_cursor_while_container_group_and_restored_still_use_it() {
@@ -1251,7 +1251,7 @@ mod tests {
 
         // Three independent engines, each seeded with the SAME remembered cursor at row 2 (left
         // behind by a previous page sharing this exact `(EntryId, GroupId)` key, or by an earlier
-        // visit to this same page) — independent because `enter` itself records the landing it
+        // visit to this same page) - independent because `enter` itself records the landing it
         // picks (spec §7.3 step 5), so re-using one engine across the three calls would let an
         // earlier assertion's landing overwrite the very cursor the next one means to read.
         let seeded = || {
@@ -1300,8 +1300,8 @@ mod tests {
     /// A never-seen page that mounts EMPTY (its rows land async) must not keep the outgoing
     /// page's key as its scope's current focus: in the Settings family every page shares one
     /// `EntryId`, so that stale key read as a row of the new page once rows landed and was
-    /// clamped onto its LAST row (Audio & Subtitles, owner issue 3). Both "never seen" targets —
-    /// the push's `FirstInGroup` and the tab mint's `FirstInGroupAnimated` — clear the scope.
+    /// clamped onto its LAST row (Audio & Subtitles, owner issue 3). Both "never seen" targets -
+    /// the push's `FirstInGroup` and the tab mint's `FirstInGroupAnimated` - clear the scope.
     #[test]
     fn a_fresh_first_in_group_enter_with_no_group_clears_the_stale_scope() {
         rig!(m, v, cx);

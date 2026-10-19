@@ -75,7 +75,7 @@ impl DecisionPrompt {
         if elem == self.affirm { affirm } else { cancel }
     }
 
-    /// `Focusable::groups`: while open, the answers are the ONLY group — push it and return
+    /// `Focusable::groups`: while open, the answers are the ONLY group - push it and return
     /// `true` so the host adds none of its own.
     pub fn groups(&self, out: &mut Vec<GroupSpec>, measure: &dyn tv_machine::machine::Measure) -> bool {
         if !self.is_open() {
@@ -94,8 +94,8 @@ impl DecisionPrompt {
         true
     }
 
-    /// `Focusable::group_of`: `Some(answer)` while open — `Some(None)` for a key that is not an
-    /// answer, which the open alert makes unfocusable — and `None` when closed (the host's).
+    /// `Focusable::group_of`: `Some(answer)` while open - `Some(None)` for a key that is not an
+    /// answer, which the open alert makes unfocusable - and `None` when closed (the host's).
     pub fn group_of(&self, key: u32) -> Option<Option<GroupId>> {
         self.is_open().then(|| self.owns(key).then_some(self.group))
     }

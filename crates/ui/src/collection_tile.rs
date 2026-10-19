@@ -1,4 +1,4 @@
-//! The **neutral collection tile** — what a collection with no artwork of its own draws in place of
+//! The **neutral collection tile** - what a collection with no artwork of its own draws in place of
 //! a poster: the absence ground (`theme::CARD_ABSENT`), the collection mark, and the collection's name under it.
 //!
 //! A collection whose server sent no `thumb` has nothing to resolve, so without this the tile is a
@@ -43,11 +43,11 @@ const TYPE_FULL_W: f32 = 200.0;
 // ── The fan's own geometry, shared with the bake (`app::adapters::poster::fan`) so the name's
 // room is computed from the members the bake actually draws.
 
-/// `.mc { width:44%; height:44% }` — a member's box, as a fraction of the tile (before the deck's
+/// `.mc { width:44%; height:44% }` - a member's box, as a fraction of the tile (before the deck's
 /// scale).
 const FAN_MEMBER_FRAC: f32 = 0.44;
 
-/// One member of the fan deck as the mock places it (`.c1`–`.c3`): its box's `left`/`top` as
+/// One member of the fan deck as the mock places it (`.c1` - `.c3`): its box's `left`/`top` as
 /// fractions of the tile and the sine of its tilt (positive = clockwise on screen). CSS rotates
 /// about the box's centre.
 #[derive(Clone, Copy, Debug)]
@@ -61,11 +61,11 @@ pub struct FanMember {
 /// transcendental is evaluated at bake time (`ci/allow/libm.txt`).
 const SIN_9: f32 = 0.156_434_46;
 const SIN_8: f32 = 0.139_173_1;
-/// `.c1` — the collection's SECOND member, back left.
+/// `.c1` - the collection's SECOND member, back left.
 pub const FAN_BACK_LEFT: FanMember = FanMember { left: 0.18, top: 0.14, sin: -SIN_9 };
-/// `.c2` — the THIRD member, back right, over `.c1`.
+/// `.c2` - the THIRD member, back right, over `.c1`.
 pub const FAN_BACK_RIGHT: FanMember = FanMember { left: 0.40, top: 0.12, sin: SIN_8 };
-/// `.c3` — the FIRST member, upright, on top.
+/// `.c3` - the FIRST member, upright, on top.
 pub const FAN_FRONT: FanMember = FanMember { left: 0.28, top: 0.10, sin: 0.0 };
 const FAN_DECK: [FanMember; 3] = [FAN_BACK_LEFT, FAN_BACK_RIGHT, FAN_FRONT];
 
@@ -92,7 +92,7 @@ impl PlacedMember {
         (1.0 - self.sin * self.sin).sqrt()
     }
 
-    /// The rotated box's axis-aligned half-extents (its sharp corners — the 6px rounding only
+    /// The rotated box's axis-aligned half-extents (its sharp corners - the 6px rounding only
     /// pulls them in).
     pub fn reach(&self) -> (f32, f32) {
         let (s, c) = (self.sin.abs(), self.cosine());
@@ -132,10 +132,10 @@ pub fn fan_deck_bottom(w: f32, h: f32) -> f32 {
     }).fold(f32::MIN, f32::max)
 }
 
-/// `.scr { height:45% }` — the bottom scrim starts at 55% of the tile's height.
+/// `.scr { height:45% }` - the bottom scrim starts at 55% of the tile's height.
 pub const FAN_SCRIM_FROM: f32 = 0.55;
 /// How far below the front member's box its drop shadow reaches, in mock px: `.mc { box-shadow:
-/// 0 6px 14px … }` — the 6px offset plus half the 14px blur, where it has faded to nothing visible.
+/// 0 6px 14px ... }` - the 6px offset plus half the 14px blur, where it has faded to nothing visible.
 const FAN_SHADOW_REACH: f32 = 6.0 + 7.0;
 
 
@@ -165,7 +165,7 @@ pub const FAN_NAME: NameStyle =
 /// G1's `.ety div`: `font: 700 24px/1.12`, the neutral tile's 10% column inset, as written.
 pub const NEUTRAL_NAME: NameStyle =
     NameStyle { size: 24.0, step: 20.0, floor: 18.0, side: 25.0, lead: 1.12, upper: false, gap: 0.0 };
-/// `bottom:22px` — the least air under the name block, in mock px.
+/// `bottom:22px` - the least air under the name block, in mock px.
 const NAME_BOTTOM: f32 = 22.0;
 
 /// One line of a fitted name: its text and the size it is drawn at (a shrunk over-wide word is
@@ -248,7 +248,7 @@ fn elide(text: &str, w: f32, sz: c_int, m: &dyn Measure) -> String {
     tv_gfx::text::elide_by(text, w, false, |t| m.width_str(t, sz, true))
 }
 
-/// Set line `text` at `sz`, or — a single word wider than the column — shrink it toward `floor`
+/// Set line `text` at `sz`, or - a single word wider than the column - shrink it toward `floor`
 /// and elide what still does not fit. Never wider than the column.
 fn set_line(text: String, sz: c_int, floor: c_int, column: f32, m: &dyn Measure) -> FittedLine {
     let w = m.width_str(&text, sz, true);
@@ -266,11 +266,11 @@ fn set_line(text: String, sz: c_int, floor: c_int, column: f32, m: &dyn Measure)
 /// **The one name-fitting policy** of the fan and the neutral tile, for a tile `rest_w` wide at
 /// rest whose name may use a band `band` tall:
 ///
-/// 1. the type is the mock's fixed px (24/1.08, 18px side insets) — the same on a 200 and a 250
-///    tile, as the mock sets it — scaled down only on a tile narrower than [`TYPE_FULL_W`];
-/// 2. a name that fits on one line stays one centred line at the NORMAL size — never grown;
+/// 1. the type is the mock's fixed px (24/1.08, 18px side insets) - the same on a 200 and a 250
+///    tile, as the mock sets it - scaled down only on a tile narrower than [`TYPE_FULL_W`];
+/// 2. a name that fits on one line stays one centred line at the NORMAL size - never grown;
 /// 3. a longer one is balance-wrapped (`text-wrap: balance`) into as many lines as the band holds
-///    at that size — its ink plus the style's clear `gap` above and below — with no fixed line cap;
+///    at that size - its ink plus the style's clear `gap` above and below - with no fixed line cap;
 /// 4. only if that overflows the band: the ONE smaller size, again as many lines as fit;
 /// 5. only if that still overflows: the last line that fits ends in an ellipsis;
 /// 6. a single word wider than the column shrinks toward the style's floor, then elides;
@@ -286,7 +286,7 @@ pub fn fit_name(name: &str, style: &NameStyle, rest_w: f32, band: f32,
     let words: Vec<&str> = text.split_whitespace().collect();
     let pitch = |sz: c_int| sz as f32 * style.lead;
     // Lines that fit: the block's INK (line 0's cap top to the last baseline) plus the clear gap
-    // above AND below it — it is centred — within the band.
+    // above AND below it - it is centred - within the band.
     let room = |sz: c_int| {
         let spare = band - 2.0 * style.gap * pitch(sz) - m.cap_h(sz);
         ((spare / pitch(sz)).floor().max(0.0) as usize + 1).max(1)
@@ -310,7 +310,7 @@ pub fn fit_name(name: &str, style: &NameStyle, rest_w: f32, band: f32,
 }
 
 /// The band a fan's name is centred in on a `rest` tile, as (top, height) from the tile's top:
-/// from the deck's lowest point — the rotated back members' corners included — and its drop
+/// from the deck's lowest point - the rotated back members' corners included - and its drop
 /// shadow (and never above the scrim) down to the mock's bottom inset. The fan's geometry scales
 /// with the tile; the inset is type, like the name.
 pub fn fan_band(rest: Rect) -> (f32, f32) {
@@ -372,7 +372,7 @@ const GLYPH_RATIO: f32 = 0.3;
 /// Air between the mark and the name's cap band, as a fraction of the tile's width.
 const GAP_RATIO: f32 = 0.08;
 
-/// The mark's raster size for a tile `w` wide — quantized to 4px so a focus pop reuses a handful
+/// The mark's raster size for a tile `w` wide - quantized to 4px so a focus pop reuses a handful
 /// of cached masks instead of rasterizing one per rounded pixel (the person glyph's discipline).
 pub fn glyph_px(w: f32) -> f32 {
     ((w * GLYPH_RATIO) / 4.0).round() * 4.0
@@ -391,7 +391,7 @@ pub fn layout(r: Rect, name_w: f32, name_h: f32) -> (Rect, Rect) {
 
 /// Draw the neutral tile at `r` (the rect it is drawn at, popped when focused) with corner radius
 /// `rad`; `rest` is its RESTING rect, which the name is fitted to. The caller has already decided
-/// the row is a collection with no artwork (`thumb` empty) — an unresolved texture with a path
+/// the row is a collection with no artwork (`thumb` empty) - an unresolved texture with a path
 /// behind it is merely still loading and keeps the ordinary skeleton.
 pub fn draw(p: Painter, rest: Rect, r: Rect, rad: f32, name: &str) {
     // A collection with no artwork of its own is ABSENCE, never a wait (`placeholder.rs`): the
@@ -404,7 +404,7 @@ pub fn draw(p: Painter, rest: Rect, r: Rect, rad: f32, name: &str) {
     draw_lines(p, &fit, column.cx(), column.y + NAME_CAP_DROP * fit.sz as f32, theme::TEXT_SECONDARY);
 }
 
-/// **A poster that will never arrive** — the item has no poster, or its art settled as a miss (a
+/// **A poster that will never arrive** - the item has no poster, or its art settled as a miss (a
 /// 404, an undecodable body, a host that keeps failing): its NAME, set like the neutral tile's
 /// and centred on the tinted absent ground. Text over a fill, so a fallback costs no texture.
 /// `rest` is the resting rect the name is fitted to, `r` the drawn (popped) one.
@@ -422,14 +422,14 @@ pub fn draw_title(p: Painter, rest: Rect, r: Rect, rad: f32, name: &str) {
 
 // ── The name on a baked fan: G1's `.art b`, set by [`fit_name`] and centred under the fan.
 
-/// `text-shadow: 0 2px …` — the drop's offset, in mock px.
+/// `text-shadow: 0 2px ...` - the drop's offset, in mock px.
 const FAN_NAME_SHADOW_DY: f32 = 2.0;
 /// Where CSS puts the cap top inside a ~1.1 line box, in em: the half-leading plus the font's
 /// ascent-over-cap-height, about 0.15.
 const NAME_CAP_DROP: f32 = 0.15;
 
 /// Where a fitted fan name's cap top sits on a `rest` tile, from the tile's top: its INK (line 0's
-/// cap top to the last baseline) centred in [`fan_band`], equal air above and below — one line in
+/// cap top to the last baseline) centred in [`fan_band`], equal air above and below - one line in
 /// the middle of the band, a full block filling it, and (by [`fit_name`]'s room) never closer than
 /// half a line to the deck. The fan never moves.
 pub fn fan_name_top(rest: Rect, fit: &FittedName, m: &dyn Measure) -> f32 {
@@ -444,7 +444,7 @@ pub fn fan_name_top(rest: Rect, fit: &FittedName, m: &dyn Measure) -> f32 {
 /// fit comes from `rest`, so a focus pop never re-wraps; the block's centre rides `r`'s scale so it
 /// moves with the art.
 ///
-/// **The caller has already decided the thumb IS a baked fan** — whether a path is the server's
+/// **The caller has already decided the thumb IS a baked fan** - whether a path is the server's
 /// generated composite is the application's fact (`TileFacts::composite_thumb`), so this draws the
 /// name unconditionally. A custom poster is artwork and carries no name: the caller does not call.
 pub fn draw_fan_name(p: Painter, rest: Rect, r: Rect, name: &str) {
@@ -481,7 +481,7 @@ mod tests {
         fan_name_top(tile(w), f, &ShippedMeasure) + f.ink(&ShippedMeasure) * 0.5 - (top + band * 0.5)
     }
     /// The deck's lowest and side-most points, from each member's four corners rotated about its
-    /// centre — computed here independently of `PlacedMember::reach`.
+    /// centre - computed here independently of `PlacedMember::reach`.
     fn corners(w: f32) -> (f32, f32, f32) {
         let (mut left, mut right, mut bottom) = (f32::MAX, f32::MIN, f32::MIN);
         for m in [FAN_BACK_LEFT, FAN_BACK_RIGHT, FAN_FRONT] {
@@ -518,7 +518,7 @@ mod tests {
     }
 
     /// The mock's type is fixed px: 24/1.08 with 18px insets on BOTH its 200-wide header (C1) and
-    /// its 250-wide grid tile (G1) — C1's baselines are 26px apart — and only a narrower tile scales.
+    /// its 250-wide grid tile (G1) - C1's baselines are 26px apart - and only a narrower tile scales.
     #[test]
     fn the_name_is_the_mocks_fixed_type() {
         for (w, column) in [(200.0, 164.0), (250.0, 214.0)] {
@@ -529,7 +529,7 @@ mod tests {
         assert_eq!(fit("Up", 150.0).sz, 18, "a tile narrower than the header scales down");
     }
 
-    /// The band runs from the deck's lowest point — the rotated back members' corners — and its
+    /// The band runs from the deck's lowest point - the rotated back members' corners - and its
     /// shadow down to the mock's 22px inset; a squat tile has less of it, so the same name gets
     /// fewer lines there.
     #[test]
@@ -546,8 +546,8 @@ mod tests {
         assert!(in_squat.ink(&ShippedMeasure) <= fan_band(squat).1 + 0.01 && elided(&in_squat), "{:?}", texts(&in_squat));
     }
 
-    /// The deck is the mock's scaled +10% about its centre — same tilts, same aspect, same relative
-    /// offsets — centred on the tile, and its rotated corners keep the mock's 18px side inset.
+    /// The deck is the mock's scaled +10% about its centre - same tilts, same aspect, same relative
+    /// offsets - centred on the tile, and its rotated corners keep the mock's 18px side inset.
     #[test]
     fn the_deck_is_the_mocks_scaled_uniformly_and_centred() {
         for w in [200.0, 250.0] {
@@ -566,7 +566,7 @@ mod tests {
     }
 
     /// **Centred on the INK**: from the band's top (the deck's lowest corner plus shadow) to line 0's
-    /// cap top equals the last baseline to the band's bottom, within 2px — for a one-line, a
+    /// cap top equals the last baseline to the band's bottom, within 2px - for a one-line, a
     /// three-line and a long name (as many lines as the band holds), at both widths.
     #[test]
     fn the_names_ink_is_centred_between_the_deck_and_the_inset() {
@@ -592,7 +592,7 @@ mod tests {
         assert!(!elided(&f));
     }
 
-    /// A one-word name is one line at the normal size — never grown — in the MIDDLE of the band.
+    /// A one-word name is one line at the normal size - never grown - in the MIDDLE of the band.
     #[test]
     fn a_short_name_is_one_line_centred_in_the_band() {
         for w in [200.0, 250.0] {
@@ -620,7 +620,7 @@ mod tests {
         }
     }
 
-    /// C1: the header's name breaks as the mock does — three whole lines on the 200 tile — at the
+    /// C1: the header's name breaks as the mock does - three whole lines on the 200 tile - at the
     /// step-down size the band under the bigger deck holds.
     #[test]
     fn the_headers_name_takes_three_lines_like_the_mock() {
@@ -636,7 +636,7 @@ mod tests {
         ((band - pitch - ShippedMeasure.cap_h(sz)) / pitch).floor() as usize + 1
     }
 
-    /// A long name uses every line the band holds — there is no line cap — and renders complete
+    /// A long name uses every line the band holds - there is no line cap - and renders complete
     /// with no ellipsis while it fits: at the normal size if it can, else at the one step down.
     #[test]
     fn a_long_name_renders_complete_while_it_fits_the_band() {
@@ -680,7 +680,7 @@ mod tests {
         }
     }
 
-    /// A single word wider than the column shrinks toward the floor, then elides — never wider.
+    /// A single word wider than the column shrinks toward the floor, then elides - never wider.
     #[test]
     fn an_overwide_word_shrinks_to_the_floor_then_elides() {
         for w in [200.0, 250.0] {

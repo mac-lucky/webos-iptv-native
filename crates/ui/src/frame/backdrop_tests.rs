@@ -46,7 +46,7 @@ fn still_commands_track_crop_texture_revision_and_scrim_under_cached_glass() {
             // `discover(sources.clone())` keeps this whole block inside a DISCOVERY walk, where
             // `Painter::declare` always short-circuits true without ever reaching
             // `gfx::draw_tex_carded_still` (see `declare`'s own `!frame::backdrop::discovering()`
-            // guard) — so this assertion never actually exercises the `f > 0.0` fusion refusal
+            // guard) - so this assertion never actually exercises the `f > 0.0` fusion refusal
             // added alongside `FOCUS_IMAGE`; it is purely a discovery-tracking smoke test.
             assert!(p.tex_carded_still(tex, uv, rect(0.0), rad, focus, band, scrim));
             declare_glass(p, rect(0.0));
@@ -270,7 +270,7 @@ fn recording_painters_do_not_declare_live_glass_or_underlay_damage() {
 fn content_at_or_above_the_surfaces_band_is_never_recorded() {
     // The `nav.modals.surfaces` draw loop (Settings/AccountMenu/ItemMenu/About's own content,
     // `dispatch.rs::draw_with`) is not gated by `host_render`/`PagePlan`, so it walks fully on
-    // every discovered frame — but no glass entry ever lives at or above `Z::surface(0)`, so
+    // every discovered frame - but no glass entry ever lives at or above `Z::surface(0)`, so
     // recording what it declares was pure cost for data nothing reads. This is the modal-100 /
     // push-100 stress-bench regression's second cause (see docs/backdrop-blur-profiling.md).
     let _guard = tv_base::testlock::serial();
@@ -302,7 +302,7 @@ fn content_at_or_above_the_surfaces_band_is_never_recorded() {
 #[test]
 fn a_glass_command_above_the_surfaces_band_trips_the_debug_assert() {
     // `Painter::declare`'s fast pre-check must never silently eat a glass command: if one is
-    // ever declared inside a surface (none is today — grep-verified), the debug build has to
+    // ever declared inside a surface (none is today - grep-verified), the debug build has to
     // say so immediately rather than let that glass quietly never resolve.
     let _guard = tv_base::testlock::serial();
     let sources = Rc::new(RefCell::new(Sources::default()));
@@ -324,9 +324,9 @@ fn a_glass_command_above_the_surfaces_band_trips_the_debug_assert() {
 fn content_below_a_frozen_host_boundary_is_never_recorded() {
     // A Cached host (Settings/AccountMenu over Home) still walks its full page+chrome tree on
     // every discovered frame; `held_ceiling()` publishes that freeze as a canvas-covering
-    // blocking `Layer` (`dispatch.rs::backdrop_layers`). No live glass ever reads through it —
+    // blocking `Layer` (`dispatch.rs::backdrop_layers`). No live glass ever reads through it -
     // a glass above it retains the layer's own synthetic, revision-keyed `Paint` instead
-    // (`Sources::begin`) — so recording the real primitives underneath is exactly the dead
+    // (`Sources::begin`) - so recording the real primitives underneath is exactly the dead
     // work the surfaces-band fix already excludes above `Z::surface(0)`, just bounded by a
     // per-frame layer instead of a fixed ceiling. This is the modal-100 stress-bench
     // regression's open hypothesis (docs/backdrop-blur-profiling.md's last dated addendum).

@@ -1,15 +1,15 @@
-//! `TextView` — multi-line text laid out by cap band, pixel-wrapped to a width.
+//! `TextView` - multi-line text laid out by cap band, pixel-wrapped to a width.
 //!
 //! The multi-line counterpart to [`Label`](crate::label::Label): give it a raw string and a
 //! wrap width and it word-wraps by **measured pixel width** (not a crude character count), stacks
-//! the lines by a consistent leading with each line positioned by its cap band (layout ≠ paint —
+//! the lines by a consistent leading with each line positioned by its cap band (layout ≠ paint -
 //! descenders on the last line spill past the box and never enter the maths), truncates to an
 //! optional line limit with an ellipsis, and reports the height it consumes so a flow layout can
 //! stack the next block below it. This replaces the hand-rolled `wrap_*` helpers + repeated
 //! `Painter::text` calls that used to live in every screen.
 //!
 //! Wrapping is recomputed on `draw`/`measure` (immediate-mode); the runs are short. If a hot path
-//! ever needs it, cache by `(text, width)` — the API already isolates the wrap step.
+//! ever needs it, cache by `(text, width)` - the API already isolates the wrap step.
 use crate::label::{HAlign, Label, VAlign};
 use crate::{Painter, Rect};
 use std::collections::hash_map::DefaultHasher;
@@ -21,16 +21,16 @@ use std::ptr::addr_of_mut;
 use std::rc::Rc;
 
 // Wrapping is pixel-measured (text_width per word), which is far too slow to redo every frame for
-// every block — the text is stable, so memoize the wrapped lines by (text, sz, bold, width, lines).
+// every block - the text is stable, so memoize the wrapped lines by (text, sz, bold, width, lines).
 // The lines are shared via Rc, so a cache hit is a refcount bump. Main-thread only (immediate-mode
 // draw), like the poster/icon caches.
-/// Wrapped lines and their measured widths plus whether `max_lines` cut the text off — the
+/// Wrapped lines and their measured widths plus whether `max_lines` cut the text off - the
 /// latter drives the optional trailing run (a "MORE" affordance needs hidden text).
 ///
 /// Lines are stored **NUL-terminated (`CString`), built once at wrap time**: draw hands
 /// `as_ptr()` straight to the text backend, so a cache hit paints the whole block with ZERO
 /// per-frame allocation. (It used to store `String` and re-run `CString::new` per line per
-/// frame — on the detail episode strip that was ~40 allocations a frame, against the UI's
+/// frame - on the detail episode strip that was ~40 allocations a frame, against the UI's
 /// explicit zero-alloc goal.)
 struct Wrapped {
     lines: Vec<CString>,
@@ -59,14 +59,14 @@ fn wrap_memo(key: u64, compute: impl FnOnce() -> Wrapped) -> Rc<Wrapped> {
         return Rc::clone(v);
     }
     if cache.len() > 512 {
-        cache.clear(); // crude cap — plenty for a page's worth of blocks across a few items
+        cache.clear(); // crude cap - plenty for a page's worth of blocks across a few items
     }
     let v = Rc::new(compute());
     cache.insert(key, Rc::clone(&v));
     v
 }
 
-/// The one mark drawn to open a truncated block of text — the About card's footer, the person
+/// The one mark drawn to open a truncated block of text - the About card's footer, the person
 /// page's bio and the collection page's summary (both through [`TextView::draw_more`]). **Clickable text marks are always ALL CAPS** (owner
 /// rule, 2026-09-19): it is a general rule for clickable text blocks, not a per-screen style
 /// choice, so every screen reads this accessor rather than spelling its own literal. An earlier
@@ -94,21 +94,21 @@ pub struct TextView<'a> {
     /// is the lead run drawn BOLD (`lead`) or at the block's own weight (`lead_quiet`)
     lead_bold: bool,
     fade_last: f32, // px reserved at the wrap width's right edge; >0 fades a truncated last line out before it
-    /// the mark `fade_last` reserves room for is drawn whether or not the text truncates — see
+    /// the mark `fade_last` reserves room for is drawn whether or not the text truncates - see
     /// [`mark_always`](Self::mark_always)
     mark_always: bool,
     /// Vertical edge-dissolve bands, in the SAME absolute coordinate space `draw`'s `frame.y` is
-    /// drawn in — see [`edge_fade`](Self::edge_fade). `None` on each axis by default.
+    /// drawn in - see [`edge_fade`](Self::edge_fade). `None` on each axis by default.
     vfade_top: Option<(f32, f32)>,
     vfade_bot: Option<(f32, f32)>,
 }
 
 /// **Does a line's own box cross an [`edge_fade`](TextView::edge_fade) band?** Pure, and pulled out
 /// of `draw`'s loop so the routing decision (fade program vs. the cheaper plain one) can be
-/// asserted without a `Painter` — `draw` calls this once per line per band.
+/// asserted without a `Painter` - `draw` calls this once per line per band.
 ///
 /// `row_y` is the line's cap-top y (the same space the band's `(y0, y1)` is given in) and `lh` its
-/// full line pitch — a conservative over-estimate of the glyph ink it actually covers, which only
+/// full line pitch - a conservative over-estimate of the glyph ink it actually covers, which only
 /// ever widens the band a line participates in, never narrows it, so a line is never silently
 /// dropped to the plain path while a sliver of it still crosses the fade. `None` (band absent, or
 /// the line entirely on one side of it) means "route this line the cheap way"; `Some` hands back
@@ -193,27 +193,27 @@ impl<'a> TextView<'a> {
         self.max_lines = n;
         self
     }
-    /// An inline run (drawn bold in `col`) placed right after the last line — ONLY when the text was
-    /// truncated by `max_lines`, i.e. there is hidden content. The classic "… MORE" affordance. It's
+    /// An inline run (drawn bold in `col`) placed right after the last line - ONLY when the text was
+    /// truncated by `max_lines`, i.e. there is hidden content. The classic "... MORE" affordance. It's
     /// positioned by the measured pixel width of the last line, so it hugs the text on left-aligned blocks.
     ///
-    /// **The app's production truncation mark is [`fade_last`](Self::fade_last)'s**, not this one —
+    /// **The app's production truncation mark is [`fade_last`](Self::fade_last)'s**, not this one -
     /// both the About card and the person page's bio pin a quiet MORE to their column's right edge
     /// and dissolve the last line into it. This stays because it is the right answer where there is
     /// no right edge to pin to (a centred or narrow block), and it is EXCLUSIVE with that one: see
     /// `fade_last` for why the two cannot both be set.
     pub fn trailing(mut self, run: &'a str, col: [f32; 4]) -> Self {
         self.trailing = Some((run, col));
-        self.fade_last = 0.0; // exclusive — see `fade_last`
+        self.fade_last = 0.0; // exclusive - see `fade_last`
         self
     }
-    /// Inline BOLD run before the first word, in its own colour — see [`TextView::lead`] the field.
+    /// Inline BOLD run before the first word, in its own colour - see [`TextView::lead`] the field.
     pub fn lead(mut self, run: &'a str, col: [f32; 4]) -> Self {
         self.lead = Some((run, col));
         self.lead_bold = true;
         self
     }
-    /// [`TextView::lead`] at the block's OWN weight — a lead that differs from its text only in
+    /// [`TextView::lead`] at the block's OWN weight - a lead that differs from its text only in
     /// colour, which is what a label word before its value is ("Starring" before the names,
     /// `Details Screen.dc.html`'s people column). Bolding it there would make the quiet word the
     /// loudest thing in the block, which is the opposite of what dimming it is for.
@@ -239,15 +239,15 @@ impl<'a> TextView<'a> {
     /// `width − px` instead of colliding. A no-op on non-truncated text unless the mark is
     /// [`mark_always`](Self::mark_always) drawn. Left-aligned blocks only.
     ///
-    /// **Setting this CLEARS [`trailing`](Self::trailing), and vice versa — the two are one choice,
+    /// **Setting this CLEARS [`trailing`](Self::trailing), and vice versa - the two are one choice,
     /// not two flags.** They are mutually exclusive in `draw` by construction: the fade branch ends
     /// in `continue`, which skips the inline-run block below it, so a view carrying both loses its
-    /// MORE on exactly the lines that fade — i.e. on exactly the lines the affordance exists for,
+    /// MORE on exactly the lines that fade - i.e. on exactly the lines the affordance exists for,
     /// and nowhere a test of a short string would ever see it. Last builder call wins (the same rule
     /// `lead`/`lead_quiet` already follow), so the choice is made where the view is built.
     pub fn fade_last(mut self, px: f32) -> Self {
         self.fade_last = px;
-        self.trailing = None; // exclusive — see above
+        self.trailing = None; // exclusive - see above
         self
     }
 
@@ -260,13 +260,13 @@ impl<'a> TextView<'a> {
     /// **This replaced `widgets::edge_feather`, and the reason is what that widget got wrong**: it
     /// painted an OPAQUE `SURFACE_PANEL`-tinted gradient over the glass panel at the viewport's
     /// edge, which is a legible trick over an opaque sheet but reads as a distinct GREY BAND over a
-    /// frosted one — the fade is supposed to be the TEXT disappearing, not a patch of different
+    /// frosted one - the fade is supposed to be the TEXT disappearing, not a patch of different
     /// background. `draw` decides PER LINE whether it actually intersects a band (only those pay
-    /// for `text::draw_text_fade`'s program; everything else stays on the plain, cheaper one — see
+    /// for `text::draw_text_fade`'s program; everything else stays on the plain, cheaper one - see
     /// that shader's own header for why), so a paragraph mostly inside the viewport costs nothing
     /// extra for the handful of lines actually crossing an edge.
     ///
-    /// Independent of [`fade_last`](Self::fade_last)/[`trailing`](Self::trailing) — nothing in this
+    /// Independent of [`fade_last`](Self::fade_last)/[`trailing`](Self::trailing) - nothing in this
     /// app combines a truncation dissolve with a scrolling viewport today (the two live on
     /// different screens: `person.rs`'s header preview truncates but does not scroll; this panel's
     /// own bio scrolls but never truncates by `max_lines`), so `draw` does not attempt to combine
@@ -281,7 +281,7 @@ impl<'a> TextView<'a> {
     /// [`fade_last`](Self::fade_last) reserved.
     ///
     /// **Derived from the type size, never a literal.** A dissolve reads by how many GLYPHS it
-    /// spans, which is a property of the ink and not of the column it sits in — so a band tuned at
+    /// spans, which is a property of the ink and not of the column it sits in - so a band tuned at
     /// one rung is wrong at another for the same reason a hand-tuned font size is. It was a bare
     /// `150.0` inside `draw`, tuned against the About card's 5 CAPTION lines in a 580px column; the
     /// person page's bio is a rung larger in a column twice as wide, and the same literal there
@@ -301,7 +301,7 @@ impl<'a> TextView<'a> {
         }
     }
 
-    /// pixel width of an arbitrary `&str` — allocates a scratch CString, so WRAP-TIME ONLY
+    /// pixel width of an arbitrary `&str` - allocates a scratch CString, so WRAP-TIME ONLY
     /// (the trial strings). Draw reuses wrapped widths and measures only newly clipped lines.
     fn measure(&self, s: &str) -> f32 {
         CString::new(s)
@@ -309,7 +309,7 @@ impl<'a> TextView<'a> {
             .map(|c| self.width(&c, self.bold != 0))
             .unwrap_or(0.0)
     }
-    /// Pixel width of a newly clipped, NUL-terminated line — no scratch allocation.
+    /// Pixel width of a newly clipped, NUL-terminated line - no scratch allocation.
     fn measure_c(&self, c: &CString) -> f32 {
         self.width(c, self.bold != 0)
     }
@@ -327,7 +327,7 @@ impl<'a> TextView<'a> {
         self.lead.map(|(r, _)| r).unwrap_or("").hash(&mut h);
         if let Some(measure) = self.measure {
             // One borrowed view owns at most one wrap. Exact width/weight matter here;
-            // nothing can survive a new capability, replay, or frame through this memo —
+            // nothing can survive a new capability, replay, or frame through this memo -
             // UNLESS the capability is the live font itself, whose answers are the ones the
             // process memo already holds (`Measure::live_font`). Then the paragraph is wrapped
             // once, not once per frame.
@@ -356,7 +356,7 @@ impl<'a> TextView<'a> {
     fn wrap_uncached(&self, width: f32) -> Wrapped {
         // Split on whitespace EXCEPT U+00A0. A no-break space is the typographic instruction
         // "these two words are one atom", and `split_whitespace` honours the Unicode White_Space
-        // property, which includes it — so the standard glue character silently did nothing.
+        // property, which includes it - so the standard glue character silently did nothing.
         // `detail`'s people column is the case: the atoms of "Starring A B, C D" are the PEOPLE,
         // and a break inside one puts a surname alone on the next line.
         let words: Vec<&str> = self
@@ -420,7 +420,7 @@ impl<'a> TextView<'a> {
         }
         let truncated = i < words.len(); // unplaced words remain → the block was cut off
         if truncated {
-            // more text than fits — ellipsize the last placed line to width
+            // more text than fits - ellipsize the last placed line to width
             let li = lines.len().saturating_sub(1);
             let w = if li == 0 {
                 (width - lead_w).max(0.0)
@@ -449,7 +449,7 @@ impl<'a> TextView<'a> {
             }
             widths.push(measured);
         }
-        // NUL-terminate once, here — every later frame draws these by pointer (interior NULs
+        // NUL-terminate once, here - every later frame draws these by pointer (interior NULs
         // can't occur in PMS strings; degrade to an empty line rather than panic if one does)
         let lines = lines
             .into_iter()
@@ -458,7 +458,7 @@ impl<'a> TextView<'a> {
         Wrapped { lines, widths, truncated }
     }
 
-    /// how many lines the text wraps to at `width` (at least 1) — the count [`Self::measure_h`]
+    /// how many lines the text wraps to at `width` (at least 1) - the count [`Self::measure_h`]
     /// multiplies by the pitch, for a caller that owns its own row height.
     pub fn line_count(&self, width: f32) -> usize {
         self.wrap(width).lines.len().max(1)
@@ -469,21 +469,21 @@ impl<'a> TextView<'a> {
         self.wrap(width).lines.len().max(1) as f32 * self.line_h()
     }
 
-    /// whether wrapping to `width` under the current `max_lines` hides any text — i.e. there is more
+    /// whether wrapping to `width` under the current `max_lines` hides any text - i.e. there is more
     /// to read. Drives an out-of-flow "MORE" affordance when the inline [`trailing`](Self::trailing)
     /// run isn't wanted (e.g. a corner label). Shares the memoised wrap, so it's free next to a draw.
     pub fn truncates(&self, width: f32) -> bool {
         self.wrap(width).truncated
     }
 
-    /// The **cap-top y of the block's LAST line** — where an out-of-flow affordance pinned beside
-    /// the fade ([`fade_last`](Self::fade_last)'s right-pinned MORE) has to sit — given the `top`
+    /// The **cap-top y of the block's LAST line** - where an out-of-flow affordance pinned beside
+    /// the fade ([`fade_last`](Self::fade_last)'s right-pinned MORE) has to sit - given the `top`
     /// the block was drawn at and the height [`draw`](Self::draw) returned for it.
     ///
     /// It lives here rather than at the two call sites because the only thing it can be derived
     /// from is `draw`'s own stacking rule (line `i`'s cap band at `top + i × line_h`, `n × line_h`
     /// returned), and that rule is this type's. Written out by a caller it becomes `top + h −
-    /// <the leading I think I passed>` — a second copy of the pitch, one edit away from the mark
+    /// <the leading I think I passed>` - a second copy of the pitch, one edit away from the mark
     /// floating half a line off the prose it belongs to. Both screens that pin a MORE now ask the
     /// view that drew the text.
     pub fn last_line_cap_y(&self, top: f32, drawn_h: f32) -> f32 {
@@ -491,7 +491,7 @@ impl<'a> TextView<'a> {
     }
 
     /// Reserve [`fade_last`](Self::fade_last) room for a right-pinned [`more_mark`] at this
-    /// block's own size, plus `gap` of air before it — the clamped-prose idiom of the Person bio
+    /// block's own size, plus `gap` of air before it - the clamped-prose idiom of the Person bio
     /// and the Collection summary. Needs [`with_measure`](Self::with_measure) first; without a
     /// measure only the gap is reserved.
     pub fn fade_for_more(self, gap: f32) -> Self {
@@ -524,7 +524,7 @@ impl<'a> TextView<'a> {
     ///
     /// A truncated line fades once it reaches the fade band ahead of the zone: the dissolve itself
     /// says "there is more". An untruncated line under a [`mark_always`](Self::mark_always) mark
-    /// fades only when its laid-out run actually overlaps the reserved zone — the mark and its air.
+    /// fades only when its laid-out run actually overlaps the reserved zone - the mark and its air.
     pub fn last_line_fades(&self, width: f32) -> bool {
         if self.fade_last <= 0.0 {
             return false;
@@ -538,7 +538,7 @@ impl<'a> TextView<'a> {
         }
     }
 
-    /// The drawn width of the block's LAST wrapped line at `width` — what a caller pinning an
+    /// The drawn width of the block's LAST wrapped line at `width` - what a caller pinning an
     /// out-of-flow mark (a right-aligned MORE) on that line has to check before doing so. A line
     /// that reaches into the mark's zone and is NOT truncated fades only when the view declares
     /// [`mark_always`](Self::mark_always); otherwise `fade_last` acts on a truncated last line
@@ -564,7 +564,7 @@ impl<'a> TextView<'a> {
         let n = lines.len();
         // a trailing run ("MORE") paints only when max_lines actually hid words
         let run = self.trailing.filter(|_| wrapped.truncated);
-        // reserve the run's (bold) width so the last line clips short and "… MORE" never spills the column
+        // reserve the run's (bold) width so the last line clips short and "... MORE" never spills the column
         let reserve = run
             .and_then(|(r, _)| CString::new(r).ok())
             .map(|c| self.width(&c, true) + 16.0)
@@ -599,7 +599,7 @@ impl<'a> TextView<'a> {
         for (i, ln) in lines.iter().enumerate() {
             let is_last = i + 1 == n;
             let dx = if i == 0 { lead_w } else { 0.0 };
-            // Clip the last line short of a reserved trailing run — RARE (a trailing affordance
+            // Clip the last line short of a reserved trailing run - RARE (a trailing affordance
             // on a truncated block, e.g. the About card) and the one owned CString on this path;
             // every ordinary line draws the CACHED CString by pointer, zero alloc.
             let clipped: Option<CString> =
@@ -616,10 +616,10 @@ impl<'a> TextView<'a> {
             // a truncated last line with a fade_last reservation dissolves into the affordance zone
             // instead of colliding with it (only when it actually reaches that far)
             // `fade_last` and `trailing` are exclusive, so a fading last line is never `clipped`
-            // and its drawn width is the wrap's own — the width `last_line_fades` grades.
+            // and its drawn width is the wrap's own - the width `last_line_fades` grades.
             let last_line_dissolves = is_last && self.last_line_fades(frame.w);
             // Does THIS line's own box cross a vertical edge band at all? Most lines of a
-            // viewport's prose answer no on both counts and stay on the cheap plain path below —
+            // viewport's prose answer no on both counts and stay on the cheap plain path below -
             // see `edge_fade`'s doc for why that matters, and [`line_overlaps_band`] for the test.
             let vtop = line_overlaps_band(row.y, lh, self.vfade_top);
             let vbot = line_overlaps_band(row.y, lh, self.vfade_bot);
@@ -717,7 +717,7 @@ mod tests {
     use crate::theme;
 
     /// Owner rule, 2026-09-19: a clickable text mark (the truncation/expand affordance) is always
-    /// ALL CAPS — it is a general rule for clickable text blocks, not a per-screen style choice.
+    /// ALL CAPS - it is a general rule for clickable text blocks, not a per-screen style choice.
     /// `fc63c0c1` drew the person page's mark as sentence-case `"More"`, which this accessor exists
     /// to make impossible to repeat: every screen reads `more_mark()` instead of spelling its own
     /// literal, so a future edit that lowers the case fails HERE, citing the rule, rather than
@@ -861,23 +861,23 @@ mod tests {
         let band = Some((100.0, 140.0));
         // fully above the band (a line that has already scrolled clear of the top edge)
         assert_eq!(line_overlaps_band(40.0, 40.0, band), None);
-        // touches the band's floor exactly at its own bottom edge — no overlap (open interval)
+        // touches the band's floor exactly at its own bottom edge - no overlap (open interval)
         assert_eq!(line_overlaps_band(60.0, 40.0, band), None);
-        // straddles the band's start — must fade
+        // straddles the band's start - must fade
         assert_eq!(line_overlaps_band(80.0, 40.0, band), band);
         // entirely inside the band
         assert_eq!(line_overlaps_band(110.0, 20.0, band), band);
         // straddles the band's end
         assert_eq!(line_overlaps_band(130.0, 40.0, band), band);
-        // fully below the band — clear again
+        // fully below the band - clear again
         assert_eq!(line_overlaps_band(140.0, 40.0, band), None);
-        // no band at all — never a match, whatever the line's position
+        // no band at all - never a match, whatever the line's position
         assert_eq!(line_overlaps_band(110.0, 20.0, None), None);
     }
 
     /// **The two truncation affordances are ONE choice, and the builder is what enforces it.**
     /// `draw`'s fade branch ends in `continue`, so a view carrying both loses its inline run on
-    /// exactly the truncated lines that fade — the mark disappears where it is needed and nowhere
+    /// exactly the truncated lines that fade - the mark disappears where it is needed and nowhere
     /// else, which no test that draws a string short enough to fit could ever see. Whichever call
     /// came last is the one that survives, in both orders.
     #[test]
@@ -902,15 +902,15 @@ mod tests {
     }
 
     /// **A pinned MORE rides the line that faded under it**, whichever way the block set its pitch.
-    /// The affordance is drawn by two pieces of code that never meet — this type dissolves the last
-    /// line into a zone it reserved, the SCREEN pins the word beside that zone — so the only thing
+    /// The affordance is drawn by two pieces of code that never meet - this type dissolves the last
+    /// line into a zone it reserved, the SCREEN pins the word beside that zone - so the only thing
     /// keeping them on one line is `last_line_cap_y` answering off the same `line_h` the stacking
     /// used. The explicit-`leading` case is the person page's bio and the About card; the DERIVED
     /// case (`sz × 1.32`) is the one a caller gets by forgetting to set a pitch at all, and it is
     /// what a hand-written `top + h − <a literal>` at a call site would silently get wrong.
     #[test]
     fn a_pinned_mark_sits_on_the_cap_band_of_the_line_that_faded() {
-        let top = 137.0; // an arbitrary block offset — a measured flow's y is never round
+        let top = 137.0; // an arbitrary block offset - a measured flow's y is never round
                          // Sub-px, not exact: the derived pitch is irrational in f32 (`28 × 1.32`), so `n·lh − lh`
                          // and `(n−1)·lh` differ in the last mantissa bit. A tenth of a pixel is far tighter than
                          // the half-leading drift this exists to catch, and the draw snaps to whole pixels anyway.
@@ -933,7 +933,7 @@ mod tests {
         }
     }
 
-    /// The dissolve is measured in EM, so it spans the same run of LETTERS at every rung — and the
+    /// The dissolve is measured in EM, so it spans the same run of LETTERS at every rung - and the
     /// About card, the one tuning this number ever had, must still come out to the pixel it did.
     #[test]
     fn the_fade_band_is_ink_relative_and_reproduces_the_about_card() {
@@ -947,7 +947,7 @@ mod tests {
             band(theme::size::BODY) > band(theme::size::CAPTION),
             "a larger rung must dissolve over more px"
         );
-        // proportional, not merely monotonic — `DISPLAY` 48 is exactly twice `CAPTION` 24
+        // proportional, not merely monotonic - `DISPLAY` 48 is exactly twice `CAPTION` 24
         assert_eq!(band(theme::size::DISPLAY), 2.0 * band(theme::size::CAPTION));
     }
 }

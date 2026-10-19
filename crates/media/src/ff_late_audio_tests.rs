@@ -1,12 +1,12 @@
 //! A Matroska file whose audio track starts seconds after its video, demuxed through the real
-//! `ff::demux` and the real `aq` lanes — the OBSERVABLE half of "a film whose audio starts late
+//! `ff::demux` and the real `aq` lanes - the OBSERVABLE half of "a film whose audio starts late
 //! no longer buffers forever at the start".
 //!
 //! **The failure under test.** The two lanes are filled from ONE sequential read of the file, and
 //! each has a byte cap (the video lane's is `engine::aq_caps().0`, 48 MiB). An MKV whose audio
 //! carries a container `Delay` of ~11 s has no audio block for the first 11 s, so at a high enough
 //! bitrate and delay more video than the cap precedes the first audio packet. The demuxer fills the video lane, parks in `aq_push`,
-//! and never reads the audio packet — while the pipeline, which will not start its clock without
+//! and never reads the audio packet - while the pipeline, which will not start its clock without
 //! audio, drains no video. Neither side can move: a spinner at 0:00 forever.
 //!
 //! **What is real here and what is not.** Real: the file (written by the `ffmpeg` CLI, then read
@@ -31,7 +31,7 @@
 //! to precede the first audio packet in a few seconds of encoding (the real film got there with
 //! 9.5 Mbit/s of near-black frames over 11 s; black would need the same bitrate to be forced, and
 //! noise forces it without depending on an encoder's rate control). E-AC-3 audio, `-itsoffset`
-//! 20 s — longer than the reported film's 11.008 s, which the 48 MiB base cap now holds alone. The control is the same file with the audio at 0.
+//! 20 s - longer than the reported film's 11.008 s, which the 48 MiB base cap now holds alone. The control is the same file with the audio at 0.
 //!
 //! Like every real-demux `ff` test, it needs the host FFmpeg libraries, so it is `#[ignore]`d in the
 //! plain suite. It skips (returns, loudly) when the `ffmpeg` / `ffprobe` command line tools are
@@ -59,7 +59,7 @@ const FIRST_AUDIO_DEADLINE: Duration = Duration::from_secs(10);
 const FIXTURE_VIDEO_BPS: i64 = 24_000_000;
 
 /// The fixture's audio delay, in seconds: past the base cap (with the pump's throttle) yet inside
-/// the headroom with the lead-in — 60 MB before the audio, 67.5 MB with the lead-in, against
+/// the headroom with the lead-in - 60 MB before the audio, 67.5 MB with the lead-in, against
 /// 55.1 MB and 75.5 MB.
 const LATE_AUDIO_DELAY_S: f64 = 20.0;
 
@@ -101,7 +101,7 @@ fn generate(dir: &Path, audio_delay_s: f64, video_s: u32) -> PathBuf {
         // encoder spends the whole 24 Mbit/s budget on every picture.
         .args(["-f", "lavfi", "-i", &format!("color=c=gray:s=1280x720:r=25:d={video_s},noise=alls=100:allf=t+u")])
         // The container delay: `-itsoffset` shifts the next input's timestamps, so the muxer
-        // writes this track's first block at that time — what mkvmerge's `Delay` does.
+        // writes this track's first block at that time - what mkvmerge's `Delay` does.
         .args(["-itsoffset", &format!("{audio_delay_s}")])
         .args(["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3"])
         .args(["-map", "0:v", "-map", "1:a"])
@@ -116,7 +116,7 @@ fn generate(dir: &Path, audio_delay_s: f64, video_s: u32) -> PathBuf {
 }
 
 /// Write an ORDINARY interleaved MKV: 640x360 H.264 noise at 1 Mbit/s for 4 s, plus 2 s of E-AC-3
-/// whose first packet lands 0.2 s in — a handful of video packets (25 fps: five) precede the first
+/// whose first packet lands 0.2 s in - a handful of video packets (25 fps: five) precede the first
 /// audio packet, as in any MP4 with B-frames or a muxer that leads with video. The whole file is a
 /// few hundred KB, far under the video lane's base cap, and the audio is shorter than the engine's
 /// lead-in so a grant taken at the first video push would still be standing at the end.
@@ -175,7 +175,7 @@ fn first_audio_and_video_bytes_before_it(path: &Path) -> (f64, u64) {
     (first_audio, video_before)
 }
 
-/// A loopback HTTP server over one file that honours `Range: bytes=a-[b]` — what the AVIO's
+/// A loopback HTTP server over one file that honours `Range: bytes=a-[b]` - what the AVIO's
 /// `seek_cb` reopens with when libavformat reads the Cues at the end of the file. One thread per
 /// connection; everything stops when the value drops.
 pub(super) struct FileServer {
@@ -266,7 +266,7 @@ struct Observed {
     last_audio_pts_ns: Option<i64>,
     /// How many audio AUs were popped.
     audio_aus: usize,
-    /// Bytes sitting in the video lane at that moment — the demuxer's read-ahead of video.
+    /// Bytes sitting in the video lane at that moment - the demuxer's read-ahead of video.
     video_lane_bytes: i64,
 }
 
@@ -412,7 +412,7 @@ fn demux_fixture(tag: &str, audio_delay_s: f64) -> Option<(Observed, f64, u64)> 
     Some((seen, p.first_audio_s, p.video_before))
 }
 
-/// **The regression.** Audio 20 s late, and ~60 MB of video ahead of it — more than the video
+/// **The regression.** Audio 20 s late, and ~60 MB of video ahead of it - more than the video
 /// lane's 48 MiB cap. The first audio AU must still reach the audio lane: the demuxer must not
 /// park on the full video lane in front of it. Before the fix this fails after the deadline with
 /// an empty audio lane and a video lane pinned at its cap.
@@ -461,7 +461,7 @@ fn a_late_audio_track_is_reached_although_the_video_lane_fills_first() {
 /// **The first audio AU is not enough: the engine feeds a late track's first AU and the next
 /// [`AUDIO_LEAD_IN_NS`](crate::player::engine::AUDIO_LEAD_IN_NS) of audio ahead of a clock that
 /// cannot start without them.** So the demuxer must keep reading, and pushing both lanes, until
-/// that much audio is on the audio lane — with the video lane, already past its base cap, still
+/// that much audio is on the audio lane - with the video lane, already past its base cap, still
 /// not drained by anyone. Releasing the headroom the instant the first audio AU lands drops the
 /// video cap BELOW what the lane holds; the next video push parks and the audio lane starves after
 /// one or two packets (device log: `feed a#1`, `feed a#2`, nothing more, no clock, no position).
@@ -482,7 +482,7 @@ fn assert_lead_in_reached(seen: &Observed, first_pts: i64, video_cap: i64) {
 
 /// **The control.** Same fixture shape, audio NOT delayed: the first audio packet is within the
 /// first video frames, so it is read long before any lane fills. Must pass with and without the
-/// fix — if it fails, the harness (fixture, server, bundled FFmpeg, lane reading) is broken, and
+/// fix - if it fails, the harness (fixture, server, bundled FFmpeg, lane reading) is broken, and
 /// the regression test's red would mean nothing.
 #[test]
 #[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]

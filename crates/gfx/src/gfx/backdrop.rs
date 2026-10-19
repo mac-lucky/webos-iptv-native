@@ -246,7 +246,7 @@ pub fn text_value(s: *const std::ffi::c_char, values: &mut Vec<u64>) {
     values.push(bytes.len() as u64);
     // Eight bytes per recorded word, not one word per byte. The exact-draw-description walk
     // (this function's one job) runs on every discovered frame regardless of whether anything
-    // changed — every live glass's validity depends on comparing it — so a byte-per-word
+    // changed - every live glass's validity depends on comparing it - so a byte-per-word
     // encoding turned every text primitive's Vec<u64> allocation, and later comparison, into one
     // word per CHARACTER: an 8x inflation on the two heaviest-text screens in the app (a
     // Settings row list, a Detail synopsis + cast bios), which is exactly where the modal-100 and
@@ -276,12 +276,12 @@ pub fn clip(rect: Option<Rect>) {
         }
     });
 }
-/// True when every point of `rect` is covered by some blocking layer strictly above `z` — the
+/// True when every point of `rect` is covered by some blocking layer strictly above `z` - the
 /// same subtraction `decide` already runs to tell whether a GLASS is visible, applied here to a
 /// plain painted rect instead. A frozen host replacement, a `Replaced` surface's opaque ground and
 /// a full-alpha dim all publish `blocks: true` (`dispatch.rs::backdrop_layers`); content under any
 /// of them produces no pixels (`gfx::may_read_ground`'s `page_frozen` doc) and no live glass ever
-/// samples through it — a glass ABOVE such a layer must retain that layer's own frozen composite
+/// samples through it - a glass ABOVE such a layer must retain that layer's own frozen composite
 /// instead (`held_ceiling`'s doc), which `Sources::begin` already represents with one synthetic
 /// `Paint` keyed on the layer's revision, not on what is drawn beneath it. Recording that content's
 /// real primitives is therefore exactly the dead work `Z::surface(0)` already excludes above the
@@ -303,7 +303,7 @@ fn occluded(rect: Rect, layers: &[Layer], z: Z) -> bool {
 /// runs before the primitive's final padded bounds exist. Every blocking layer this mechanism has
 /// ever produced covers the whole canvas, so "some blocking layer above `z` covers the canvas" is
 /// exactly as precise as the exact test for all real content, and never wrongly excludes should a
-/// future partial-rect blocker exist — it just misses that narrower optimization.
+/// future partial-rect blocker exist - it just misses that narrower optimization.
 fn fully_occluded(z: Z, layers: &[Layer]) -> bool {
     layers.iter().any(|l| l.blocks && l.z > z && covers(l.rect, canvas()))
 }
@@ -316,12 +316,12 @@ pub fn paint(rect: Rect, values: Vec<u64>) {
         // No glass entry is ever created at or above the surfaces band: every
         // `Glass::DYNAMIC_BACKDROP.backdrop(...)` call site sits inside the CHROME layer scope
         // (grep-verified against the whole crate), and popovers stood off the blur chain
-        // entirely on 2026-09-19 — they use the frozen-host snapshot in `popover.rs`, which
+        // entirely on 2026-09-19 - they use the frozen-host snapshot in `popover.rs`, which
         // feeds its own synthetic `Paint` straight into `Sources::begin`, never through this
         // function. So nothing downstream ever reads a `Paint` recorded above that boundary, yet
         // the surfaces loop in `dispatch.rs::draw_with` (Settings/AccountMenu/ItemMenu/About's
         // own content) runs unconditionally on both the no-GL discovery pass and the real draw
-        // pass — recording its entire primitive stream every discovered frame, whether or not
+        // pass - recording its entire primitive stream every discovered frame, whether or not
         // anything changed, was pure waste, and the heaviest-text screens paid for it most (see
         // the dated addendum in docs/backdrop-blur-profiling.md). This is the authoritative gate;
         // `Painter::declare`'s `recording_excluded` check exists only to skip building `values`
@@ -336,7 +336,7 @@ pub fn paint(rect: Rect, values: Vec<u64>) {
             return;
         }
         // Same shape, a dynamic ceiling: a Cached host (Settings/AccountMenu over Home) still
-        // walks its full page+chrome tree every discovered frame — `may_read_ground`'s doc says a
+        // walks its full page+chrome tree every discovered frame - `may_read_ground`'s doc says a
         // frozen page's draw "produces no pixels", but nothing stopped the recording underneath it
         // from happening anyway (open hypothesis, docs/backdrop-blur-profiling.md's last dated
         // addendum). `held_ceiling()`'s synthetic `Layer` already carries the frozen boundary; this
@@ -369,7 +369,7 @@ pub fn recording_excluded() -> bool {
     })
 }
 
-/// True once a DISCOVERY walk has reached the surfaces band — the half of
+/// True once a DISCOVERY walk has reached the surfaces band - the half of
 /// [`recording_excluded`] where a glass declaration is a bug rather than dead content.
 pub fn in_surfaces_band() -> bool {
     WALK.with(|w| {
@@ -992,7 +992,7 @@ pub fn surface(rect: Rect) -> Option<Surface> {
     surface_with(rect, true)
 }
 /// [`surface`] for a glass that says whether it RISES (slides from its rest rect, as the hold hint
-/// does). `false` sizes its region with [`BLUR_REACH`] alone — see [`crate::gfx::blur_region_for`].
+/// does). `false` sizes its region with [`BLUR_REACH`] alone - see [`crate::gfx::blur_region_for`].
 pub fn surface_with(rect: Rect, rises: bool) -> Option<Surface> {
     WALK.with(|slot| {
         let mut slot = slot.borrow_mut();
@@ -1090,7 +1090,7 @@ pub fn image(z: Z) -> Option<Rc<crate::gfx::BackdropImage>> {
             .clone()
     })
 }
-/// Does the source at `z` have a rising member — the margin its region is grown by.
+/// Does the source at `z` have a rising member - the margin its region is grown by.
 pub fn rises(z: Z) -> bool {
     WALK.with(|w| {
         w.borrow()
@@ -1166,8 +1166,8 @@ pub fn captured(z: Z, image: crate::gfx::BackdropImage) {
     });
 }
 
-/// Mark every retained source as captured against the current prefix — what a successful GPU
-/// capture does — so a test can step the walk frame by frame without a GL context.
+/// Mark every retained source as captured against the current prefix - what a successful GPU
+/// capture does - so a test can step the walk frame by frame without a GL context.
 #[cfg(any(test, feature = "test-support"))]
 pub fn commit(s: &Rc<RefCell<Sources>>) {
     let mut s = s.borrow_mut();
@@ -1469,7 +1469,7 @@ mod tests {
         let byte_len = s.as_bytes().len();
         let mut values = Vec::new();
         text_value(s.as_ptr(), &mut values);
-        // One length-prefix word plus one packed word per (up to) 8 bytes — never one word per
+        // One length-prefix word plus one packed word per (up to) 8 bytes - never one word per
         // byte, which is what made every text primitive's recorded Vec<u64> as long as the
         // string itself, reallocated and re-hashed/-compared on every single discovery walk.
         assert_eq!(
@@ -1479,7 +1479,7 @@ mod tests {
         );
         // Exact identity, not a hash: the same string encodes identically every time, and a
         // different string (even one differing only after the first packed word) encodes
-        // differently — the walk's whole basis for "changed vs unchanged" depends on this.
+        // differently - the walk's whole basis for "changed vs unchanged" depends on this.
         let mut again = Vec::new();
         text_value(s.as_ptr(), &mut again);
         assert_eq!(values, again);

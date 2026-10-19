@@ -6,11 +6,11 @@ use super::test_support::*;
 
 // ── AmbientWash: the page GROUND's legibility contract ───────────────────────────────────
 //
-// All pure math over `theme` tokens — no GL, no globals, so these are ordinary parallel tests.
+// All pure math over `theme` tokens - no GL, no globals, so these are ordinary parallel tests.
 // `Spring::step` (used by the dissolve test) is `gfx::spring`, closed-form arithmetic.
 
 /// One sRGB channel, linearized (WCAG 2.x). Local to the tests on purpose: the app never needs
-/// this — it is the yardstick the design decision was made with, kept here so the decision stays
+/// this - it is the yardstick the design decision was made with, kept here so the decision stays
 /// checkable rather than remembered.
 /// The corner sources a ground has to survive: the blown-out extreme, each primary and secondary
 /// at full saturation, a mid grey, and the brightest thing in the palette.
@@ -38,9 +38,9 @@ fn hostile_sources() -> Vec<[f32; 3]> {
 }
 
 /// **The legibility contract, executable.** Every corner of an artwork-keyed ground at
-/// [`AmbientWash::GROUND_W`] must clear 3:1 against [`theme::TEXT_TERTIARY`] — the dimmest ink
+/// [`AmbientWash::GROUND_W`] must clear 3:1 against [`theme::TEXT_TERTIARY`] - the dimmest ink
 /// the app puts on a ground (cast roles, unfocused episode summaries, the About column's labels,
-/// all at `size::CAPTION`) — and 7:1 against [`theme::TEXT_PRIMARY`]. This is the test that would
+/// all at `size::CAPTION`) - and 7:1 against [`theme::TEXT_PRIMARY`]. This is the test that would
 /// have caught the UNCAPPED version (a white corner lands tertiary at 1.98:1), and it is the one
 /// that fails the day someone raises `GROUND_W` or `GROUND_LUMA` past what a page can carry. It
 /// guards the person page and the detail page at once, because both go through `keyed`.
@@ -82,7 +82,7 @@ fn a_ground_stays_light_enough_for_a_card_shadow() {
     }
 }
 
-/// "No artwork is the app's own flat ground" — stated in the type's docs since the person page
+/// "No artwork is the app's own flat ground" - stated in the type's docs since the person page
 /// shipped, pinned here. At weight 0 the mix must be EXACTLY the surface, so a screen needs no
 /// has-envelope branch in its draw.
 #[test]
@@ -127,7 +127,7 @@ fn the_luma_cap_spends_brightness_and_nothing_else() {
 }
 
 /// A tl/tr/br/bl transposition is invisible on a near-symmetric gradient in a screenshot and
-/// wrong on every asymmetric one — the exact hazard `UltraBlurColors::corners`' doc warns about
+/// wrong on every asymmetric one - the exact hazard `UltraBlurColors::corners`' doc warns about
 /// (the JSON reading order is not the ring order). Both constructors must be index-preserving.
 #[test]
 fn the_corners_keep_their_ring_order() {
@@ -221,7 +221,7 @@ fn page_ground_canonical_state_is_repeatable_and_read_only_through_a_held_dissol
 
 /// **The rule the type exists for**: an item with no `UltraBlurColors` envelope must leave the
 /// ground where it is, not clear it. Without this, one artless poster between two coloured ones
-/// flashes the whole page grey and back on the way past — and the failure is invisible on a
+/// flashes the whole page grey and back on the way past - and the failure is invisible on a
 /// library whose artwork all carries envelopes, which is most of them.
 #[test]
 fn an_item_with_no_envelope_holds_the_ground_instead_of_clearing_it() {
@@ -236,7 +236,7 @@ fn an_item_with_no_envelope_holds_the_ground_instead_of_clearing_it() {
     }
     assert!(!held.is_flat(), "half a second on a coloured tile keys the ground");
 
-    // …and now the ring walks across artless tiles for a second, while the control's tile keeps
+    // ...and now the ring walks across artless tiles for a second, while the control's tile keeps
     // its envelope. The two must be indistinguishable: `None` is "nothing new to say", not
     // "there is nothing here". Graded against a still-converging control rather than against a
     // frozen snapshot, because the spring is *supposed* to keep closing on the held target.
@@ -288,7 +288,7 @@ fn a_page_changing_subject_jumps_rather_than_washing_the_old_one_across_it() {
     }
 }
 
-/// The shared arrangement is the shared STRENGTH across the top — one number, so two browsing
+/// The shared arrangement is the shared STRENGTH across the top - one number, so two browsing
 /// screens cannot lean their grounds by two different amounts and read as two products.
 #[test]
 fn the_shared_card_arrangement_leans_by_the_shared_ground_strength() {
@@ -301,12 +301,12 @@ fn the_shared_card_arrangement_leans_by_the_shared_ground_strength() {
     );
 }
 
-/// **[`AmbientWash::sample`] is the shader's own bilinear, on the CPU** — the whole point of it
+/// **[`AmbientWash::sample`] is the shader's own bilinear, on the CPU** - the whole point of it
 /// is that a caller can paint the EXACT colour the ground already puts at a point, and an
 /// approximation would show as a rectangle rather than a dissolve.
 ///
 /// Graded against `fs_ambient.frag`'s two mixes (`mix(mix(tl,tr,u), mix(bl,br,u), v)`) at the
-/// four corners and at the centre, on a wash whose corners are four distinguishable colours —
+/// four corners and at the centre, on a wash whose corners are four distinguishable colours -
 /// which is also what pins the CORNER ORDER (tl, tr, br, bl, the order `Painter::ambient` and
 /// `Painter::grad4` both take): swapping any pair still passes a test written on a flat wash.
 #[test]
@@ -337,7 +337,7 @@ fn the_ambient_wash_reports_the_colour_the_shader_puts_at_a_point() {
         [0.5, 0.5, 0.25],
         "centre",
     );
-    // …and a point outside the rect clamps rather than extrapolating: a fade band drawn at the
+    // ...and a point outside the rect clamps rather than extrapolating: a fade band drawn at the
     // very edge of the screen must not ask for a colour the gradient never had.
     close(w.sample(r, r.x - 500.0, r.y - 500.0), tl, "clamped past the top left");
 }

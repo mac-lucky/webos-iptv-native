@@ -1,4 +1,4 @@
-//! `cbuf` — fixed NUL-terminated C-string buffer helpers (route HUD buffers, poster keys,
+//! `cbuf` - fixed NUL-terminated C-string buffer helpers (route HUD buffers, poster keys,
 //! the text glyph-cache keys). ONE read + write pair so the truncate-and-NUL rules can't
 //! drift between hand-rolled copies.
 use std::os::raw::c_char;
@@ -10,7 +10,7 @@ pub fn as_bytes(b: &[u8]) -> &[u8] {
 }
 
 /// write raw bytes into the fixed byte-array field, zero-filled then truncated (always
-/// NUL-terminated). The byte-slice variant of [`set_bytes`] — no UTF-8 requirement.
+/// NUL-terminated). The byte-slice variant of [`set_bytes`] - no UTF-8 requirement.
 pub fn set_bytes_raw(dst: &mut [u8], b: &[u8]) {
     dst.fill(0);
     let n = b.len().min(dst.len().saturating_sub(1));

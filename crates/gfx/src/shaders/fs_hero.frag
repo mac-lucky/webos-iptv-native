@@ -3,7 +3,7 @@
 //
 // The measured reason (dev television, Mali-T820, Home's hero with the per-draw-class overdraw
 // ledger armed):
-// the hero submits 5.39M authored pixels a frame against a 2.07M-pixel panel — 2.60x — and 90% of
+// the hero submits 5.39M authored pixels a frame against a 2.07M-pixel panel - 2.60x - and 90% of
 // that is three stacked full-panel layers. The art is 2,073,600 px; the frame-wide atmospheric ramp
 // is two quads totalling 1,368,576; the corner wedge is two more totalling 1,410,048. The ramp and
 // the wedge are pure GRADIENT: no texture, ~3 ALU each. Their whole cost is that they are 2.78M
@@ -12,8 +12,8 @@
 // Both fields are cheap CLOSED FORMS of the authored pixel position, and both are the same ink
 // (theme::SCRIM_INK) at different weights. So this shader evaluates both where the art already is:
 //
-//   a1  the atmospheric ramp — two linear segments meeting at a knee (home::base_scrim_a)
-//   a2  the corner wedge — hero_scrim_a(x) feathered in over [top, knee] (widgets::hero_scrim_quads)
+//   a1  the atmospheric ramp - two linear segments meeting at a knee (home::base_scrim_a)
+//   a2  the corner wedge - hero_scrim_a(x) feathered in over [top, knee] (widgets::hero_scrim_quads)
 //
 // Two straight-alpha layers of ONE ink compose exactly as a1 + a2 - a1*a2, so B below is what the
 // two of them together do to whatever is under them. The art itself may be translucent (it fades
@@ -33,7 +33,7 @@
 //
 // Pairs with vs_img.vert, which already hands over v_cuv and v_p (quad-local pixels). u_org is the
 // quad's CENTRE in authored pixels, so v_p + u_org is the screen position both fields are defined
-// in — the art quad is a `Rect::cover`, so it is not the panel and its own UV cannot stand in.
+// in - the art quad is a `Rect::cover`, so it is not the panel and its own UV cannot stand in.
 // v_p/u_org are highp for the same reason fs_src.frag's coordinate chain is: an fp16 difference of
 // two ~1000px numbers is a third of a pixel, and these ramps run over hundreds of them.
 precision mediump float;

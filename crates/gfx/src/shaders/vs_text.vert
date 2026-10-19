@@ -1,6 +1,6 @@
 // Text vertex shader: unit quad -> the string texture's pixel rect, v_tuv passes the quad UV.
 // v_ly carries the fragment's ABSOLUTE LOGICAL SCREEN Y (the same space `u_trect.y` is passed in,
-// i.e. Painter's own coordinates) for the fade program's vertical edge bands — a coordinate chain,
+// i.e. Painter's own coordinates) for the fade program's vertical edge bands - a coordinate chain,
 // so highp per `ui/CLAUDE.md`'s Mali rule (see fs_text.frag's v_tuv note for the same reasoning).
 // Shared by the plain program too; fs_text.frag simply never reads it, which GLSL ES permits.
 attribute vec2 a_pos;

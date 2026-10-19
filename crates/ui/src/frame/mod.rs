@@ -1,4 +1,4 @@
-//! The frame scheduler (spec §8): `Budget` — admission control, not sampling (§8.1) — the
+//! The frame scheduler (spec §8): `Budget` - admission control, not sampling (§8.1) - the
 //! `RenderSet` residency check (§8.3), and `glass::GlassPlan`, the glass chain's half of §8.3:
 //! the layer/region backdrop registry and the chrome material whose lifetime belongs to no screen.
 //!
@@ -9,7 +9,7 @@
 //! `has_queued_work` from it.
 //!
 //! `render_set.rs` is the OTHER half of §8.3 and is not the budget at all: the list of every
-//! render alive in one frame and the three rules over it, all three of which can now fail —
+//! render alive in one frame and the three rules over it, all three of which can now fail -
 //! `RENDER_BYTES_MAX` is derived from the device's memory measurement rather than a placeholder,
 //! and screens state what they hold through `Screen::render_report`. §8.1's text OCCUPANCY bound
 //! lives where the cache does, in `text.rs` (`begin_frame`/`live_this_frame`/`take_evicted_hot`),

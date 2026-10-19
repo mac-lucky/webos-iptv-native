@@ -1,7 +1,7 @@
 //! One-producer / one-consumer access-unit FIFO with byte-cap backpressure (was
 //! src/aq.c). The player consumer allocates an `AuQueue` and passes `&q`; `aq_pop`
 //! hands back a malloc'd `AuNode` the caller reads and frees. AuNode uses a flexible
-//! array member (`data[]`); AuQueue embeds pthread objects — both repr(C) so the
+//! array member (`data[]`); AuQueue embeds pthread objects - both repr(C) so the
 //! layouts match glibc.
 use std::os::raw::{c_int, c_long, c_uchar, c_void};
 use std::ptr;
@@ -55,7 +55,7 @@ pub unsafe fn aq_is_aborted(q: *const AuQueue) -> bool {
     aborted
 }
 
-/// crate-internal: read a popped node's fields (es, key, pts, len, data ptr) —
+/// crate-internal: read a popped node's fields (es, key, pts, len, data ptr) -
 /// the player engine's feed loop needs them without re-exposing the raw offsets.
 #[inline]
 pub unsafe fn au_fields(n: *mut AuNode) -> (c_int, c_int, i64, c_int, *const u8) {
@@ -91,14 +91,14 @@ fn aq_init_cap(q: *mut AuQueue, cap: c_long) {
     }
 }
 
-/// `not_full` is the one condvar [`aq_park_deadline`] times out against — every other wait in
+/// `not_full` is the one condvar [`aq_park_deadline`] times out against - every other wait in
 /// this file is untimed. On Linux, bind it to `CLOCK_MONOTONIC` so that timeout tracks elapsed
 /// time even if the wall clock steps (NTP correction; this TV's own pmlog clock is documented as
-/// running skewed) — a REALTIME-based timed wait can block far past its 10 ms deadline on a
+/// running skewed) - a REALTIME-based timed wait can block far past its 10 ms deadline on a
 /// backward step, which is exactly the TCP-window-collapse this drain-while-parked mechanism
 /// exists to prevent. `pthread_condattr_setclock` does not exist on macOS, so the host build (and
 /// its tests, which check the drain LOGIC, not clock robustness) keeps the default REALTIME
-/// clock — matched by [`aq_park_deadline`]'s `#[cfg]` twin.
+/// clock - matched by [`aq_park_deadline`]'s `#[cfg]` twin.
 #[cfg(target_os = "linux")]
 unsafe fn init_not_full_cond(cond: *mut libc::pthread_cond_t) {
     unsafe {
@@ -162,7 +162,7 @@ pub fn aq_push_with_drain(
 }
 
 /// A `not_full` timed-wait deadline 10 ms out, on the SAME clock `init_not_full_cond` bound the
-/// condvar to — Linux gets `CLOCK_MONOTONIC` (immune to the wall-clock step this device is
+/// condvar to - Linux gets `CLOCK_MONOTONIC` (immune to the wall-clock step this device is
 /// documented to experience), everywhere else keeps the wall clock the condvar itself defaults
 /// to. Mixing clock bases between the condvar and its deadline would make the timeout meaningless
 /// rather than merely imprecise.
@@ -402,7 +402,7 @@ pub fn aq_set_headroom(q: *mut AuQueue, extra: c_long) {
 /// from one sequential read then cannot read the OTHER lane's next packets until this lane has
 /// drained, which it cannot do before the packets it is blocking arrive. Here the producer may
 /// still finish the push it is on (occupancy is not over the cap), and parks from the one after
-/// until the consumer pops — the same lock-step a queue that sits AT its cap always shows.
+/// until the consumer pops - the same lock-step a queue that sits AT its cap always shows.
 /// The cap only ever falls here, so nobody needs waking: a producer already parked stays parked until a pop
 /// takes the queue under the cap it parked on.
 ///

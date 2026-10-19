@@ -7,7 +7,7 @@
 
 //! **HLS (RFC 8216) in Rust**, for the streams the bundled FFmpeg cannot open itself: it has no
 //! `hls` demuxer and no network protocols (`--disable-network`; its demuxers are matroska, mov,
-//! mpegts, h264, hevc, avi, asf, mpegps and rm). Live-TV addons answer with exactly this — an `.m3u8` master or media
+//! mpegts, h264, hevc, avi, asf, mpegps and rm). Live-TV addons answer with exactly this - an `.m3u8` master or media
 //! playlist of MPEG-TS segments (sometimes fMP4 with an `EXT-X-MAP`, sometimes AES-128), behind
 //! request headers the origin insists on for every playlist, key and segment.
 //!
@@ -16,8 +16,8 @@
 //! decode ([`select`], against `tv_platform::devcaps`), follows the media playlist (live reload
 //! and window per RFC 8216 §6.3, in [`live`]), fetches the segments one after another through the
 //! curl media plane with the stream's [`RequestHeaders`](crate::headers::RequestHeaders),
-//! decrypts them ([`aes`]), and hands `ff::demux` ONE continuous byte stream — the initialization
-//! section first for fMP4 — through the same AVIO read seam the progressive curl source uses.
+//! decrypts them ([`aes`]), and hands `ff::demux` ONE continuous byte stream - the initialization
+//! section first for fMP4 - through the same AVIO read seam the progressive curl source uses.
 //! libavformat then probes mpegts or mov from the bytes.
 //!
 //! - [`playlist`]: the parser (master and media playlists, every URI resolved absolute).
@@ -46,7 +46,7 @@ pub(crate) mod loopback_tests;
 
 pub use source::{CurlHls, CurlTransport, FetchError, HlsError, HlsSource, SystemClock};
 
-/// Does `url` name an HLS playlist by its path (`….m3u8`, case-insensitive, query and fragment
+/// Does `url` name an HLS playlist by its path (`....m3u8`, case-insensitive, query and fragment
 /// ignored)? The cheap test, made before anything is requested.
 pub fn is_playlist_url(url: &str) -> bool {
     let (_, path) = tv_net::net::origin::split(url);

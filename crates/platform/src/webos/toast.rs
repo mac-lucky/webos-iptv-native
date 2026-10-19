@@ -3,8 +3,8 @@
 //! The service takes the caller's identity from the message's application id, else from the sender's
 //! service name, and answers "Unknown Source" when both are empty; for a non-privileged caller the
 //! payload's `sourceId` must equal that identity (webosose `notificationmgr`, `cb_createToast`).
-//! This process holds no service name — the app-id name belongs to ACB, and an anonymous
-//! `LSRegister(NULL)` is the one shape the hub accepts (see [`super::ls2`]) — so the candidate is
+//! This process holds no service name - the app-id name belongs to ACB, and an anonymous
+//! `LSRegister(NULL)` is the one shape the hub accepts (see [`super::ls2`]) - so the candidate is
 //! the application-id call, `LSCallFromApplicationOneReply`, on that same anonymous handle. Whether
 //! the hub lets a jailed app say so about itself is what the `toast` dev trigger measures.
 //!

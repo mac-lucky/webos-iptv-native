@@ -1,10 +1,10 @@
 //! A route-sized document reader: measured text flow, spring scrolling and a continuous rail.
 //!
-//! **The line layout is cached**, keyed by the body's content and the wrap width — not by the
+//! **The line layout is cached**, keyed by the body's content and the wrap width - not by the
 //! `&str`'s identity, because every caller that streams a big JSON preview through here
 //! (`consent.rs`'s `preview_crash`/`preview_usage`) rebuilds that `String` fresh on every frame the
 //! document stays open. Before this cache, `draw` re-measured every line of a payload preview
-//! hundreds of lines long on every frame the scroll spring was moving — one `TextView::measure_h`
+//! hundreds of lines long on every frame the scroll spring was moving - one `TextView::measure_h`
 //! call per line, per frame, for text that had not actually changed. [`DocumentReader::key_changed`]
 //! is the pure decision (host-testable with no font/GL involved); the expensive rebuild behind it
 //! runs only on a miss, and drawing already only touches the lines the clip rect can see.
@@ -22,11 +22,11 @@ const RAIL_GAP: f32 = theme::space::MD;
 /// One measured line: its top offset within the document, its height, its indentation, whether it
 /// draws bold (an all-caps "heading" line), and its own trimmed text.
 ///
-/// Owns `text` rather than borrowing it from the `body: &str` a caller passed to `draw` — that
+/// Owns `text` rather than borrowing it from the `body: &str` a caller passed to `draw` - that
 /// borrow cannot outlive one call, since every real caller (`consent.rs`'s `preview_crash`/
 /// `preview_usage`) rebuilds `body` as a fresh `String` on every frame the document stays open.
 /// Owning it is what lets the layout be CACHED across those calls at all: `TextView<'a>` itself is
-/// reconstructed fresh each draw (cheap — a struct literal, and `TextView`'s own wrap step is
+/// reconstructed fresh each draw (cheap - a struct literal, and `TextView`'s own wrap step is
 /// separately memoized by content hash, see its module doc), but the expensive per-line
 /// paint-side measurement below reruns when this struct is rebuilt. Layout and input may
 /// separately measure the same flow through their supplied measurement capability.
@@ -45,10 +45,10 @@ pub struct DocumentReader {
     body_size: std::os::raw::c_int,
     /// The measured lines for the body/width `layout_key` was last built from.
     layout: Vec<LineLayout>,
-    /// `(hash of the body text, wrap width in bits)` the current `layout` was built from —
+    /// `(hash of the body text, wrap width in bits)` the current `layout` was built from -
     /// `None` before the first draw. Bits rather than the raw `f32` because `f32` has no `Eq`.
     layout_key: Option<(u64, u32)>,
-    /// The cumulative height of `layout` — the document's total content height, i.e. what `y` used
+    /// The cumulative height of `layout` - the document's total content height, i.e. what `y` used
     /// to be at the end of the old per-frame rebuild loop.
     layout_h: f32,
     /// Bumped every time `layout` is actually rebuilt. Test-only signal that a draw hit vs missed
@@ -119,15 +119,15 @@ impl DocumentReader {
         self.scroll.jump(0.0);
         // The cached LAYOUT deliberately survives a reset: reopening the same document (the same
         // body, at the same width) needs no re-measurement, only a scroll position back at the
-        // top. A genuinely different document simply misses on its next `draw` — the key check is
+        // top. A genuinely different document simply misses on its next `draw` - the key check is
         // by content, not by identity, so nothing here can serve a stale layout.
     }
 
-    /// The scroll TARGET is at the top — UP leaves the document (spec §7.3 step 2).
+    /// The scroll TARGET is at the top - UP leaves the document (spec §7.3 step 2).
     pub fn at_top(&self) -> bool {
         self.target <= 0.0
     }
-    /// The scroll target is at the end — DOWN leaves. An empty document is at both ends.
+    /// The scroll target is at the end - DOWN leaves. An empty document is at both ends.
     pub fn at_end(&self) -> bool {
         self.target >= self.max_scroll
     }
@@ -148,7 +148,7 @@ impl DocumentReader {
     }
 
     /// `true` (and records the new key) when `(body, text_w)` differs from what `layout` was last
-    /// built from — i.e. a cache MISS that the caller must rebuild for. Pure: no text measurement,
+    /// built from - i.e. a cache MISS that the caller must rebuild for. Pure: no text measurement,
     /// no `Painter`, so it is exactly what a host test can grade without a font loaded.
     fn key_changed(&mut self, body: &str, text_w: f32) -> bool {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -217,7 +217,7 @@ impl DocumentReader {
             }
             // Reconstructed fresh per visible line rather than cached: a `TextView` is a cheap
             // struct literal over the owned `line.text`, and its own wrap step is memoized
-            // separately by content hash (`text_view.rs`'s module doc) — the cost this cache
+            // separately by content hash (`text_view.rs`'s module doc) - the cost this cache
             // exists to remove is the MEASUREMENT above, done once per rebuild, not this.
             let mut view = TextView::new(&line.text, self.body_size, theme::TEXT_READING)
                 .leading(self.body_leading()).break_long_words();
@@ -310,7 +310,7 @@ mod tests {
         );
     }
 
-    /// **The caching decision itself** — no `Painter`, no `TextView::measure_h`, so this runs with
+    /// **The caching decision itself** - no `Painter`, no `TextView::measure_h`, so this runs with
     /// no font loaded, the same reason this module's other tests never call `draw`. Two calls with
     /// an unchanged `(body, text_w)` must be a cache HIT (`key_changed` false, so `draw` skips
     /// `rebuild_layout`); a change in either must MISS.
@@ -339,15 +339,15 @@ mod tests {
         );
     }
 
-    /// **`draw` only rebuilds on a miss** — grades that decision the way the module's other tests
+    /// **`draw` only rebuilds on a miss** - grades that decision the way the module's other tests
     /// grade the spring, directly on the struct, WITHOUT calling `draw`/`rebuild_layout`
     /// themselves: those reach `TextView::measure_h`, which needs a real font and (on the
-    /// television) GL, neither of which a plain `cargo test --lib` links in — nothing else
+    /// television) GL, neither of which a plain `cargo test --lib` links in - nothing else
     /// reachable from a host test calls them, so the linker dead-strips the symbols, and calling
     /// them here would fail at `ld`, not at an assertion (the same host/device boundary
     /// `docs/agent-reference.md`'s testing section describes for `ff.rs`). `layout_generation`
-    /// is bumped only inside `rebuild_layout`, so asserting it here — without ever calling that
-    /// function — instead pins the exact CONTRACT `draw` relies on: it must call `rebuild_layout`
+    /// is bumped only inside `rebuild_layout`, so asserting it here - without ever calling that
+    /// function - instead pins the exact CONTRACT `draw` relies on: it must call `rebuild_layout`
     /// (and thus bump the generation) if and only if `key_changed` just returned `true`.
     #[test]
     fn two_draws_with_the_same_body_hit_the_cache() {

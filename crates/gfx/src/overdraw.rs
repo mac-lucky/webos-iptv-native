@@ -1,4 +1,4 @@
-//! Draw-class OVERDRAW ledger and draw-class MASK — the attribution instrument for the 88.6% of
+//! Draw-class OVERDRAW ledger and draw-class MASK - the attribution instrument for the 88.6% of
 //! the frame that is not the glass.
 //!
 //! `docs/backdrop-blur-profiling.md` established that the whole frame rasterizes **3.65 quads per
@@ -10,7 +10,7 @@
 //! 1. **What does the APP submit?** [`gate`] sums, per draw class, the screen-visible area of every
 //!    quad the app actually issues, on the CPU, exactly. `/tmp/webosiptv-overdraw` arms it and it
 //!    logs one `OVERDRAW` line a second. This is immune to the two traps that make per-phase HWCNT
-//!    cycle counts a bad budget — it is not `glFinish`-serialised and it cannot be billed for
+//!    cycle counts a bad budget - it is not `glFinish`-serialised and it cannot be billed for
 //!    another process's work.
 //! 2. **What does a class COST?** `/tmp/webosiptv-drawmask=<classes>` refuses every draw of the
 //!    named classes, so a whole-frame `frame.ui` HWCNT A/B against the unmasked control prices that
@@ -18,7 +18,7 @@
 //!    therefore the **compositor floor**: whatever `frame.ui` still costs with an empty page is
 //!    work this app cannot remove.
 //!
-//! A masked leg is deliberately a BROKEN PICTURE. This is a measurement knob, not a feature — the
+//! A masked leg is deliberately a BROKEN PICTURE. This is a measurement knob, not a feature - the
 //! mask exists so a control-leg difference can be taken, and every leg it produces except the
 //! control is unshippable by construction.
 //!
@@ -27,29 +27,29 @@
 
 /// What kind of quad a draw call submits. One variant per PRIMITIVE FAMILY rather than per screen
 /// element, because that is the granularity `gfx`/`text` can label a draw at without every screen
-/// having to declare itself — and it is enough to separate the things that plausibly differ in
+/// having to declare itself - and it is enough to separate the things that plausibly differ in
 /// cost per pixel (a four-tap blur pass, a textured card composite, a flat SDF fill).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Class {
-    /// `draw_ambient` — the OPAQUE four-corner page wash.
+    /// `draw_ambient` - the OPAQUE four-corner page wash.
     Ambient = 0,
-    /// `draw_grad4`/`draw_art_scrim` — translucent hero gradients and artwork bottom scrims.
+    /// `draw_grad4`/`draw_art_scrim` - translucent hero gradients and artwork bottom scrims.
     Grad = 1,
-    /// `draw_rect`/`draw_rrect` and their sheened twins — every SDF fill, focus glow included.
+    /// `draw_rect`/`draw_rrect` and their sheened twins - every SDF fill, focus glow included.
     Rect = 2,
-    /// `draw_shadow` — the standalone soft drop-shadow pass (the profile chip; cards fold theirs).
+    /// `draw_shadow` - the standalone soft drop-shadow pass (the profile chip; cards fold theirs).
     Shadow = 3,
-    /// `draw_tex_carded` — the folded card composite (texture + rim + penumbra), i.e. every art tile.
+    /// `draw_tex_carded` - the folded card composite (texture + rim + penumbra), i.e. every art tile.
     Card = 4,
-    /// `draw_tex`/`draw_tex_stroked` — any other textured quad (icons, masks, backdrop art).
+    /// `draw_tex`/`draw_tex_stroked` - any other textured quad (icons, masks, backdrop art).
     Image = 5,
-    /// `text::draw_text*` — one quad per cached glyph STRING.
+    /// `text::draw_text*` - one quad per cached glyph STRING.
     Text = 6,
-    /// `fs_glass` — the backdrop panel composite.
+    /// `fs_glass` - the backdrop panel composite.
     Glass = 7,
     /// The blur chain's own FBO passes, measured in TARGET pixels (they do not touch the panel).
     Blur = 8,
-    /// `gfx::draw_field` — the magnified UNDERLAY FIELD, plus the reduction chain that produces
+    /// `gfx::draw_field` - the magnified UNDERLAY FIELD, plus the reduction chain that produces
     /// it, booked in TARGET pixels like [`Blur`](Self::Blur). Unlike `Blur` this one IS maskable,
     /// and masking it removes the whole feature at once: `gfx::field_kick` refuses
     /// before the chain runs, so a `drawmask=field` leg prices the sample and the draw together
@@ -65,7 +65,7 @@ pub const NAMES: [&str; NCLASS] = [
 ];
 
 /// The dev arm: the real ledger and the real mask. Its release twin sits below, same names, same
-/// shape, doing nothing — and the `pub use` under it re-exports whichever one is compiled.
+/// shape, doing nothing - and the `pub use` under it re-exports whichever one is compiled.
 #[cfg(feature = "devtriggers")]
 mod imp {
     use super::{Class, NAMES, NCLASS};
@@ -81,7 +81,7 @@ mod imp {
         /// `Painter::clip`'s live box in AUTHORED coordinates, or `None` for the whole canvas.
         static CLIP: Cell<Option<[f32; 4]>> = const { Cell::new(None) };
         /// PER-CLASS cells, not one `Cell<[f64; NCLASS]>`. An array cell has to be read and
-        /// written WHOLE — 72 + 36 bytes copied twice for every booked draw — and the DIRECTION of
+        /// written WHOLE - 72 + 36 bytes copied twice for every booked draw - and the DIRECTION of
         /// that cost is what makes it a measurement problem rather than a micro-optimisation: a
         /// `drawmask` leg books fewer draws than its control, so it pays less bookkeeping, IN THE
         /// SAME DIRECTION as the saving it is trying to price. This module's whole claim is that
@@ -100,7 +100,7 @@ mod imp {
     }
 
     /// Arm the mask from a trigger body: class names separated by anything non-alphanumeric, or
-    /// `all`. An unknown name is reported rather than silently ignored — a leg that measured the
+    /// `all`. An unknown name is reported rather than silently ignored - a leg that measured the
     /// control twice reads exactly like "this class costs nothing".
     pub fn set_mask(spec: &str) {
         let mut mask = 0u32;
@@ -169,7 +169,7 @@ mod imp {
         // [`Class::Blur`] is ACCOUNTING-ONLY and books itself through [`note_px`]: its passes write
         // reduced-resolution FBOs, so their authored-coordinate quad is meaningless here, and half
         // a masked chain would leave the panel sampling a stale texture rather than measuring
-        // anything. The whole glass — chain included — is masked at `Class::Glass` instead.
+        // anything. The whole glass - chain included - is masked at `Class::Glass` instead.
         if c == Class::Blur {
             return false;
         }
@@ -196,7 +196,7 @@ mod imp {
         false
     }
 
-    /// Book `px` fragments against `c` directly — for a pass whose quad is not in authored
+    /// Book `px` fragments against `c` directly - for a pass whose quad is not in authored
     /// coordinates at all (the blur chain writes reduced-resolution FBOs).
     #[inline]
     pub fn note_px(c: Class, px: f64) {
@@ -256,10 +256,10 @@ mod imp {
     }
 }
 
-/// The release arm: every entry point is present, `#[inline]`, and does nothing — so a release
+/// The release arm: every entry point is present, `#[inline]`, and does nothing - so a release
 /// binary carries neither the branch nor the counters, and every call site compiles unchanged.
 ///
-/// A MODULE rather than seven `#[cfg(not(…))]` + `#[inline]` attribute pairs standing loose at
+/// A MODULE rather than seven `#[cfg(not(...))]` + `#[inline]` attribute pairs standing loose at
 /// file scope, which is the shape this repository has been bitten by twice: a function inserted
 /// between such a pair captures the attribute meant for its neighbour, nothing warns, and the only
 /// symptom is codegen (`ff.rs`'s `stream_index` lost its `#[inline]` exactly that way). One `cfg`

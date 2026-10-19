@@ -1,11 +1,11 @@
 //! SDL2_ttf text rendering (was src/text.c): font cache + glyph-texture LRU +
 //! draw_text. Main-thread only (all GL), so the caches are plain statics (no
-//! locking). Uses gfx's link_program/use_prog (crate path). Mostly GL/TTF FFI —
+//! locking). Uses gfx's link_program/use_prog (crate path). Mostly GL/TTF FFI -
 //! the retui text backend.
 //!
 //! The glyph cache is an LRU **with a hot window** since phase 11 (spec §8.1): an entry drawn
 //! within the last eight frames is not evicted while any colder slot exists, and the case where
-//! every slot is hot gives way rather than refusing — counted, not silent. See [`evict_slot`],
+//! every slot is hot gives way rather than refusing - counted, not silent. See [`evict_slot`],
 //! [`begin_frame`] and [`take_evicted_hot`].
 //!
 //! # One face, and what it cannot draw
@@ -43,7 +43,7 @@ use std::rc::Rc;
 use tv_base::surface::{LOGICAL_H as SCR_H, LOGICAL_W as SCR_W};
 use crate::overdraw::{gate, Class};
 
-/// Last resort only. Reaching this is a DEFECT, not a graceful degradation — see `font_at`.
+/// Last resort only. Reaching this is a DEFECT, not a graceful degradation - see `font_at`.
 const DROIDSANS: &CStr = c"/usr/share/fonts/DroidSans.ttf";
 
 /// The shipped fonts, addressed relative to wherever the ipk actually got installed
@@ -126,7 +126,7 @@ extern "C" {
         text: *const c_char,
         fg: SdlColor,
     ) -> *mut SdlSurface;
-    /// Metrics-only sizing — the same numbers `TTF_RenderUTF8_Blended` would produce, with no
+    /// Metrics-only sizing - the same numbers `TTF_RenderUTF8_Blended` would produce, with no
     /// rasterization and no surface. Present in the TV's own `libSDL2_ttf-2.0.so.0.14.0` (verified
     /// on device 2026-07-29 by dumping its dynamic symbols), and in the NDK sysroot copy we link
     /// against, so this resolves for real at link time like every other TTF symbol here.
@@ -159,11 +159,11 @@ static mut TLF_COL: c_int = 0;
 static mut TLF_TEX: c_int = 0;
 static mut TLF_FADE: c_int = 0;
 /// **Vertical edge-fade bands, in logical screen y** (the same absolute space `u_trect`'s `y`
-/// lives in) — the counterpart of [`TLF_FADE`]'s horizontal one. `(0.0, 0.0)` (the default, since
+/// lives in) - the counterpart of [`TLF_FADE`]'s horizontal one. `(0.0, 0.0)` (the default, since
 /// `y1 > y0` is then false) means "off": the shader's gate skips the multiply rather than relying
 /// on a sentinel width like the horizontal band's, because a vertical band has no natural "past
 /// the string" edge to sentinel against. See [`draw_text_fade`] and `ui::widgets::edge_feather`'s
-/// replacement note in `screens::person_bio` for why this exists — a scrolling viewport's edge used to
+/// replacement note in `screens::person_bio` for why this exists - a scrolling viewport's edge used to
 /// be an OPAQUE panel-coloured gradient painted over the glass, which read as a grey band rather
 /// than the text dissolving.
 static mut TLF_VTOP: c_int = 0;
@@ -178,9 +178,9 @@ static mut TEXT_OK: c_int = 0;
 #[derive(Clone, Copy)]
 struct TCacheEntry {
     s: [u8; 96], // key PREFIX (set_entry_key truncates to 95 bytes + NUL); klen holds the full length
-    hash: u64,   // key hash (FULL string+sz+bold) — a cheap pre-compare before the byte memcmp
+    hash: u64,   // key hash (FULL string+sz+bold) - a cheap pre-compare before the byte memcmp
     // Full (untruncated) key length. Load-bearing for ≥96-byte strings: the stored key is a
-    // truncated prefix, so a `prefix == full_probe` equality could NEVER match — every long
+    // truncated prefix, so a `prefix == full_probe` equality could NEVER match - every long
     // string (a Cyrillic synopsis line crosses 95 bytes at ~48 chars) re-rendered, re-uploaded
     // and evicted a slot EVERY FRAME. The predicate is hash + klen + prefix; the 64-bit SipHash
     // over the full string is the discriminator, the prefix/len compares are the sanity check.
@@ -195,7 +195,7 @@ struct TCacheEntry {
     ink_t: c_int,
     ink_b: c_int,
     use_: c_uint,
-    /// The [`TFRAME`] this entry was last drawn on — 0 for "never, this session".
+    /// The [`TFRAME`] this entry was last drawn on - 0 for "never, this session".
     ///
     /// `use_` is a use ORDER and answers "least recently used"; this answers "is it ON SCREEN
     /// NOW", which is a different question and the only one the occupancy rule (§8.1) can be
@@ -233,7 +233,7 @@ fn key_hash(s: &[u8], sz: c_int, bold: c_int) -> u64 {
 }
 // Big enough to hold every distinct string visible in one frame WITHOUT eviction. The detail About
 // panel (~30 runs) + Cast row (~14) + episodes/related/hero titles push well past ~48; at that point
-// an LRU thrashes — each frame re-renders dozens of lines via TTF (+ a full-surface ink scan) and
+// an LRU thrashes - each frame re-renders dozens of lines via TTF (+ a full-surface ink scan) and
 // re-uploads them, which showed up as ~22ms About / ~12ms Cast (sub-30fps scrolling into them). With
 // headroom past the ~80 simultaneous worst case, stable text is a pure cache hit after first paint.
 // The simulator's supersampled rendering keeps a second, `n`x texture per visible string beside
@@ -255,7 +255,7 @@ static mut TCLOCK: c_uint = 0;
 static mut TFRAME: c_uint = 0;
 /// Has [`begin_frame`] ever been called? Until it has, [`TFRAME`] is 0, every entry's `last_frame`
 /// reads as "this frame", and the hot rule would refuse every eviction while the counter counted
-/// all of them — so the rule stays OFF and the cache behaves exactly as it did before phase 11.
+/// all of them - so the rule stays OFF and the cache behaves exactly as it did before phase 11.
 /// **The one call site in the loop is wired at integration**; see [`begin_frame`].
 static mut TFRAME_ARMED: bool = false;
 static mut TLIVE: u32 = 0;
@@ -299,7 +299,7 @@ thread_local! {
 }
 
 /// Every text run a recording painter (`ui::Painter::recording`) is handed while `f` runs on this
-/// thread — whether or not the glyph cache or the prewarm queue would take it.
+/// thread - whether or not the glyph cache or the prewarm queue would take it.
 #[cfg(any(test, feature = "test-support"))]
 pub fn capture_text_runs_for_test(f: impl FnOnce()) -> Vec<String> {
     CAPTURED_FOR_TEST.with(|c| *c.borrow_mut() = Some(Vec::new()));
@@ -461,7 +461,7 @@ pub fn clear_background_prewarm() {
 }
 
 /// Drop the background queue only if `owner` (a [`park_prewarm_as_background`] token) still owns
-/// it. A stale token — a newer park took the queue over — leaves it alone.
+/// it. A stale token - a newer park took the queue over - leaves it alone.
 pub fn clear_background_prewarm_owned(owner: u64) {
     if BACKGROUND_OWNER.with(std::cell::Cell::get) == owner {
         clear_background_prewarm();
@@ -483,8 +483,8 @@ pub fn prewarm_pending() -> bool {
 /// so the answer is an environmental observation like the page capture's GPU readiness: the
 /// product loop samples the queue once before dispatch, lets the recorder record it or supply
 /// the recorded one (`app::recorder::Recplay::capture_readiness`), and latches the result here.
-/// The queue changes only inside an iteration's own phases — a panel's recording walk in
-/// `update`, the budgeted drain on the presenting side before the draw, the draw's warm pass — and
+/// The queue changes only inside an iteration's own phases - a panel's recording walk in
+/// `update`, the budgeted drain on the presenting side before the draw, the draw's warm pass - and
 /// a frame that does not present drains nothing, so the latch is the queue as that iteration's
 /// springs saw it. In dump mode the latch is always `false` (see `crate::dump`).
 pub fn latch_surface_text_pending(pending: bool) {
@@ -532,7 +532,7 @@ pub fn prewarm_resident_for_test(bytes: &[u8], sz: c_int, bold: c_int) -> bool {
     })
 }
 
-/// Every rung of `theme::size` — the faces a page's layout is measured in.
+/// Every rung of `theme::size` - the faces a page's layout is measured in.
 const WARM_SIZES: [c_int; 9] = {
     use crate::gfx::tokens::size::*;
     [HERO, DISPLAY, TITLE, HEADLINE, BODY, LABEL, CAPTION, MICRO, DIAGNOSTIC]
@@ -560,7 +560,7 @@ fn warm_job(j: usize) -> (c_int, c_int, &'static [u8]) {
     (WARM_SIZES[face / 2], (face % 2) as c_int, &WARM_GLYPHS[lo..hi])
 }
 
-/// Run warming jobs from the cursor until `budget_us` has passed on `now` — at least one, like
+/// Run warming jobs from the cursor until `budget_us` has passed on `now` - at least one, like
 /// [`drain_budgeted`]. Returns how many ran; 0 once every face is warm.
 fn warm_step(budget_us: u64, mut now: impl FnMut() -> u64, mut run: impl FnMut(c_int, c_int, &[u8])) -> usize {
     WARM_NEXT.with(|next| {
@@ -606,7 +606,7 @@ pub fn reset_font_warm_for_test() {
 
 /// An entry drawn within this many frames is HOT and is not evicted while any colder slot exists.
 ///
-/// Eight at 60 Hz is ~133 ms — comfortably longer than a route cross-fade's dip and than the
+/// Eight at 60 Hz is ~133 ms - comfortably longer than a route cross-fade's dip and than the
 /// stretch either side of a modal capture, which are the moments two screens' text is alive at
 /// once, and short enough that a string genuinely left behind by a navigation is evictable within
 /// a fifth of a second.
@@ -617,7 +617,7 @@ const TCACHE_HOT_FRAMES: c_uint = 8;
 /// It arms the hot rule the first time it is called. The ONE call site is the loop's draw entry
 /// (`app/run.rs`, immediately before `draw` on a PRESENTING iteration): a frame that does not
 /// present rasterises nothing, so the serial counts drawn frames and "touched within 8 frames"
-/// means eight frames the cache could actually have been consulted on — not eight settled loop
+/// means eight frames the cache could actually have been consulted on - not eight settled loop
 /// iterations, after which everything on a still screen would read as cold.
 pub fn begin_frame() {
     unsafe {
@@ -627,7 +627,7 @@ pub fn begin_frame() {
     }
 }
 
-/// **How many distinct cache entries this frame has touched** — its occupancy.
+/// **How many distinct cache entries this frame has touched** - its occupancy.
 ///
 /// The number the page-dip prewarm is refused against: §8.1's bound is
 /// `live_this_frame + queued > TCACHE - 32`. The outgoing page touches its live text first, then the
@@ -675,7 +675,7 @@ unsafe fn take_slot(cache: &[TCacheEntry; TCACHE]) -> usize {
 
 use tv_base::eventlog::log;
 
-/// One line per boot, not one per size — `font_at` is called for every rung of the size ladder,
+/// One line per boot, not one per size - `font_at` is called for every rung of the size ladder,
 /// and 70-odd identical lines would bury the rest of the log.
 fn log_font_fallback_once() {
     static ONCE: std::sync::Once = std::sync::Once::new();
@@ -702,7 +702,7 @@ unsafe fn font_at(sz: c_int, bold: c_int) -> *mut TtfFont {
             if arr[sz].is_null() {
                 // DroidSans is NOT an acceptable outcome, and it used to be an invisible one: the
                 // app booted looking plausible while every rung of the theme::size ladder rendered
-                // in a face the light-hinting/pixel-snapping contract was never tuned for — and
+                // in a face the light-hinting/pixel-snapping contract was never tuned for - and
                 // with no bold companion, so each bold rung became synthetic emboldening applied
                 // AFTER grid-fitting. `init_text` still logged `ok=1`. Measured against the shipped
                 // face: -4.67% mean advance (-45.8% on `J`), +4.2% line box, 2792 -> 873 codepoints.
@@ -717,8 +717,8 @@ unsafe fn font_at(sz: c_int, bold: c_int) -> *mut TtfFont {
         }
         if !arr[sz].is_null() {
             // Light hinting y-snaps strokes to the NEAREST pixel. Arial's own bytecode (default
-            // NORMAL hinting) rounds horizontal bars UP — at bold 26 that draws 4px bars over
-            // 3px stems, inverting the design's stem>bar weight — so every size token had to
+            // NORMAL hinting) rounds horizontal bars UP - at bold 26 that draws 4px bars over
+            // 3px stems, inverting the design's stem>bar weight - so every size token had to
             // dodge "unlucky" px values. Light keeps the whole theme::size scale design-true.
             TTF_SetFontHinting(arr[sz], TTF_HINTING_LIGHT);
         }
@@ -835,7 +835,7 @@ fn set_entry_key(e: &mut TCacheEntry, s: &[u8]) {
     tv_base::cbuf::set_bytes_raw(&mut e.s, s);
 }
 
-/// scan a freshly-rendered TTF surface for its vertical ink bounds — the first and last rows that
+/// scan a freshly-rendered TTF surface for its vertical ink bounds - the first and last rows that
 /// hold a visible (non-transparent) pixel. Blended text is white-on-clear, so alpha (byte 3 of each
 /// ARGB8888 pixel) is the coverage. An all-blank string (e.g. a space) reports the full box.
 unsafe fn surface_ink_v(surf: *const SdlSurface) -> (c_int, c_int) {
@@ -880,7 +880,7 @@ unsafe fn text_tex(
         let cache = &mut *addr_of_mut!(TCACHE_A);
         for e in cache.iter_mut() {
             // klen + prefix, not full equality: the stored key is truncated to 95 bytes (see
-            // TCacheEntry::klen) — starts_with degrades to equality for every short string.
+            // TCacheEntry::klen) - starts_with degrades to equality for every short string.
             if e.hash == hash
                 && e.tex != 0
                 && e.sz == sz
@@ -895,7 +895,7 @@ unsafe fn text_tex(
             }
         }
     }
-    // A miss rasterises, scans ink and allocates a fresh GL texture — the first-use cost a cold
+    // A miss rasterises, scans ink and allocates a fresh GL texture - the first-use cost a cold
     // screen pays per string. Timed as the frame's `text` span, so a `FRAMEDROP` line says how
     // many strings a slow frame rasterised and what they cost (`diag::spans`).
     tv_base::diag::spans::span("text", || text_tex_miss(s_bytes, s_c, sz, bold, hash))
@@ -934,7 +934,7 @@ unsafe fn text_tex_miss(
     }
     let (sw, sh, pixels) = ((*surf).w, (*surf).h, (*surf).pixels);
     let (ink_t, ink_b) = surface_ink_v(surf);
-    // Honour the surface's PITCH. SDL is free to pad each row, and `pitch` — not `w * 4` — is the
+    // Honour the surface's PITCH. SDL is free to pad each row, and `pitch` - not `w * 4` - is the
     // stride it actually wrote; `surface_ink_v` above has always read it, and only this upload
     // assumed the two were equal. They are on the television's SDL2_ttf, which is why this was
     // invisible for the app's whole life; they are NOT on the desktop SDL2_ttf the simulator
@@ -964,12 +964,12 @@ unsafe fn text_tex_miss(
     cache_store(key, hash, sz, bold, tex, sw, sh, ink_t, ink_b)
 }
 
-/// **Which slot a new entry takes**, and the whole of the eviction policy — pure, over the array,
+/// **Which slot a new entry takes**, and the whole of the eviction policy - pure, over the array,
 /// so it can be graded by a host test that renders nothing.
 ///
 /// Today's rule, unchanged by this extraction: the first EMPTY slot, else the least recently used
 /// (lowest `use_`, the [`TCLOCK`] serial). `use_` is a use ORDER and knows nothing about frames, so
-/// this cannot tell an entry drawn on this very frame from one last drawn a minute ago — which is
+/// this cannot tell an entry drawn on this very frame from one last drawn a minute ago - which is
 /// what the occupancy bound the phase-11 plan asks for (§8.1) has to fix.
 fn evict_slot(cache: &[TCacheEntry; TCACHE], frame: c_uint, armed: bool) -> (usize, bool) {
     let hot = |e: &TCacheEntry| {
@@ -996,8 +996,8 @@ fn evict_slot(cache: &[TCacheEntry; TCACHE], frame: c_uint, armed: bool) -> (usi
     }
     match cold {
         Some(i) => (i, false),
-        // Every slot is on screen. Forward progress beats the rule — refusing to store would
-        // re-render this string on every frame for as long as the screen is up — so the LRU goes
+        // Every slot is on screen. Forward progress beats the rule - refusing to store would
+        // re-render this string on every frame for as long as the screen is up - so the LRU goes
         // anyway and the caller counts it.
         None => (lru, true),
     }
@@ -1053,20 +1053,20 @@ unsafe fn cache_store(
     (tex, sw, sh, ink_t, ink_b)
 }
 
-/// Pixel width of `s` at `sz`/`bold` **without rasterizing anything** — pure font metrics.
+/// Pixel width of `s` at `sz`/`bold` **without rasterizing anything** - pure font metrics.
 ///
 /// This used to go through `text_tex`, i.e. it ran `TTF_RenderUTF8_Blended` (a full glyph-run
 /// rasterization), scanned the resulting surface for its ink rows, uploaded a GL texture and then
 /// threw all of it away to return one integer. `TTF_SizeUTF8` answers the same integer from the
 /// font's glyph metrics: in SDL_ttf the blended renderer *sizes its surface with that very call*,
 /// so the two widths are equal by construction, not by approximation. It also means the glyph
-/// cache is no longer churned by pure measurement — the elide binary search, `TextView`'s
+/// cache is no longer churned by pure measurement - the elide binary search, `TextView`'s
 /// per-word wrap sweep and the HUD's template widths were each evicting real, about-to-be-drawn
 /// entries out of the 160 slots to store strings nobody paints.
 ///
 /// No caller depends on the old rasterize-as-a-side-effect: every one of them uses the number for
 /// layout, and the ones that also draw the string get their texture from `draw_text` on the same
-/// frame (a cache miss there, but the identical single render the measure used to do — so the
+/// frame (a cache miss there, but the identical single render the measure used to do - so the
 /// per-frame render count never rises, and for measure-only strings it falls to zero).
 ///
 /// Native widths are cached by the exact bytes, size and weight, so different fitting budgets and
@@ -1126,8 +1126,8 @@ fn measure_native_bounds(s: &CStr, sz: c_int, bold: c_int) -> ((f32, f32), bool)
 /// restructure's `Fault::Measure`. `take_measure_fault` is read at the frame tail, which logs it once.
 static MEASURE_FAULT: AtomicBool = AtomicBool::new(false);
 
-/// The width a string gets with no font to measure it: half an em per byte — the average advance
-/// of a Latin face — so the layout is roughly right and visibly so, rather than collapsed.
+/// The width a string gets with no font to measure it: half an em per byte - the average advance
+/// of a Latin face - so the layout is roughly right and visibly so, rather than collapsed.
 fn unmeasured_width(bytes: usize, sz: c_int) -> f32 {
     bytes as f32 * sz as f32 * 0.5
 }
@@ -1138,7 +1138,7 @@ pub fn take_measure_fault() -> bool {
 }
 
 /// The device / simulator `Measure` (restructure spec §4.3): synchronous, over the loaded fonts,
-/// and LOUD when there are none — a debug build panics, a release build answers the average
+/// and LOUD when there are none - a debug build panics, a release build answers the average
 /// advance and records the fault. The other two implementations are `TableMeasure` (replay) and
 /// `FixtureMeasure` (host tests).
 pub struct TtfMeasure;
@@ -1417,13 +1417,13 @@ mod fitted_line_tests {
     }
 }
 
-/// Truncate `s` to fit `budget` px at `sz`/`bold`, ellipsised — and **memoised**. The per-frame
+/// Truncate `s` to fit `budget` px at `sz`/`bold`, ellipsised - and **memoised**. The per-frame
 /// binary search over candidate widths (each candidate a `text_width` call) is the text-measure
 /// thrash that dropped the player Info panel to ~1fps; caching the RESULT by (text, budget, sz, bold,
 /// cont) makes every later frame a hash lookup, thrash-proof no matter how long the input. `cont=false`
-/// returns `s` unchanged when it already fits (a plain elide — track menu / chapters / info card);
-/// `cont=true` always marks the result with `…` (a continued line whose caller already knows more text
-/// follows — `TextView`). The single truncation impl for the whole UI. Main-thread only, like the
+/// returns `s` unchanged when it already fits (a plain elide - track menu / chapters / info card);
+/// `cont=true` always marks the result with `...` (a continued line whose caller already knows more text
+/// follows - `TextView`). The single truncation impl for the whole UI. Main-thread only, like the
 /// glyph cache.
 pub fn elide(s: &str, budget: f32, sz: c_int, bold: c_int, cont: bool) -> String {
     let mut hh = DefaultHasher::new();
@@ -1439,7 +1439,7 @@ pub fn elide(s: &str, budget: f32, sz: c_int, bold: c_int, cont: bool) -> String
     }
     let out = elide_compute(s, budget, sz, bold, cont);
     if cache.len() > 512 {
-        cache.clear(); // crude cap — plenty for every label/line across a few screens
+        cache.clear(); // crude cap - plenty for every label/line across a few screens
     }
     cache.insert(key, out.clone());
     out
@@ -1455,10 +1455,10 @@ fn elide_compute(s: &str, budget: f32, sz: c_int, bold: c_int, cont: bool) -> St
     elide_by(s, budget, cont, measure)
 }
 
-/// [`elide_by`] that cuts from the MIDDLE: the start and the end of `s` survive around one `…`
+/// [`elide_by`] that cuts from the MIDDLE: the start and the end of `s` survive around one `...`
 /// (the longer half on the start when the kept count is odd), for text whose END matters or has
-/// other text right behind it — a name followed by its sentence's period reads
-/// "Maximilian…czyk." rather than the four dots of "Maximilian….". `s` unchanged when it fits (or
+/// other text right behind it - a name followed by its sentence's period reads
+/// "Maximilian...czyk." rather than the four dots of "Maximilian....". `s` unchanged when it fits (or
 /// the budget is not positive).
 pub fn elide_middle_by(s: &str, budget: f32, measure: impl Fn(&str) -> f32) -> String {
     if budget <= 0.0 || measure(s) <= budget {
@@ -1501,7 +1501,7 @@ mod supplied_elide_tests {
     }
 }
 
-/// rendered height in px of a line of text at `sz`/`bold` — the font's line height, independent of
+/// rendered height in px of a line of text at `sz`/`bold` - the font's line height, independent of
 /// the string. Used to vertically center a glyph on a text line (e.g. the transport clock).
 pub fn text_height(sz: c_int, bold: c_int) -> f32 {
     unsafe {
@@ -1515,7 +1515,7 @@ pub fn text_height(sz: c_int, bold: c_int) -> f32 {
 
 /// The font's **cap band** at `sz`/`bold`: (cap_top, baseline) offsets from the draw-y, measured
 /// once from a reference capital ("H", which is flat-topped and sits on the baseline). This is the
-/// stable, string-independent band UI toolkits centre type on — it deliberately ignores descenders
+/// stable, string-independent band UI toolkits centre type on - it deliberately ignores descenders
 /// (g j y p q) and ascenders, so every label of a given size aligns the same way. Falls back to a
 /// rough em band without TTF.
 pub fn text_cap_band(sz: c_int, bold: c_int) -> (f32, f32) {
@@ -1528,7 +1528,7 @@ pub fn text_cap_band(sz: c_int, bold: c_int) -> (f32, f32) {
     }
 }
 
-/// The layout HEIGHT of one line of `sz`/`bold` text — its cap band, cap-top to baseline. Layout ≠
+/// The layout HEIGHT of one line of `sz`/`bold` text - its cap band, cap-top to baseline. Layout ≠
 /// paint: descenders hang below this and are deliberately not measured (see `ui::label`'s module
 /// docs for the rule). The one place this subtraction lives, because every screen that stacks text
 /// needs it and three of them had written it out by hand.
@@ -1539,7 +1539,7 @@ pub fn cap_h(sz: c_int, bold: c_int) -> f32 {
 
 /// The draw-`y` (texture top) at which text of `sz`/`bold` centres its **cap band** on `cy`. Centres
 /// on the font's cap-top→baseline band rather than the specific string's ink, so a label with
-/// descenders ("From Beginning") and one without ("Go to Movie") land identically — descenders hang
+/// descenders ("From Beginning") and one without ("Go to Movie") land identically - descenders hang
 /// below the optical centre instead of dragging the whole line up.
 pub fn text_vcenter_y(sz: c_int, bold: c_int, cy: f32) -> f32 {
     let (ct, cb) = text_cap_band(sz, bold);
@@ -1547,7 +1547,7 @@ pub fn text_vcenter_y(sz: c_int, bold: c_int, cy: f32) -> f32 {
 }
 
 /// The draw-`y` at which text of `sz`/`bold` sits on the **baseline** of a run of `on_sz`/`on_bold`
-/// text drawn at `on_y` — the one-line twin of [`text_vcenter_y`], for two runs of DIFFERENT sizes
+/// text drawn at `on_y` - the one-line twin of [`text_vcenter_y`], for two runs of DIFFERENT sizes
 /// on the same line.
 ///
 /// Two such runs must align by baseline, never by top: a caption beside a number, a `·` and a
@@ -1556,7 +1556,7 @@ pub fn text_vcenter_y(sz: c_int, bold: c_int, cy: f32) -> f32 {
 /// for exactly this. The subtraction is the cap-band bottoms, which is a font metric and therefore
 /// string-independent (see [`text_cap_band`]).
 ///
-/// The ONE place this arithmetic lives — `widgets::rating_group` had written it out inline, and the
+/// The ONE place this arithmetic lives - `widgets::rating_group` had written it out inline, and the
 /// shelf heading's source annotation needs the same three lines.
 ///
 /// The two band bottoms are subtracted from EACH OTHER before `on_y` is touched, deliberately: a
@@ -1564,8 +1564,8 @@ pub fn text_vcenter_y(sz: c_int, bold: c_int, cy: f32) -> f32 {
 /// every run of a flow through this (`ui::cards::draw_heading`) does not nudge its reference run by
 /// an ULP for the privilege.
 pub fn baseline_y(sz: c_int, bold: c_int, on_sz: c_int, on_bold: c_int, on_y: f32) -> f32 {
-    // The same-token case is the COMMON one — a flow resolves its own reference run through here
-    // too — and it is not free: `text_cap_band` rasterizes through the glyph cache, whose lookup is
+    // The same-token case is the COMMON one - a flow resolves its own reference run through here
+    // too - and it is not free: `text_cap_band` rasterizes through the glyph cache, whose lookup is
     // a linear scan of 160 entries. Twice per heading, per shelf, per frame, inside the grid draw
     // loop, to compute a difference that is zero by construction. Take it as an identity instead.
     if sz == on_sz && bold == on_bold {
@@ -1576,7 +1576,7 @@ pub fn baseline_y(sz: c_int, bold: c_int, on_sz: c_int, on_bold: c_int, on_y: f3
 
 /// The texture a string is DRAWN with and its size in logical px. The logical texture itself, except
 /// under the simulator's supersampled rendering (`surface::render_scale`), where it is the same
-/// string rasterised at `n`x and drawn at `1/n` — so glyphs stay 1:1 with physical pixels while
+/// string rasterised at `n`x and drawn at `1/n` - so glyphs stay 1:1 with physical pixels while
 /// every width and metric the layout reads is still the logical one.
 #[inline]
 unsafe fn drawn_tex(
@@ -1607,7 +1607,7 @@ struct Placed {
     tex: c_uint,
     /// The destination quad on screen, after the caller's zoom.
     quad: crate::gfx::Rect,
-    /// The texture's unzoomed width — the fade program's px→uv divisor.
+    /// The texture's unzoomed width - the fade program's px→uv divisor.
     dw: f32,
     /// The layout width the caller gets back (independent of zoom).
     w: f32,
@@ -1625,7 +1625,7 @@ impl Placed {
     }
 }
 
-/// Look up `s`'s glyph texture (the SAME entry at any zoom — an animation never re-rasterizes) and
+/// Look up `s`'s glyph texture (the SAME entry at any zoom - an animation never re-rasterizes) and
 /// place its quad, grown by `zoom`. `Err(w)` is the width to return when nothing is drawn: 0 for
 /// an empty/unavailable string, the layout width for a run outside the blur-source crop (the
 /// texture stays warm, the driver state changes are skipped).
@@ -1693,14 +1693,14 @@ pub fn draw_text(
 }
 
 /// [`draw_text`] with up to three independent fades (its OWN GL program, so plain text pays no
-/// per-fragment fade cost — see the shader's own header for why every ordinary glyph stays off
+/// per-fragment fade cost - see the shader's own header for why every ordinary glyph stays off
 /// it): a HORIZONTAL one (`hfade`, glyph alpha 1→0 between `from`..`to` px from the string's LEFT
-/// edge regardless of `align` — the About card's and the person header bio's `MORE` dissolve), and
+/// edge regardless of `align` - the About card's and the person header bio's `MORE` dissolve), and
 /// two VERTICAL ones in absolute logical screen y (`vfade_top` ramps 0→1 rising through the band,
-/// `vfade_bot` ramps 1→0 falling through it — a line crossing a SCROLLING viewport's clipped edge,
+/// `vfade_bot` ramps 1→0 falling through it - a line crossing a SCROLLING viewport's clipped edge,
 /// see `ui::text_view::TextView::edge_fade`). Each is `None` by default and costs the shader
 /// nothing extra to skip (a uniform compare, not a texture sample). Falls back to plain
-/// [`draw_text`] if the fade program failed to link — a device with no working fade shader still
+/// [`draw_text`] if the fade program failed to link - a device with no working fade shader still
 /// shows every word, just without the dissolve.
 ///
 /// `zoom` is [`draw_text`]'s: a dissolving line inside a lifted block grows with the lines above
@@ -1730,7 +1730,7 @@ pub fn draw_text_fade(
         };
         crate::gfx::use_prog(TPROGF); // TLF_SCREEN / TLF_TEX / texture unit 0 set once at init
         glUniform4fv(TLF_COL, 1, col);
-        // px → string-texture uv (the varying spans the one-quad string). `(0.0, 0.0)` is "off" —
+        // px → string-texture uv (the varying spans the one-quad string). `(0.0, 0.0)` is "off" -
         // the shader gates on `to > from`, so a caller with no horizontal fade need not sentinel
         // against the string's own width.
         let (hf0, hf1) = hfade.unwrap_or((0.0, 0.0));
@@ -1910,19 +1910,19 @@ mod cache_policy_tests {
     ///
     /// `use_` is a use ORDER: it cannot tell an entry that is on screen RIGHT NOW from one last
     /// drawn a minute ago, so a screen holding more distinct strings than the cache has slots
-    /// evicts exactly the entries it is about to ask for again — the thrash this cache exists to
+    /// evicts exactly the entries it is about to ask for again - the thrash this cache exists to
     /// prevent, at one `TTF_RenderUTF8_Blended` plus a full-surface ink scan plus an upload apiece.
     #[test]
     fn a_hot_text_entry_is_never_evicted_within_eight_frames() {
         let mut c = full_cache();
-        c[0].use_ = 1; // the LRU by use order — and on screen this frame
+        c[0].use_ = 1; // the LRU by use order - and on screen this frame
         c[40].last_frame = 92; // eight frames back: outside the window
         c[41].last_frame = 93; // seven: inside it
         let (slot, forced) = evict_slot(&c, 100, true);
         assert_eq!(slot, 40, "the coldest entry outside the hot window, not the LRU");
         assert!(!forced, "…and nothing hot was evicted");
 
-        // Redraw 40 and the only remaining candidate is 41, seven frames back — INSIDE the
+        // Redraw 40 and the only remaining candidate is 41, seven frames back - INSIDE the
         // window, so still hot. Nothing is evictable and the rule gives way rather than refuse.
         c[40].last_frame = 100;
         let (slot, forced) = evict_slot(&c, 100, true);
@@ -1931,7 +1931,7 @@ mod cache_policy_tests {
     }
 
     /// **If every slot is hot the LRU goes anyway, and it is COUNTED.** Forward progress beats the
-    /// rule — refusing to store would re-render that string on every frame forever — but a screen
+    /// rule - refusing to store would re-render that string on every frame forever - but a screen
     /// that cannot fit its own text in 160 slots is a fact worth having, so it rides the heartbeat
     /// (`evicted_while_hot`) instead of passing in silence.
     #[test]

@@ -1,52 +1,52 @@
-//! `press` — the shared "click" press interaction (tvOS-style), the animated counterpart to a plain
+//! `press` - the shared "click" press interaction (tvOS-style), the animated counterpart to a plain
 //! activation. OK-**down** dips the focused control inward (press-in); OK-**up** releases it back with
 //! an overshoot bounce and, a beat later (so the bounce is actually on screen), the caller commits the
-//! activation. It is genuinely event-driven — the dip persists for as long as the button is physically
-//! held — so a HELD OK is a measurable long-press ([`held_ms`]/[`is_long`]), not a tap. The design
+//! activation. It is genuinely event-driven - the dip persists for as long as the button is physically
+//! held - so a HELD OK is a measurable long-press ([`held_ms`]/[`is_long`]), not a tap. The design
 //! (`Home Screen.dc.html`) fakes down/up with a fixed `setTimeout`; the real remote gives us both
 //! edges, so we use them. That long press is what opens the **item context menu** on a home shelf
-//! card and on the detail page's episode still (`screens/item_menu.rs`) — see [`LONG_MS`].
+//! card and on the detail page's episode still (`screens/item_menu.rs`) - see [`LONG_MS`].
 //!
-//! ONE control is pressed at a time, so one value suffices — `App.input.press`, the only owner (restructure spec §2.2); draw code reads its published snapshot —
+//! ONE control is pressed at a time, so one value suffices - `App.input.press`, the only owner (restructure spec §2.2); draw code reads its published snapshot -
 //! the renderer multiplies the PRESSED element's scale by [`scale`] while [`is_active`]. Pressed is
 //! not always focused: navigation [`cancel`]s the press, and the spring-back then plays on the card
 //! that was pressed while focus (and its pop) has already moved on. The machine does not know which
 //! element that is; the dispatcher's `InputMachine::dip_owner` does, and hands it to draw code as
 //! `PressRead::owner` for as long as the press is active, so a card dips only if it is the owner.
 //! The control-face consumers that read [`scale`] directly (`CtlPop`, `AvatarRow`) still apply it to
-//! the focused one — see their docs.
+//! the focused one - see their docs.
 //!
-//! **Two things take this press, not one.** A CARD ([`begin`]) and a CONTROL FACE ([`begin_ctl`]) —
+//! **Two things take this press, not one.** A CARD ([`begin`]) and a CONTROL FACE ([`begin_ctl`]) -
 //! the design system's `Button` / `CircleButton` / `TransportButton`, whose dip arrives through their
 //! row's [`CtlPop::scale`](crate::widgets::CtlPop::scale). They differ only in whether a HOLD
 //! means anything: a card grows a context menu out of one, a control face has nothing to grow, so
 //! `begin_ctl` does not arm the [`LONG_MS`] latch and a slow press on a Play pill still plays.
 //! Until 2026-08-22 only cards armed it at all, so every control in the app activated on the key-DOWN
-//! and the dip the design system specifies (`tokens/motion.css`, `--press-dip`) had no way to appear —
+//! and the dip the design system specifies (`tokens/motion.css`, `--press-dip`) had no way to appear -
 //! `CtlPop` was already folding a factor that was permanently 1.0.
 //!
 //! Reliability mirrors the scrub commit in `app.rs`: the Magic Remote occasionally drops a key-up, so
-//! [`tick`] resolves a stuck press three ways — a real release (after a minimum visible dip), a stale
-//! heartbeat (dropped key-up), or a hard hold cap — and a press therefore always commits or cancels.
+//! [`tick`] resolves a stuck press three ways - a real release (after a minimum visible dip), a stale
+//! heartbeat (dropped key-up), or a hard hold cap - and a press therefore always commits or cancels.
 use crate::Spring;
 
 /// Rest factor: the focused card sits at its full focus scale (press is a *multiplier* on top).
 const REST: f32 = 1.0;
 /// Full-press dip factor. The design dips a `scale(1.09)` focused card to `scale(1.0)`, i.e. `1/1.09`
-/// — an ~8% inward press. Applied as a factor so it reads as a consistent "press" at any focus scale.
+/// - an ~8% inward press. Applied as a factor so it reads as a consistent "press" at any focus scale.
 const DIP: f32 = 0.918;
-/// Press-in stiffness — critically damped ([`Spring::step`]) so the dip is quick and does NOT bounce.
+/// Press-in stiffness - critically damped ([`Spring::step`]) so the dip is quick and does NOT bounce.
 const K_DOWN: f32 = 620.0;
 /// Spring-back stiffness, paired with [`ZETA_UP`] for the release overshoot (design's
-/// `cubic-bezier(.2,1.5,.35,1)` — the `1.5` is the pop past the endpoint).
+/// `cubic-bezier(.2,1.5,.35,1)` - the `1.5` is the pop past the endpoint).
 const K_UP: f32 = 340.0;
 /// Spring-back damping ratio (`< 1` ⇒ overshoots/rings = the tvOS click pop).
 const ZETA_UP: f32 = 0.55;
-// The control FOCUS POP used to be exported from here as `K_POP`/`ZETA_POP` — this module's own
+// The control FOCUS POP used to be exported from here as `K_POP`/`ZETA_POP` - this module's own
 // release spring, lent to `widgets::CtlPop` under the claim that the design system named two
 // bouncing things, the click and a control arriving at focus. It names ONE. `tokens/motion.css`
 // opens by saying so ("focus ARRIVING is a calm grow, the CLICK is what rings") and its
-// `--ease-bounce` token says to use that curve "for the press spring-back and NOTHING else — never
+// `--ease-bounce` token says to use that curve "for the press spring-back and NOTHING else - never
 // a focus pop". So the pop is critically damped on the TILE's `consts::K_SCALE` now, and the only
 // underdamped spring left in the app is the one below. Removed rather than deprecated: the whole
 // point was that the two moved together, and they must not.
@@ -56,22 +56,22 @@ const MIN_DIP_MS: u32 = 90;
 /// Delay from release to committing the activation, so the spring-back bounce is on screen first.
 const COMMIT_MS: u32 = 120;
 /// Heartbeats were arriving and then stopped for this long ⇒ the key-up was dropped ⇒ auto-release
-/// (twin of `SCRUB_LOST_MS`). Only consulted once a heartbeat has actually been seen (`got_beat`) —
+/// (twin of `SCRUB_LOST_MS`). Only consulted once a heartbeat has actually been seen (`got_beat`) -
 /// THIS remote's OK sends no auto-repeat, so without that gate a plain hold looked like a lost up.
 const LOST_MS: u32 = 350;
-/// Absolute hold ceiling — the last-resort dropped-key-up safety when no heartbeat ever arrives (so a
+/// Absolute hold ceiling - the last-resort dropped-key-up safety when no heartbeat ever arrives (so a
 /// hold shorter than this always waits for the real release). Also the long-press ceiling.
 ///
 /// It is the one place the two press kinds visibly part. A CARD press has already latched long by
 /// here ([`LONG_MS`] is half this) and so springs back without activating; a CONTROL press never
-/// latches, so this is what finally commits it — a button held down forever fires once, at ~1.1 s,
+/// latches, so this is what finally commits it - a button held down forever fires once, at ~1.1 s,
 /// rather than waiting for a release that may never be delivered.
 const MAX_HOLD_MS: u32 = 1000;
 /// A hold at least this long is a long press: it is NO LONGER a tap, so the normal activation is
 /// cancelled ([`tick`]'s latch) and the press just holds + springs back without activating.
 ///
 /// This is the threshold the **item context menu** opens on (`screens/item_menu.rs`, via `app.rs`'s
-/// per-frame press block reading [`is_long`] while the key is still DOWN) — on a home shelf card and
+/// per-frame press block reading [`is_long`] while the key is still DOWN) - on a home shelf card and
 /// on the detail page's episode still. On a screen with no hold action the latch still fires and the
 /// long press stays a deliberate no-op, which is why the cancellation lives here rather than at the
 /// call sites that act on it.
@@ -84,21 +84,21 @@ enum Phase {
     Up,   // released/cancelled: springing back toward REST
 }
 
-/// The press machine (restructure spec §7.4): ONE value, owned by `App.input` — no global. Draw
+/// The press machine (restructure spec §7.4): ONE value, owned by `App.input` - no global. Draw
 /// code reads the published snapshot (`scale`/`is_live`/`is_active` below); only the owner writes.
 pub struct Press {
     sp: Spring,
     phase: Phase,
     down_at: u32,      // tick at press-down (long-press timing)
-    alive: u32,        // last liveness tick (press-down + OK auto-repeats) — the dropped-key-up net
+    alive: u32,        // last liveness tick (press-down + OK auto-repeats) - the dropped-key-up net
     got_beat: bool, // an auto-repeat heartbeat has arrived → `alive` is meaningful for LOST detection
     release_at: u32, // tick of the real key-up (0 = still held)
     commit_at: u32, // tick at which the activation may fire (0 = none scheduled)
-    want_commit: bool, // false after a cancel or the long-press latch — spring back, do NOT activate
-    cancelled: bool,   // this press was ABANDONED (see `is_live`) — distinct from "did not commit"
+    want_commit: bool, // false after a cancel or the long-press latch - spring back, do NOT activate
+    cancelled: bool,   // this press was ABANDONED (see `is_live`) - distinct from "did not commit"
     long: bool,        // the hold crossed LONG_MS → a press-and-hold, not a tap (see `was_long`)
     took: bool,        // the caller already consumed the commit
-    holdable: bool,    // a HOLD is a distinct gesture here (a card) — see `begin` vs `begin_ctl`
+    holdable: bool,    // a HOLD is a distinct gesture here (a card) - see `begin` vs `begin_ctl`
 }
 
 impl Press {
@@ -128,20 +128,20 @@ fn reached(now: u32, t: u32) -> bool {
 }
 
 /// OK-down on the focused CARD: begin (or restart) the press-in dip. A hold is a second gesture
-/// here — past [`LONG_MS`] the activation is cancelled and the caller opens the item context menu
+/// here - past [`LONG_MS`] the activation is cancelled and the caller opens the item context menu
 /// instead ([`is_long`]).
 impl Press {
     pub fn begin(&mut self, now: u32) {
         self.arm(now, true);
     }
 
-    /// OK-down on the focused CONTROL FACE — a `Button`, `CircleButton` or `TransportButton`
+    /// OK-down on the focused CONTROL FACE - a `Button`, `CircleButton` or `TransportButton`
     /// (`ui::widgets`), whose dip is folded in by its row's [`CtlPop::scale`](crate::widgets::CtlPop::scale).
     ///
     /// Identical to [`begin`] in everything the eye can see, and different in one thing it cannot: a
     /// control face has **no hold gesture**. Nothing in this app grows a context menu out of a Play pill
     /// or a transport disc, so the [`LONG_MS`] latch is not armed and a slow press still activates on
-    /// release — where [`begin`]'s would be swallowed. A control that ate a deliberate, firmly-held OK
+    /// release - where [`begin`]'s would be swallowed. A control that ate a deliberate, firmly-held OK
     /// and did nothing would read as a dropped keypress, which is exactly the fault a press animation is
     /// meant to rule out.
     ///
@@ -172,7 +172,7 @@ impl Press {
         self.publish();
     }
 
-    /// A held-key heartbeat (OK 0x101 auto-repeat) — keeps [`LOST_MS`] from firing on a genuine hold.
+    /// A held-key heartbeat (OK 0x101 auto-repeat) - keeps [`LOST_MS`] from firing on a genuine hold.
     pub fn note_alive(&mut self, now: u32) {
         let s = &mut *self;
         if s.phase == Phase::Down {
@@ -183,7 +183,7 @@ impl Press {
     }
 
     /// OK-up: record the release. The bounce starts (respecting [`MIN_DIP_MS`]) and the activation commits
-    /// a [`COMMIT_MS`] beat later — poll [`take_commit`].
+    /// a [`COMMIT_MS`] beat later - poll [`take_commit`].
     pub fn release(&mut self, now: u32) {
         let s = &mut *self;
         if s.phase == Phase::Down && s.release_at == 0 {
@@ -193,14 +193,14 @@ impl Press {
     }
 
     /// Abort the in-flight press: spring back WITHOUT committing. The ONE way a press that will not
-    /// activate ends — navigation or BACK arrived, a hold the app declined, and a hold the app
+    /// activate ends - navigation or BACK arrived, a hold the app declined, and a hold the app
     /// TOOK (the item menu opens over the card). The last is deliberately the same spring: the
     /// card goes from its dip (a press-in on the focus pop; [`DIP`] is a popped card's unpopped
     /// size) back up to its pop on the underdamped release a normal OK press gets, as the menu
     /// opens, and whoever draws the card draws that scale: the opener's lift alone for a card a card
     /// section left out of the page pass, the page as well for an opener no card section draws (see
-    /// [`tick`](Self::tick) for how the frozen host snapshot keeps up in each case). Ending the press at rest instead — which this
-    /// module did from 2026-10-07 to rc.3 — pops the card in one frame, the "still no animation"
+    /// [`tick`](Self::tick) for how the frozen host snapshot keeps up in each case). Ending the press at rest instead - which this
+    /// module did from 2026-10-07 to rc.3 - pops the card in one frame, the "still no animation"
     /// of the 0.8.0-rc.3 report.
     pub fn cancel(&mut self) {
         let s = &mut *self;
@@ -214,15 +214,15 @@ impl Press {
         self.publish();
     }
 
-    /// True while a press is in flight that can still reach its activation — [`is_active`] MINUS the
+    /// True while a press is in flight that can still reach its activation - [`is_active`] MINUS the
     /// cancelled ones.
     ///
     /// **The two are not interchangeable, and reading `is_active` for this is a real bug.** A cancel
     /// only clears the commit; the press stays ACTIVE for the ~200 ms of its spring-back, because that
     /// bounce is what the user sees. A screen that records what its press was armed FOR (`consent`'s
     /// and `onboard`'s `ARMED`) and expires that record against `is_active` therefore keeps reading a
-    /// dead press's identity: press the action pill, press DOWN — which cancels the press and moves
-    /// focus into the list — then press OK on the row before the spring settles, and the row's
+    /// dead press's identity: press the action pill, press DOWN - which cancels the press and moves
+    /// focus into the list - then press OK on the row before the spring settles, and the row's
     /// activation, which is immediate and starts no press of its own, is judged against the abandoned
     /// pill and swallowed. Expiring against THIS instead makes that impossible by construction, which
     /// is the property those screens wanted in the first place. (Codex review, 2026-09-04.)
@@ -231,14 +231,14 @@ impl Press {
         s.phase != Phase::Idle && !s.cancelled
     }
 
-    /// True while a press is dipping or springing back — the renderer applies [`scale`] only then.
+    /// True while a press is dipping or springing back - the renderer applies [`scale`] only then.
     #[inline]
     pub fn is_active(&self) -> bool {
         self.phase != Phase::Idle
     }
 
     /// The focused CARD has been held down at least [`LONG_MS`] RIGHT NOW (still in the press). Always
-    /// `false` inside a [`begin_ctl`] press — a control face has no hold gesture, so the caller's whole
+    /// `false` inside a [`begin_ctl`] press - a control face has no hold gesture, so the caller's whole
     /// held-menu chain short-circuits on this one test instead of each of its arms declining in turn.
     /// **This is the one the hold menu opens on** (`app.rs`'s press block → `screens::item_menu`): firing
     /// while the key is still down is what makes it read as a hold rather than a delayed tap.
@@ -248,7 +248,7 @@ impl Press {
     }
 
     /// How long the focused CARD has been held down right now, while that hold is still undecided:
-    /// `Some(ms)` from the key-down until the key-up (or the press's cancel), `None` otherwise — and
+    /// `Some(ms)` from the key-down until the key-up (or the press's cancel), `None` otherwise - and
     /// always `None` for a [`begin_ctl`] press, which has no hold gesture. Divide by [`LONG_MS`] for
     /// the fraction of the hold elapsed; it keeps counting past it (the menu opens there and the
     /// press is cancelled, which ends it). The hold hint's key cap fills from this.
@@ -258,7 +258,7 @@ impl Press {
     }
 
     /// The current / most-recent press crossed into a press-and-hold (latched at [`LONG_MS`]; stays true
-    /// until the next [`begin`]) — the AFTER-THE-FACT form of [`is_long`], for a caller that wants to
+    /// until the next [`begin`]) - the AFTER-THE-FACT form of [`is_long`], for a caller that wants to
     /// branch tap-vs-hold on the release rather than act the instant the threshold is crossed.
     ///
     /// Nothing reads it today: the item menu deliberately opens on the live [`is_long`] instead, so the
@@ -318,7 +318,7 @@ impl Press {
             Phase::Idle => {}
             Phase::Down => {
                 s.sp.step(DIP, K_DOWN, dt); // fast, non-bouncy dip
-                                            // Long-press latch: once held past LONG_MS this is a press-and-hold, NOT a tap — cancel
+                                            // Long-press latch: once held past LONG_MS this is a press-and-hold, NOT a tap - cancel
                                             // the normal activation so it can never launch (the hard cap below would otherwise fire
                                             // it). The press then just holds the dip and springs back; whether anything HAPPENS is
                                             // the caller's business, read off `is_long` (Home and the detail page's episode
@@ -330,9 +330,9 @@ impl Press {
                 }
                 // Resolve the hold. The PRIMARY trigger is the real key-up (once the dip has shown for
                 // ≥ MIN_DIP_MS): the activation WAITS for the physical release. The other two are
-                // dropped-key-up SAFETY only — `lost` fires when auto-repeat heartbeats were arriving and
+                // dropped-key-up SAFETY only - `lost` fires when auto-repeat heartbeats were arriving and
                 // then stopped (gated on `got_beat`, so THIS remote's OK, which never repeats, is not
-                // mistaken for a lost release — the "launches before release" bug), and `capped` is the
+                // mistaken for a lost release - the "launches before release" bug), and `capped` is the
                 // last-resort ceiling when no heartbeat ever arrives.
                 let released = s.release_at != 0 && reached(now, s.down_at.wrapping_add(MIN_DIP_MS));
                 let lost = s.got_beat && now.wrapping_sub(s.alive) > LOST_MS;
@@ -432,7 +432,7 @@ impl tv_machine::machine::LogicalState for Press {
 }
 
 /// The published snapshot: what a frame's draw and the screens' `armed()` predicates read. It is
-/// a MAIN-THREAD cell written by the owner on every change, not a second copy of the machine —
+/// a MAIN-THREAD cell written by the owner on every change, not a second copy of the machine -
 /// the `Press` in `App.input` is the only state.
 #[derive(Clone, Copy)]
 struct Snap {
@@ -510,8 +510,8 @@ mod tests {
     //! **The two press KINDS**, which is the whole of what [`begin_ctl`] added: a card's hold is a
     //! second gesture and swallows the tap, a control face's hold is nothing and must not.
     //!
-    //! Every one of these drives the real module, and the module is a crate GLOBAL — tests in
-    //! other files drive it too — so each takes `testlock::serial()` for its whole body and leaves
+    //! Every one of these drives the real module, and the module is a crate GLOBAL - tests in
+    //! other files drive it too - so each takes `testlock::serial()` for its whole body and leaves
     //! the spring back at rest on the way out.
     use super::*;
 
@@ -574,7 +574,7 @@ mod tests {
     }
 
     /// A control face has no hold gesture, so a firmly-held OK still activates on the release. The
-    /// same hold on a CARD is a press-and-hold and activates nothing — that asymmetry IS the
+    /// same hold on a CARD is a press-and-hold and activates nothing - that asymmetry IS the
     /// difference between the two entry points, and it is why buttons could not simply call
     /// [`begin`].
     #[test]
@@ -605,7 +605,7 @@ mod tests {
 
     /// The dropped-key-up net, which is the one place the two kinds visibly part. A card has
     /// latched long by [`MAX_HOLD_MS`] and springs back inert; a control never latches, so the
-    /// ceiling is what finally fires it — a button whose release never arrives acts once rather
+    /// ceiling is what finally fires it - a button whose release never arrives acts once rather
     /// than never.
     #[test]
     fn a_control_press_whose_release_never_arrives_commits_at_the_ceiling() {
@@ -631,7 +631,7 @@ mod tests {
     }
 
     /// Navigation (or a fresh click) aborts the press: the face springs back and the activation
-    /// never runs. Identical for both kinds — "you slid off the control".
+    /// never runs. Identical for both kinds - "you slid off the control".
     #[test]
     fn a_cancelled_control_press_springs_back_without_activating() {
         let mut p = Press::new();
@@ -644,7 +644,7 @@ mod tests {
         assert!((p.scale() - REST).abs() < 0.001);
     }
 
-    /// **A cancelled press stops being LIVE at the cancel, not at the end of its bounce** — the
+    /// **A cancelled press stops being LIVE at the cancel, not at the end of its bounce** - the
     /// distinction `is_live` exists for, and the one a screen holding an armed identity has to read
     /// (Codex review, 2026-09-04). It stays `is_active` throughout, because the spring-back is
     /// still on screen; what it can no longer do is own an activation.
@@ -660,7 +660,7 @@ mod tests {
         assert!(!p.is_live(), "…but nothing can be armed on it any more");
         run(&mut p, &mut now, 600);
         assert!(!p.is_active() && !p.is_live(), "and both end together");
-        // …while a press that COMMITS stays live through the commit: `take_commit` clears
+        // ...while a press that COMMITS stays live through the commit: `take_commit` clears
         // `want_commit`, and a screen reading that instead would disarm itself one frame before
         // the activation it armed for actually runs.
         p.begin_ctl(now);
@@ -692,7 +692,7 @@ mod tests {
                 let mut now = 1000;
         p.begin_ctl(now);
         run(&mut p, &mut now, 16);
-        p.release(now); // released almost immediately — well inside MIN_DIP_MS
+        p.release(now); // released almost immediately - well inside MIN_DIP_MS
         run(&mut p, &mut now, MIN_DIP_MS - 32);
         assert!(
             p.scale() < REST - 0.01,

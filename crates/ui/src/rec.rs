@@ -1,11 +1,11 @@
-//! The recorder and the recording (restructure spec §5.3–§5.5): what a controlled boot writes,
+//! The recorder and the recording (restructure spec §5.3 - §5.5): what a controlled boot writes,
 //! how it is bounded, and how it is read back for replay.
 //!
 //! **Format.** A directory: `manifest.json` (the header) and `rec-NNNN.jsonl` segments, one JSON
-//! object per line, `{"f":<frame>,"t":"<kind>",…}`. Kinds per frame: `tick` (EVERY frame),
+//! object per line, `{"f":<frame>,"t":"<kind>",...}`. Kinds per frame: `tick` (EVERY frame),
 //! `present` (the bit and WHY), `in` (an input), `eff` (an effect, `from`/`e`/`addr`), `async`
 //! (an adapter result's address and payload or blob hash), `land` (how many landings a STORE
-//! consumed on this frame — the schedule `tv_machine::landgate` holds a replay to), `life`, `timer`, `st`
+//! consumed on this frame - the schedule `tv_machine::landgate` holds a replay to), `life`, `timer`, `st`
 //! (the logical-state hash, on every EVENT frame), plus schema-3 `metrics` typed measurement
 //! records, pointwise `rs` Focus/Hit resolutions and exactly one final `fo` product-focus
 //! observation per frame. The
@@ -13,7 +13,7 @@
 //! `state_fp`, the build, the features, the armed triggers, `init` (the application's initial
 //! conditions, `H::Init`) and the clock origin.
 //!
-//! **Bounds.** Buffered — one write per frame at most; segment rotation at 2 MiB; a HARD byte cap
+//! **Bounds.** Buffered - one write per frame at most; segment rotation at 2 MiB; a HARD byte cap
 //! (64 MB: the runtime root is a RAM-backed tmpfs on the set) after which the recording STOPS and
 //! says so; directory 0700, files 0600. No `scrub_local` on this path: the directory is private
 //! (`.gitignore`, `outbound-guard.py`'s `PRIVATE_DIRS`).
@@ -22,7 +22,7 @@
 //! Every storage error terminally latches; finish returns final-flush failure to the app.
 //!
 //! **Arming.** A recording starts ONLY at a controlled boot: `Writer::open` takes the frame index
-//! and refuses anything but 0, so the header is a complete initial condition by construction —
+//! and refuses anything but 0, so the header is a complete initial condition by construction -
 //! empty queues, no timers, nothing in flight. A mid-session checkpoint is not promised.
 //!
 //! **Replay** is `ui::replay`. This module knows nothing about machines; it stores lines.
@@ -48,7 +48,7 @@ mod measurements_tests; // `Measurements` over a memoizing native source (moved 
 /// Schema 2's `{s,sz,b,w,h}` row cannot represent those three capabilities losslessly.
 ///
 /// **2 (phase 11): `land`.** A recording now carries the frame every STORE consumed a landing on
-/// — the schedule `tv_machine::landgate` holds a replay's live landings to (§3.3 step 3). Schema 1 could
+/// - the schedule `tv_machine::landgate` holds a replay's live landings to (§3.3 step 3). Schema 1 could
 /// not: the only per-frame arrival it recorded was the dispatcher's `async`, so every result the
 /// legacy pumps drain OUTSIDE that drain had no recorded frame at all, and a schema-1 recording
 /// replayed under the gate would silently grade nothing. Refusing it is the honest answer;
@@ -440,7 +440,7 @@ pub struct Writer {
     stopped: bool,
     failure: Option<RecError>,
     frames: u64,
-    /// Microseconds spent in the writer this second — the heartbeat's `rec=`.
+    /// Microseconds spent in the writer this second - the heartbeat's `rec=`.
     pub spent_us: u64,
 }
 
@@ -537,7 +537,7 @@ impl Writer {
     /// mailbox, which is what `tv_machine::landgate`'s cursor is stepped by, one unit per arrival. The
     /// count and not a boolean, because a store with several sites (`person` has one per fetch)
     /// can take two answers on one frame and one on the next, and collapsing that to "it landed"
-    /// lets a replay consume two arrivals for one cursor step — after which every later landing
+    /// lets a replay consume two arrivals for one cursor step - after which every later landing
     /// of that store reads as late. `gen` is the store's notice generation after the frame:
     /// evidence for a reader, never something the gate keys on.
     pub fn land(&mut self, f: u64, ord: u32, gen: u32, n: u32) {

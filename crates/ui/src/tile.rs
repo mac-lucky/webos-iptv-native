@@ -1,6 +1,6 @@
-//! `Tile` — the library's item abstraction for a shelf tile (restructure spec §10): the title,
+//! `Tile` - the library's item abstraction for a shelf tile (restructure spec §10): the title,
 //! the poster (a server id + path, resolved through `ui::tex`), the resume progress and the
-//! watch marks — and [`TileFacts`], the plain value the application fills from its catalog row.
+//! watch marks - and [`TileFacts`], the plain value the application fills from its catalog row.
 //! The widgets that draw a tile ask a `&dyn Tile` or read a [`TileFacts`] and never a Plex type,
 //! which is the boundary the layer gate (§2.1, `docs/module-layers.md`) holds: `ui` names no
 //! application type, so a caller above it (a screen) converts its row INTO these facts
@@ -33,9 +33,9 @@ pub enum TileKind {
 /// bar, the watched mark and the Continue Watching caption all read one answer.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Resume {
-    /// Played fraction, 0..1 — the resume bar's width.
+    /// Played fraction, 0..1 - the resume bar's width.
     pub frac: f32,
-    /// Milliseconds left to play — the Continue Watching caption's "8 min left".
+    /// Milliseconds left to play - the Continue Watching caption's "8 min left".
     pub left_ms: i64,
 }
 
@@ -63,7 +63,7 @@ pub struct TileFacts<'a> {
     /// The item's OWN landscape art where `thumb` holds a substitute (an episode's 16:9 still);
     /// empty on everything else.
     pub still: &'a str,
-    /// The backdrop's path — the last resort of a landscape tile's fallback chain.
+    /// The backdrop's path - the last resort of a landscape tile's fallback chain.
     pub art: &'a str,
     pub year: i32,
     /// A season's number; an episode's season number.
@@ -72,9 +72,9 @@ pub struct TileFacts<'a> {
     pub ep_index: i32,
     /// A collection's member count; 0 on every other kind.
     pub child_count: i64,
-    /// `Some` while the item is in progress — see [`Resume`].
+    /// `Some` while the item is in progress - see [`Resume`].
     pub resume: Option<Resume>,
-    /// Finished — the corner tick's fact (see [`Tile::watched`]).
+    /// Finished - the corner tick's fact (see [`Tile::watched`]).
     pub watched: bool,
     /// Never started at all (see [`Tile::unwatched`]).
     pub unwatched: bool,

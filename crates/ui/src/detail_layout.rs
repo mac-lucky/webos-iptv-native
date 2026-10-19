@@ -10,11 +10,11 @@ pub const PEOPLE_LEAD: f32 = 32.0;
 pub const PEOPLE_MAX_LINES: usize = 4;
 pub const PEOPLE_INK: [f32; 4] = theme::TEXT_SECONDARY;
 /// The facts row's ink, and the second time this trade has been made: at `TEXT_TERTIARY`
-/// (L=0.317) the row needed α≈0.79 of scrim for 4.5:1 — an essentially black hero corner — so
+/// (L=0.317) the row needed α≈0.79 of scrim for 4.5:1 - an essentially black hero corner - so
 /// `widgets_hero_scrim_tests` carried it at a lowered 2.6 floor and wrote the ink step down as
 /// deferred. Tightening the hero rhythm is what came due: every rung the row moves up sits in
 /// less of the atmospheric ramp (it is linear in `y`), and the two named rungs the owner asked
-/// for cost 0.16 of contrast, which no scrim retune buys back cheaply — the ramp's own
+/// for cost 0.16 of contrast, which no scrim retune buys back cheaply - the ramp's own
 /// measurement says it is 97% of the drop, and steepening it darkens the artwork the hero exists
 /// to show. One ink step costs nothing on screen and takes the row to the ordinary 3.0 floor,
 /// exactly as [`PEOPLE_INK`] did for the people column.
@@ -23,7 +23,7 @@ pub const COMPACT_TITLE_BOT: f32 = MARGIN_Y + theme::logo::COMPACT_H_MAX;
 pub const TOP_MARGIN: f32 = COMPACT_TITLE_BOT + 26.0;
 
 
-/// Top-left anchor for the hero logo while a trailer plays in the background — independent of
+/// Top-left anchor for the hero logo while a trailer plays in the background - independent of
 /// scroll, unlike the pinned [`COMPACT_TITLE_BOT`] title (which answers "how far down have I
 /// scrolled", not "is a trailer playing"). Sits inside the safe-area margins.
 pub const PREVIEW_LOGO_X: f32 = MARGIN_X;
@@ -41,31 +41,31 @@ pub struct HeroChain {
 }
 
 /// Every row below the title is placed the same way: the previous row's own MEASURED bottom edge
-/// plus one named rung from [`theme::space`] — never an absolute offset picked to match a mock.
+/// plus one named rung from [`theme::space`] - never an absolute offset picked to match a mock.
 ///
 /// The rungs are not a rhythm to be kept even; they are the page's GRAMMAR, and what they say is
 /// how strongly two things belong together (owner, 2026-09-18). The closer the relation, the
-/// smaller the distance — so an even ladder of one rung all the way down would be the worst answer
+/// smaller the distance - so an even ladder of one rung all the way down would be the worst answer
 /// available, not the tidiest: it reads as one undifferentiated list and the eye stops seeing any
 /// structure at all. Three degrees are in play here, and the hero uses all three:
 ///
-/// * `SM` — one group. Title, identity line and ratings are the item SAYING WHAT IT IS, and are
+/// * `SM` - one group. Title, identity line and ratings are the item SAYING WHAT IT IS, and are
 ///   meant to read almost as a single object.
-/// * `MD` — a change in the KIND of information. The synopsis is prose; the facts line is date,
+/// * `MD` - a change in the KIND of information. The synopsis is prose; the facts line is date,
 ///   extent and how it plays. Both still belong to the hero.
-/// * `LG` — information giving way to ACTION (see [`btn_y`]'s own note), and
-/// * `XL` — the hero giving way to the next region entirely, which is `content_top`'s rung in
+/// * `LG` - information giving way to ACTION (see [`btn_y`]'s own note), and
+/// * `XL` - the hero giving way to the next region entirely, which is `content_top`'s rung in
 ///   `screens::detail`, measured off the action row's bottom rather than stated as a page offset.
 ///
-/// A gap is between visual OBJECTS, never between coordinates — which is the whole reason this
+/// A gap is between visual OBJECTS, never between coordinates - which is the whole reason this
 /// function adds a measured height before every rung. `+50` between two baselines of 26-tall text
 /// is a 24 gap wearing a number that belongs to neither the type nor the scale.
 /// "Measured" means the row's real bounding box, which for the identity and ratings lines is
-/// their badge/mark (`widgets::BADGE_H`, `widgets::RATING_MARK_D` — both centred on, and taller
+/// their badge/mark (`widgets::BADGE_H`, `widgets::RATING_MARK_D` - both centred on, and taller
 /// than, the caption text beside them), and for the facts line is the `CAPTION` cap band its own
 /// glyphs match. An item with a taller or shorter line at any step still lands the next one a
 /// clean gap below it, and the gaps read the same whether or not the trailer preview has faded a
-/// label's alpha (this function never looks at preview state — see `compute_hero_chain`'s caller,
+/// label's alpha (this function never looks at preview state - see `compute_hero_chain`'s caller,
 /// which only ever asks "does the item HAVE this content", never "is it currently visible").
 pub fn hero_chain(
     syn_h: f32,
@@ -84,19 +84,19 @@ pub fn hero_chain(
     let syn_y = (if has_ratings { ratings_y + ratings_h } else { meta_y + meta_h }) + theme::space::SM;
     let facts_y = syn_y + syn_h.max(34.0) + theme::space::MD;
     // The facts row's own icons (`FACTS_GLYPH_D`/capsule) are sized to the `CAPTION` text itself,
-    // unlike the two rows above, so its measured height is the plain cap band — read through the
+    // unlike the two rows above, so its measured height is the plain cap band - read through the
     // `Measure` seam (`check-deps.sh`'s "textmeasure" gate: raw `tv_gfx::text::cap_h` is not
     // reachable outside `text.rs`/`ui/text_view.rs`/`ui/text_buffer.rs`/a `Measure` impl body),
     // the same capability `compute_hero_chain`'s caller already threads down for the synopsis.
     let facts_h = measure.cap_h(theme::size::CAPTION);
     // The one rung in this chain that is a JUDGEMENT rather than a measurement, and the one place
     // the ladder steps twice. Everything above this line is information about the item and is
-    // spaced by how closely it belongs together — `SM` inside the identity group, `MD` where the
+    // spaced by how closely it belongs together - `SM` inside the identity group, `MD` where the
     // kind of information changes. The action row is not information: it is what you can DO, so
     // the step up to `LG` is the grammar saying so.
     //
     // It is also an optical correction, which is why it is not simply "the next rung". The Play
-    // pill is a filled white capsule ~72 tall against a `CAPTION` line of ~18 — at an equal
+    // pill is a filled white capsule ~72 tall against a `CAPTION` line of ~18 - at an equal
     // mathematical gap the heavier object reads as CLOSER, because its mass crowds the air above
     // it. Equal by eye is what the page is judged on, and that is one rung more here.
     let btn_y = facts_y + facts_h + theme::space::LG;
@@ -141,7 +141,7 @@ mod tests {
         let facts_bot = ch.facts_y + measure.cap_h(theme::size::CAPTION);
         // The case the bound exists for is a FULL column. It is anchored on the action row's
         // bottom and grows upward, so at `PEOPLE_MAX_LINES` its top line rises past the facts
-        // row's own band and the two share a horizontal strip — nothing but the width keeps the
+        // row's own band and the two share a horizontal strip - nothing but the width keeps the
         // text apart. A short column does not reach that strip, and since the action row took its
         // optical rung the three-line case clears it by a few pixels; grading the collision at a
         // height the column may or may not have is what made this assertion brittle.
@@ -156,7 +156,7 @@ mod tests {
     }
 
     /// The people column is anchored by its BOTTOM, so its last line sits on the action row's
-    /// bottom edge however many lines the block takes — and each extra line grows UPWARD.
+    /// bottom edge however many lines the block takes - and each extra line grows UPWARD.
     #[test]
     fn the_people_column_grows_upward_off_the_button_row() {
         let btn_y = 846.0;
@@ -209,8 +209,8 @@ mod tests {
         }
     }
 
-    /// Each rung in the hero chain is a gap between two MEASURED bounding boxes — the previous
-    /// row's own cap-top→baseline height plus a named [`theme::space`] rung — never a difference of
+    /// Each rung in the hero chain is a gap between two MEASURED bounding boxes - the previous
+    /// row's own cap-top→baseline height plus a named [`theme::space`] rung - never a difference of
     /// absolute Y coordinates copied off a mock. This is the systematic form the owner asked for
     /// in place of the old `+30`/`+50`/`+54` literals, which happened to reproduce one mock's ys
     /// for one synopsis length and nothing else.
@@ -235,7 +235,7 @@ mod tests {
     }
 
     /// The ladder only ever WIDENS on the way down the hero, and it widens where the meaning
-    /// changes — inside the identity group, then at the change of information kind, then at the
+    /// changes - inside the identity group, then at the change of information kind, then at the
     /// step from information to action. An even ladder would pass every other test in this file
     /// and is exactly the answer the owner ruled out: distance is the grammar, so a chain that
     /// says the same thing at every step says nothing.
@@ -255,7 +255,7 @@ mod tests {
              mass is why the correction is optical rather than merely the next number"
         );
         // And the hero as a whole is further from what follows it than any two rows inside it are
-        // from each other — the region rung `screens::detail::build_layout` adds to `btn_y`.
+        // from each other - the region rung `screens::detail::build_layout` adds to `btn_y`.
         assert!(to_action < theme::space::XL);
     }
 

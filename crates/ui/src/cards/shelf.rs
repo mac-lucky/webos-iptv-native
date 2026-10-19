@@ -1,4 +1,4 @@
-//! [`Shelf`] — one horizontal strip of cards (a person's filmography shelf, a related row).
+//! [`Shelf`] - one horizontal strip of cards (a person's filmography shelf, a related row).
 //!
 //! It wraps the L0 [`CardRow`] (a spring per cell plus the scroll and label-band springs) and adds
 //! what the row deliberately leaves to its caller: reading focus from the engine, the pop rule,

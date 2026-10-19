@@ -13,8 +13,8 @@
 //!
 //! A v6 address appears in two different spellings and they are not interchangeable:
 //!
-//! * **`getaddrinfo` takes the BARE literal** — `::1`. Hand it `[::1]` and resolution fails.
-//! * **A URL takes the BRACKETED form** — `[::1]:8080`. Without the brackets the port colon is
+//! * **`getaddrinfo` takes the BARE literal** - `::1`. Hand it `[::1]` and resolution fails.
+//! * **A URL takes the BRACKETED form** - `[::1]:8080`. Without the brackets the port colon is
 //!   indistinguishable from an address group, and `http://::1:8080` names nothing.
 //!
 //! [`Origin::host`] is therefore **always unbracketed** (it is the resolver's node argument) and
@@ -54,7 +54,7 @@ impl Scheme {
             Scheme::Https => "https",
         }
     }
-    /// Does this scheme require a TLS handshake — and therefore a certificate whose name must
+    /// Does this scheme require a TLS handshake - and therefore a certificate whose name must
     /// match [`Origin::host`]?
     pub fn is_tls(self) -> bool {
         self == Scheme::Https
@@ -68,7 +68,7 @@ impl Scheme {
     }
 }
 
-/// A port this client could actually dial, narrowed to the `i32` the transport takes — `None` for
+/// A port this client could actually dial, narrowed to the `i32` the transport takes - `None` for
 /// anything outside `1..=65535`.
 ///
 /// **The narrowing is the point.** A port read from JSON or a URL arrives as text or an `i64`, and
@@ -79,12 +79,12 @@ pub fn dial_port(p: i64) -> Option<i32> {
     (1..=65535).contains(&p).then_some(p as i32)
 }
 
-/// **One server's address, completely.** Scheme, host and port — no path, no query, no trailing
+/// **One server's address, completely.** Scheme, host and port - no path, no query, no trailing
 /// slash. See the module doc for the bracket invariant on [`Origin::host`] vs [`Origin::authority`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Origin {
     scheme: Scheme,
-    /// **Always UNBRACKETED**, even for a v6 literal — this is the `getaddrinfo` node argument.
+    /// **Always UNBRACKETED**, even for a v6 literal - this is the `getaddrinfo` node argument.
     host: String,
     /// The port to dial. [`Origin::parse`] narrows through [`dial_port`], so anything read out of a
     /// URL is in `1..=65535`; [`Origin::new`] and [`Origin::http`] take the caller's `i32` as given.
@@ -92,7 +92,7 @@ pub struct Origin {
 }
 
 impl Origin {
-    /// Build an origin from parts. `host` may arrive **either** spelling — bare or bracketed —
+    /// Build an origin from parts. `host` may arrive **either** spelling - bare or bracketed -
     /// because a caller holding a v6 address has usually just read it out of a URL authority; it
     /// is stored bare regardless, which is the invariant [`Origin::host`] promises. Unbalanced
     /// brackets are left alone rather than half-stripped.
@@ -111,7 +111,7 @@ impl Origin {
         Origin::new(Scheme::Http, host, port)
     }
 
-    /// Parse an origin out of a URL — **the front door**, and the only way an https origin should
+    /// Parse an origin out of a URL - **the front door**, and the only way an https origin should
     /// come into existence, because the hostname TLS validates against exists nowhere but the URL.
     ///
     /// `None` when there is no host, when the scheme is one this transport does not speak, or when
@@ -136,7 +136,7 @@ impl Origin {
     pub fn is_tls(&self) -> bool {
         self.scheme.is_tls()
     }
-    /// **The resolver's node argument — never bracketed**, even for a v6 literal. Also the name a
+    /// **The resolver's node argument - never bracketed**, even for a v6 literal. Also the name a
     /// TLS certificate must match. See the module doc.
     pub fn host(&self) -> &str {
         &self.host
@@ -144,7 +144,7 @@ impl Origin {
     pub fn port(&self) -> i32 {
         self.port
     }
-    /// **URL serialization — `host:port`, bracketing a v6 literal.** The other half of the
+    /// **URL serialization - `host:port`, bracketing a v6 literal.** The other half of the
     /// bracket invariant: this is what goes in a URL, `host()` is what goes to the resolver.
     pub fn authority(&self) -> String {
         if is_v6_literal(&self.host) {
@@ -153,13 +153,13 @@ impl Origin {
             format!("{}:{}", self.host, self.port)
         }
     }
-    /// `"{scheme}://{authority}"` — no trailing slash, no path. Round-trips through
+    /// `"{scheme}://{authority}"` - no trailing slash, no path. Round-trips through
     /// [`Origin::parse`]. The port is always written, default or not.
     pub fn base(&self) -> String {
         format!("{}://{}", self.scheme.as_str(), self.authority())
     }
 
-    /// **How an origin is written in the event log** — the authority alone for a plaintext origin,
+    /// **How an origin is written in the event log** - the authority alone for a plaintext origin,
     /// the whole base URL for anything else, so a TLS hop is never mistaken for a plaintext one in a
     /// log. It carries no path, no query and no credential.
     pub fn log_form(&self) -> String {
@@ -185,7 +185,7 @@ pub fn split(url: &str) -> (Origin, &str) {
     )
 }
 
-/// The HOST of a URL, **bare** — a borrowed view for a caller that only wants to look at the host
+/// The HOST of a URL, **bare** - a borrowed view for a caller that only wants to look at the host
 /// (is it a numeric literal, or a name that needs resolving?) and has no use for an owned
 /// [`Origin`]. This lives here so that there is exactly one reading of a URL in the crate.
 pub fn url_host(url: &str) -> &str {
@@ -203,7 +203,7 @@ struct Parts<'a> {
     host: &'a str,
     /// `None` when the URL wrote no port at all.
     port: Option<i32>,
-    /// `true` when a `:` was written and what follows it is not a dialable port — the case that
+    /// `true` when a `:` was written and what follows it is not a dialable port - the case that
     /// must not silently become the default port for a caller that can refuse.
     ///
     /// **An EMPTY port counts.** `http://192.0.2.10:` is a truncated write or a half-finished hand
@@ -225,7 +225,7 @@ impl<'a> Parts<'a> {
             Some((_, r)) => (Scheme::Http, false, r),
             None => (Scheme::Http, true, url),
         };
-        // The authority ends at the first `/` — everything from there is the path.
+        // The authority ends at the first `/` - everything from there is the path.
         let (auth, path) = match rest.find('/') {
             Some(i) => (&rest[..i], &rest[i..]),
             None => (rest, ""),
@@ -255,7 +255,7 @@ impl<'a> Parts<'a> {
 }
 
 /// **A DNS shortcut for one origin: dial this address instead of resolving [`Origin::host`].** It
-/// never validates anything — TLS still checks the certificate against the hostname, which stays
+/// never validates anything - TLS still checks the certificate against the hostname, which stays
 /// in the URL and in SNI. libcurl is merely told the answer DNS would have given
 /// (`CURLOPT_RESOLVE`), so no lookup happens at all.
 ///
@@ -273,12 +273,12 @@ pub struct ResolvePin {
 }
 
 /// `CURLOPT_RESOLVE` learned bracketed IPv6 addresses in 7.57.0 (`0x073900`). Below it, the entry
-/// parser is `sscanf("%255[^:]:%d:%255s")` and takes the bare literal — verified in the 7.53.1
+/// parser is `sscanf("%255[^:]:%d:%255s")` and takes the bare literal - verified in the 7.53.1
 /// source the development television runs.
 pub const CURL_RESOLVE_BRACKETS_SINCE: u32 = 0x07_39_00;
 
 impl ResolvePin {
-    /// The pin for `origin` at `address` (bare or bracketed) — `None` unless `origin` is TLS, its
+    /// The pin for `origin` at `address` (bare or bracketed) - `None` unless `origin` is TLS, its
     /// host is a name rather than a literal, and `address` is an IP address.
     pub fn for_origin(origin: &Origin, address: &str) -> Option<ResolvePin> {
         if !origin.is_tls() || origin.host().is_empty() {
@@ -295,7 +295,7 @@ impl ResolvePin {
         })
     }
 
-    /// A pin with none of [`ResolvePin::for_origin`]'s rules — the loopback tests' way of proving
+    /// A pin with none of [`ResolvePin::for_origin`]'s rules - the loopback tests' way of proving
     /// that a name reached the wire through the pin and not through DNS, plaintext included.
     #[cfg(any(test, feature = "test-support"))]
     pub fn for_test(host: &str, port: i32, addr: std::net::IpAddr) -> ResolvePin {
@@ -316,7 +316,7 @@ impl ResolvePin {
         self.addr
     }
 
-    /// The `CURLOPT_RESOLVE` list entry — `host:port:address`, the v6 address bracketed only on a
+    /// The `CURLOPT_RESOLVE` list entry - `host:port:address`, the v6 address bracketed only on a
     /// libcurl that parses brackets (see [`CURL_RESOLVE_BRACKETS_SINCE`]).
     pub fn entry(&self, curl_version_num: u32) -> String {
         match self.addr {
@@ -328,7 +328,7 @@ impl ResolvePin {
         }
     }
 
-    /// `"v4"` or `"v6"` — the only thing about a pin the event log says. Neither the host nor the
+    /// `"v4"` or `"v6"` - the only thing about a pin the event log says. Neither the host nor the
     /// address belongs in a file users paste into issues.
     pub fn family(&self) -> &'static str {
         if self.addr.is_ipv6() {
@@ -338,7 +338,7 @@ impl ResolvePin {
         }
     }
 
-    /// Host and address, for a test's eyes. Never logged — see [`ResolvePin::family`].
+    /// Host and address, for a test's eyes. Never logged - see [`ResolvePin::family`].
     #[cfg(test)]
     pub fn log_form(&self) -> String {
         format!("{} -> {}", self.host, self.addr)
@@ -352,7 +352,7 @@ fn unbracket(host: &str) -> &str {
         .unwrap_or(host)
 }
 
-/// Is this bare host a v6 literal — i.e. does it need bracketing before it can carry a port?
+/// Is this bare host a v6 literal - i.e. does it need bracketing before it can carry a port?
 /// A colon cannot appear in a hostname or in a dotted quad, so one colon is the whole test.
 fn is_v6_literal(host: &str) -> bool {
     host.contains(':')
@@ -439,7 +439,7 @@ mod tests {
         assert_eq!(split("Http://192.0.2.10/x").0.base(), "http://192.0.2.10:80");
     }
 
-    /// A path is not part of an origin — `base()` never grows one, whatever came in.
+    /// A path is not part of an origin - `base()` never grows one, whatever came in.
     #[test]
     fn a_path_is_not_part_of_the_origin() {
         assert_eq!(
@@ -469,11 +469,11 @@ mod tests {
         assert_eq!(Origin::parse("http://192.0.2.10:0"), None);
         assert_eq!(Origin::parse("http://192.0.2.10:70000"), None);
         assert_eq!(Origin::parse("http://192.0.2.10:abc"), None);
-        // an EMPTY port is a port that WAS written — a truncated write, not a request for the
+        // an EMPTY port is a port that WAS written - a truncated write, not a request for the
         // default.
         assert_eq!(Origin::parse("http://192.0.2.10:"), None);
         assert_eq!(Origin::parse("https://addon.example.com:"), None);
-        // …while a URL that writes no `:` at all really does mean the default
+        // ...while a URL that writes no `:` at all really does mean the default
         assert_eq!(Origin::parse("http://192.0.2.10").unwrap().port(), 80);
     }
 
@@ -520,7 +520,7 @@ mod tests {
             Origin::parse("https://addon.example.com").unwrap().log_form(),
             "https://addon.example.com:443"
         );
-        // a v6 literal is bracketed either way — it is a URL authority, not a resolver node
+        // a v6 literal is bracketed either way - it is a URL authority, not a resolver node
         assert_eq!(
             Origin::http("2001:db8::1", 8080).log_form(),
             "[2001:db8::1]:8080"
@@ -576,7 +576,7 @@ mod tests {
         let p = ResolvePin::for_origin(&o, "2001:db8::1").expect("pinned");
         assert_eq!(p.addr(), "2001:db8::1".parse::<std::net::IpAddr>().unwrap());
         assert_eq!(p.family(), "v6");
-        // …and a bracketed spelling of the address is the same address
+        // ...and a bracketed spelling of the address is the same address
         assert_eq!(ResolvePin::for_origin(&o, "[2001:db8::1]"), Some(p));
     }
 

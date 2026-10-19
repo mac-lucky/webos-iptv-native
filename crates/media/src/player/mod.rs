@@ -1,11 +1,11 @@
-//! player — the buffer-feed video engine. THREADING: everything here except
+//! player - the buffer-feed video engine. THREADING: everything here except
 //! sf_on_event/acb_on_event runs on the SDL main thread. Those two are #[no_mangle] and run on
 //! the StarfishMediaAPIs library thread; they touch ONLY `SHARED`. Player-engine callback,
 //! transport and clock state is synchronized in `shared.rs`. The Engine (engine.rs) is
 //! main-thread-confined.
 //!
 //! "Runs on the SDL main thread" is a **compile error to violate** for the two things where it
-//! matters — the ACB/Starfish seam and the native session slot. The application mints ONE
+//! matters - the ACB/Starfish seam and the native session slot. The application mints ONE
 //! [`MainThread`] token and moves it into [`adapter::PlayerAdapter`], which owns the native session.
 //! The seam takes `&MainThread` (reached through the adapter), the slot takes
 //! `&mut PlayerAdapter`, and the token is `!Send`, so a closure that captured either cannot be
@@ -66,14 +66,14 @@ fn sink() -> &'static dyn tv_platform::tv::sink::VideoSink {
 /// which nothing off-device can read.
 ///
 /// The data comes from a source no automated or host run can reach, so without a seed every
-/// headless look at the screen shows the degenerate state. The source is the DEMUXER —
-/// `ff::track_names` publishes these when it opens a part — and the desktop simulator has no
+/// headless look at the screen shows the degenerate state. The source is the DEMUXER -
+/// `ff::track_names` publishes these when it opens a part - and the desktop simulator has no
 /// demuxer at all (the bundled FFmpeg is ARM, and `player::ffi_host` has no video path), so
 /// the picker there can only ever draw what the stream's description sent.
 ///
 /// Pipe-separated: `Russian|English|Original`. An EMPTY file seeds that sample.
 ///
-/// **It seeds the real store and stubs nothing else** — the same `SHARED.track_names` the demuxer
+/// **It seeds the real store and stubs nothing else** - the same `SHARED.track_names` the demuxer
 /// writes, read back through the same precedence the track menu uses. So a seeded
 /// screenshot verifies the ROW, honestly; what it cannot verify is the FFI read that fills the
 /// store on a television. Compiled out of a release build with every other trigger (`devtrig::read` is
@@ -182,7 +182,7 @@ pub fn picture_aspect(fallback: (i32, i32)) -> video_geometry::Aspect {
 
 /// How a direct-play seek re-anchors the pipeline for THIS session (issue #568).
 ///
-/// - [`Segment`](SeekMode::Segment) — Kodi's in-place seek: flush + reopen + `av_seek`, then on the
+/// - [`Segment`](SeekMode::Segment) - Kodi's in-place seek: flush + reopen + `av_seek`, then on the
 ///   first post-seek keyframe `setTimeToDecode` / `setContentInfo` + the private `sendSegmentEvent`.
 ///   No reload, no decoder re-init, so no HDR-mode popup and no A/V-resync glitch. It reaches
 ///   LG-private C++ objects through decompile-derived offsets (`src/starfish.c`'s `sf_pipeline`:
@@ -190,12 +190,12 @@ pub fn picture_aspect(fallback: (i32, i32)) -> video_geometry::Aspect {
 ///   webOS 4.5 only, so it is used only where `inplace_layout_known` holds and the window is not
 ///   `VP_EXPORTED`. On webOS<11 (this 4.5) `setTimeToDecode` returns 0, so `feed_stream` falls
 ///   back to the content-info path (`loadSpi_getInfo` + `setContentInfo(ptsToDecode)`).
-/// - [`NativeSeek`](SeekMode::NativeSeek) — LG's PUBLIC `StarfishMediaAPIs::Seek(const char*)`
+/// - [`NativeSeek`](SeekMode::NativeSeek) - LG's PUBLIC `StarfishMediaAPIs::Seek(const char*)`
 ///   (`_ZN17StarfishMediaAPIs4SeekEPKc`, present on every firmware 1.2 to 11.2): a flushing
 ///   `gst_element_seek` whose segment starts at the millis passed. No private offset, no
-///   `flush()` (Seek flushes itself, and a `flush()` after it re-anchors the segment at 0 — the
+///   `flush()` (Seek flushes itself, and a `flush()` after it re-anchors the segment at 0 - the
 ///   stale-segment stall), no decoder re-init. This is what `VP_EXPORTED` (webOS 5+) uses.
-/// - [`Reload`](SeekMode::Reload) — a full fresh Starfish `Load` per seek (`engine::reload_at`),
+/// - [`Reload`](SeekMode::Reload) - a full fresh Starfish `Load` per seek (`engine::reload_at`),
 ///   built out of Load/Play alone and assuming no layout at all: the old-ABI (3.x) libraries, and
 ///   the fallback both of the others drop to.
 ///
@@ -205,7 +205,7 @@ pub fn picture_aspect(fallback: (i32, i32)) -> video_geometry::Aspect {
 /// preserved across `reload_at`, cleared by a fresh play), so a firmware or file that refuses
 /// does not pay a refused `Seek` plus a full `Load` on every seek. A downgrade to `Reload` (a
 /// `sendSegment` that found no pipeline, a refused `Seek`) is a fact about the StarfishMediaAPIs
-/// object, which `sf_load` constructs and teardown's `sf_destroy` destructs once per session — not
+/// object, which `sf_load` constructs and teardown's `sf_destroy` destructs once per session - not
 /// about the TV. `sendSegmentEvent` itself returns void, so its 0 NEVER means "the segment event
 /// was rejected", only "there was nothing to call it on": a liveness/timing condition by
 /// construction. Latching it for the process was a bug with a very long tail (one teardown-window
@@ -271,8 +271,8 @@ static PTYPE: AtomicI32 = AtomicI32::new(10); // g_ptype (PLAYER_TYPE_MSE)
 // `start_bufferfeed` gates on this device's `/dev/rtkmem` jail pre-flight (community-tier
 // finding: webosbrew/webos-homebrew-channel PR #202, 2019 Realtek k5lp/k3lp sets, default
 // Developer-Mode jailer missing that device node, known to crash native A/V apps on this chassis)
-// INSIDE `engine::start_bufferfeed` itself, latching the refusal onto `ps.jail_load_blocked` — a
-// `PlaybackSession` field, not a process-wide static — so `state()` derives
+// INSIDE `engine::start_bufferfeed` itself, latching the refusal onto `ps.jail_load_blocked` - a
+// `PlaybackSession` field, not a process-wide static - so `state()` derives
 // `PlaybackState::Error` for exactly the attempt that was refused and the session's `clear` on
 // leaving the player retires it.
 /// `type=18`'s `num` when the pipeline releases the video decoder from an established session
@@ -317,13 +317,13 @@ pub fn audio_switching() -> bool {
 }
 
 /// The read-out beside the spinner for `st`: [`PlaybackState::caption`], except that a load which
-/// is an audio-track switch says so ("Switching audio…") instead of "Buffering…". Any other
+/// is an audio-track switch says so ("Switching audio...") instead of "Buffering...". Any other
 /// rebuild (a seek's reload, a quality change) keeps the plain caption.
 pub fn busy_caption(st: PlaybackState) -> &'static std::ffi::CStr {
     busy_caption_with(st, audio_switching())
 }
 
-/// [`busy_caption`] with the audio-switch fact given — the pure choice, host-testable.
+/// [`busy_caption`] with the audio-switch fact given - the pure choice, host-testable.
 pub fn busy_caption_with(st: PlaybackState, audio_switch: bool) -> &'static std::ffi::CStr {
     if audio_switch && st == PlaybackState::Buffering {
         tv_platform::i18n::msg::widgets_status_switching_audio_c()
@@ -495,7 +495,7 @@ pub fn force_play_result_for_test(result: Option<c_int>) {
 }
 
 /// Kodi parity: mirror the ACB PLAYSTATE on transport pause/resume (the pipeline Pause/Play alone
-/// leaves the app-owned sink's ACB state stale). Only once the plane is streaming — `Bound` means
+/// leaves the app-owned sink's ACB state stale). Only once the plane is streaming - `Bound` means
 /// setMediaId/LOADED has happened but setMediaVideoData/window/PLAYING has not, so mirroring a user
 /// Resume there would overtake the rest of the ordered bind transaction.
 pub fn acb_mirror_playstate(pa: &mut adapter::PlayerAdapter, playing: bool) {
@@ -507,7 +507,7 @@ pub fn acb_mirror_playstate(pa: &mut adapter::PlayerAdapter, playing: bool) {
 }
 
 /// [`acb_mirror_playstate`] for a caller that already holds the session's `&mut Engine` and so
-/// cannot ask the adapter for it a second time — `engine::try_prime`, inside the feed. Splitting
+/// cannot ask the adapter for it a second time - `engine::try_prime`, inside the feed. Splitting
 /// the two is what the owned slot forces: with `ENGINE` a `static mut` handing out `&'static mut`,
 /// the prime path re-entered the slot it was already holding, which is the aliasing the token
 /// could only assert was safe.
@@ -532,12 +532,12 @@ fn acb_playstate_ready(stage: shared::Stage) -> bool {
 }
 
 /// **Answer the Player machine's video-plane question from the seam** (spec §9), once per frame,
-/// at §3.3 step 8 — before the opaque-region call and the present gate read the bit.
+/// at §3.3 step 8 - before the opaque-region call and the present gate read the bit.
 ///
 /// `Stage::Streaming` is the FIRST stage at which the ordered ACB bind transaction has finished:
 /// `setMediaId` → LOADED → `setMediaVideoData` → `setDisplayWindow` → PLAYING. It is the same
 /// predicate [`acb_mirror_playstate`] uses to decide whether the sink can take a PLAYSTATE at all,
-/// deliberately — one definition of "the plane is really ours", not two. No engine means no sink,
+/// deliberately - one definition of "the plane is really ours", not two. No engine means no sink,
 /// so the bit clears on teardown without teardown having to remember to say so.
 ///
 /// This is an OBSERVATION of the adapter, not a second owner: it hands the answer to
@@ -573,7 +573,7 @@ pub fn frames() -> i32 {
 }
 /// True once this SESSION has presented at least one frame. Deliberately NOT `frames() > 0`: the
 /// pump zeroes `frames` as part of applying a seek (`pump.rs`), so that expression reads "no
-/// picture" for the whole of every seek. Cleared only by `reset_session` — i.e. by a real stop or
+/// picture" for the whole of every seek. Cleared only by `reset_session` - i.e. by a real stop or
 /// a reload, both of which do blank the video plane. See [`shared::Shared::seen_frame`].
 pub fn seen_frame() -> bool {
     SHARED.seen_frame.load(Relaxed)
@@ -602,21 +602,21 @@ pub fn request_seek(ns: i64) {
     SHARED.seek_display_ns.store(ns, Relaxed);
     TX.seek_to_ns.store(ns, Relaxed);
     // Count the request even though the target it carries may be overwritten before the pump
-    // ever sees it — that overwrite IS the coalescing, and this is the only place it's countable.
+    // ever sees it - that overwrite IS the coalescing, and this is the only place it's countable.
     TX.seek_reqs.fetch_add(1, Relaxed);
 }
-/// **The seek was ABANDONED — put the playhead back on reality.**
+/// **The seek was ABANDONED - put the playhead back on reality.**
 ///
 /// [`request_seek`] sets `SHARED.seeking`, and until 2026-08-27 exactly ONE place ever cleared it:
 /// the successful prime→Play in `engine::try_prime`. Every path that gives UP on a seek
-/// therefore leaked the flag — and that flag is what `pump::set_state` reads to publish
+/// therefore leaked the flag - and that flag is what `pump::set_state` reads to publish
 /// `PlaybackState::Seeking`, which means a spinner over the picture, the playhead frozen at
 /// `seek_display_ns`, and `is_playing()` false, **for the rest of the playback**, while the
 /// pipeline goes on fetching and presenting underneath.
 ///
 /// A flag set by the requester and cleared only on the success path is a wedge waiting to happen.
 /// This exists so every give-up path can say so in one word, rather than each remembering a store
-/// — which is the arrangement that failed. `seek_display_ns` goes back to `-1` with it, since the
+/// - which is the arrangement that failed. `seek_display_ns` goes back to `-1` with it, since the
 /// HUD reads that as "no seek target" and a stale one would keep the frozen playhead after the
 /// spinner cleared.
 pub fn abandon_seek() {
@@ -633,7 +633,7 @@ pub fn abandon_seek() {
 pub fn loading(ps: &crate::session::PlaybackSession) -> bool {
     state(ps).is_busy()
 }
-/// true only while the pipeline is actually presenting frames — not resolving, connecting,
+/// true only while the pipeline is actually presenting frames - not resolving, connecting,
 /// buffering or seeking. The heartbeat's `pos=` field is gated on this: a resume only arms the
 /// seek (it does not seed `playpos_ns`), so the position reads 0 until the first decoded frame
 /// lands at the resume offset, and logging that pre-roll 0 would read as a jump of the whole
@@ -641,7 +641,7 @@ pub fn loading(ps: &crate::session::PlaybackSession) -> bool {
 pub fn is_playing(ps: &crate::session::PlaybackSession) -> bool {
     matches!(state(ps), shared::PlaybackState::Playing)
 }
-/// The derived playback state — the ONE thing the HUD renders from. See `PlaybackState`.
+/// The derived playback state - the ONE thing the HUD renders from. See `PlaybackState`.
 pub fn state(ps: &crate::session::PlaybackSession) -> shared::PlaybackState {
     // A start refused before any Engine was built is DERIVED here rather than stored: the pump
     // owns `pb_state` but only runs once an engine exists, and nothing else could say why the
@@ -656,7 +656,7 @@ pub fn state(ps: &crate::session::PlaybackSession) -> shared::PlaybackState {
         return shared::PlaybackState::Connecting;
     }
     // A seek in flight is derived HERE too, not only published by the pump's own ladder (which
-    // says the same thing in the same order — a seek outranks frames). `request_seek` sets the
+    // says the same thing in the same order - a seek outranks frames). `request_seek` sets the
     // flag at the press, but `pb_state` is only republished at the end of a pump pass, so a
     // reader between the two still saw Playing: the HUD drew one frame of the PRE-seek position
     // between the scrub preview and the frozen target.
@@ -669,7 +669,7 @@ pub fn state(ps: &crate::session::PlaybackSession) -> shared::PlaybackState {
 /// The one line that makes a phone photograph of the failure read-out a complete report:
 /// `WebosIptv 0.1.0 · webOS 4.10.2 · 43LM6300PVB · m3r · tv_pipeline`. `app` is the product
 /// and version (the application's identity, which this layer does not own); everything else is a
-/// product identity or a closed vocabulary — the firmware release, the set (model · board · hw,
+/// product identity or a closed vocabulary - the firmware release, the set (model · board · hw,
 /// shared by every unit LG built) and [`FailureKind::code`]. It never carries a URL, a title or
 /// any addon's text.
 pub fn support_line(app: &str, kind: FailureKind) -> String {
@@ -703,9 +703,9 @@ fn support_line_of(
 pub enum FailureKind {
     /// The stream carries no video track.
     NoVideoTrack,
-    /// The television has no decoder for the stream's video codec — refused before any Load.
+    /// The television has no decoder for the stream's video codec - refused before any Load.
     VideoUnsupported,
-    /// Dolby Vision whose base layer alone is a wrong picture, on a set that cannot be told —
+    /// Dolby Vision whose base layer alone is a wrong picture, on a set that cannot be told -
     /// refused before any Load.
     DolbyVision,
     /// The selected audio track needs a software decoder this build does not have
@@ -721,12 +721,12 @@ pub enum FailureKind {
     /// Starfish refused the Load declaration, so no decoder session could start.
     TvPipeline,
     /// This device's jail is missing `/dev/rtkmem` on a SoC where that is a known cause of native
-    /// A/V crashes — the Load was never attempted ([`tv_platform::tv::sandbox::blocks_native_video`]).
+    /// A/V crashes - the Load was never attempted ([`tv_platform::tv::sandbox::blocks_native_video`]).
     JailMissingRtkmem,
-    /// Issue #74 D.1.4's `NATIVE_LOAD_BUDGET` fired — the native `Load` never returned, or it
+    /// Issue #74 D.1.4's `NATIVE_LOAD_BUDGET` fired - the native `Load` never returned, or it
     /// returned and `loadCompleted` never arrived. A HANG, distinct from [`TvPipeline`](Self::TvPipeline).
     LoadTimeout,
-    /// The link answered an image, an archive or a document instead of a video — the addon
+    /// The link answered an image, an archive or a document instead of a video - the addon
     /// picked the wrong file in a torrent ([`crate::stream::ProbeFailure::NotVideo`]). The same
     /// link answers the same file, so another stream is the only way on.
     NotVideo,
@@ -758,7 +758,7 @@ impl FailureKind {
 /// which of these a failure offers.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FailureAction {
-    /// Start the same stream again, unchanged — offered only where the failure can be transient.
+    /// Start the same stream again, unchanged - offered only where the failure can be transient.
     TryAgain,
     /// Go back to the stream list and pick another one: a different stream is a different file,
     /// which is the only thing that can change a decode refusal.
@@ -778,7 +778,7 @@ pub struct FailureContext {
     pub repair_idle: bool,
 }
 
-/// **The failure read-out's row, as ONE table** — every control the read-out draws, in draw order.
+/// **The failure read-out's row, as ONE table** - every control the read-out draws, in draw order.
 ///
 /// **The rule: offer an action only if it can change the outcome.** `Back` is always last. A
 /// deterministic refusal (the TV refusing the Load declaration, a codec it cannot decode) gets no
@@ -816,8 +816,8 @@ pub fn failure_context(ps: &crate::session::PlaybackSession) -> FailureContext {
     }
 }
 
-/// One error, three surfaces — the HUD caption, the diagnostics panel's verdict line and the
-/// full-screen read-out — shaped in ONE place so they can never disagree about what happened.
+/// One error, three surfaces - the HUD caption, the diagnostics panel's verdict line and the
+/// full-screen read-out - shaped in ONE place so they can never disagree about what happened.
 pub struct ErrorShape {
     /// **The stable, machine-readable reason**; every other field is prose derived FROM it.
     pub kind: FailureKind,
@@ -845,7 +845,7 @@ enum RuntimeFailure {
     PlaybackInterrupted,
     /// Starfish refused the Load declaration.
     TvPipeline,
-    /// The native Load budget fired — a hang, not a firmware refusal.
+    /// The native Load budget fired - a hang, not a firmware refusal.
     LoadTimeout,
 }
 
@@ -1018,7 +1018,7 @@ pub fn error_now(ps: &crate::session::PlaybackSession) -> ErrorShape {
     )
 }
 
-/// dev: `/tmp/webosiptv-failtest=<arm>` — force one variant of the failure read-out, which is
+/// dev: `/tmp/webosiptv-failtest=<arm>` - force one variant of the failure read-out, which is
 /// otherwise the one screen that cannot be reached on purpose. Arms: `novideo`, `stream`,
 /// `connection`, `tv`, `load_timeout`, `jail`, `audio`, `video`, `dv`, `probe`, `image`, `archive`,
 /// `document`, `webpage`, and anything else for
@@ -1107,10 +1107,10 @@ pub fn load_v_name(code: u8) -> &'static str {
 /// callback count taken 16 ms later, and the whole point is that a maintainer trusts the
 /// photograph. One call, one instant, main thread.
 ///
-/// Everything here is a MIRROR — see `Shared`'s diagnostics block. Nothing in the playback state
+/// Everything here is a MIRROR - see `Shared`'s diagnostics block. Nothing in the playback state
 /// machine may read a `Diag` back.
 ///
-/// `Default` is the never-started session — all zero, no window, nothing fed — which is both the
+/// `Default` is the never-started session - all zero, no window, nothing fed - which is both the
 /// honest pre-playback reading and what the host tests build, since the real [`diag`] reaches
 /// `starfish.c` symbols that do not exist on the dev Mac.
 #[derive(Default)]
@@ -1173,13 +1173,13 @@ pub fn memory(adapter: &mut adapter::PlayerAdapter) -> Memory {
 
 /// **How full the start buffer is**, 0..=100: the playable reserve ([`Diag::playable_buffer_ms`]'s
 /// one definition) against the prime depth the clock waits for before it starts
-/// (`engine::PRIME_NS`). `None` until a lane has published a tail. Atomics only — cheap enough for
+/// (`engine::PRIME_NS`). `None` until a lane has published a tail. Atomics only - cheap enough for
 /// the player's working read-out to ask every frame.
 pub fn prime_fill_pct() -> Option<u8> {
     Some(prime_pct(buffer_ahead_ms()?))
 }
 
-/// **How far past the playhead the pipeline holds media**, in ms — the transport's buffered range
+/// **How far past the playhead the pipeline holds media**, in ms - the transport's buffered range
 /// ([`playable_buffer_ms`]'s one definition). `None` until a lane has published a tail. Atomics
 /// only: cheap enough to read every frame.
 pub fn buffer_ahead_ms() -> Option<i64> {
@@ -1238,11 +1238,11 @@ impl Diag {
             _ => "NONE — no video path",
         }
     }
-    /// What the Load payload named as the video codec, or `—` before one was built.
+    /// What the Load payload named as the video codec, or ` - ` before one was built.
     pub fn load_v_str(&self) -> &'static str {
         load_v_name(self.load_v)
     }
-    /// …and the audio codec. `needAudio:false` is its own answer, not an absence.
+    /// ...and the audio codec. `needAudio:false` is its own answer, not an absence.
     pub fn load_a_str(&self) -> &'static str {
         match self.load_a {
             1 => "AC3",
@@ -1257,11 +1257,11 @@ impl Diag {
     /// Why the VIDEO feeder is where it is. The video lane specifically: the picture is what a
     /// user complains about, and a two-lane string overflows the value column.
     ///
-    /// `queue empty` vs `BufferFull` is the row's whole point — a dead PRODUCER and a dead SINK
+    /// `queue empty` vs `BufferFull` is the row's whole point - a dead PRODUCER and a dead SINK
     /// look identical from every other field on the panel and want opposite fixes.
     ///
     /// The throttle state is worded as what it IS, not as what it is waiting for. It was
-    /// "waiting for a frame", which is the literal truth and reads as a stall — and it is the
+    /// "waiting for a frame", which is the literal truth and reads as a stall - and it is the
     /// state a healthy playback sits in most of the time, because the feeder deliberately stays
     /// within `MAX_FEED_AHEAD_NS` of the presented position. The first person to see the panel in
     /// the wild asked why playback was stuck; it was not.
@@ -1285,8 +1285,8 @@ impl Diag {
 
 pub fn diag() -> Diag {
     let (fed_v, fed_a) = engine::fed_totals();
-    // The sink hands back the seam's own static buffer — never NULL, "" when no window was
-    // created — so this is a copy of a bounded char[64], not a borrow with a lifetime to reason about.
+    // The sink hands back the seam's own static buffer - never NULL, "" when no window was
+    // created - so this is a copy of a bounded char[64], not a borrow with a lifetime to reason about.
     let window_id = sink().window_id().to_string_lossy().into_owned();
     let load_a = SHARED.dg_load_a.load(Relaxed);
     let playable_buffer_ms = playable_buffer_ms(
@@ -1356,7 +1356,7 @@ pub fn intended_pos_ns(ps: &crate::session::PlaybackSession) -> i64 {
 
 /// **Switch the fed audio track** (a viewer pick): the `track`-th audio stream of the same file,
 /// of `codec` with `channels` (FFmpeg names; `atmos` for an E-AC3 JOC track). The session
-/// re-decides the feed first ([`crate::session::PlaybackSession::select_audio`]) — a track the
+/// re-decides the feed first ([`crate::session::PlaybackSession::select_audio`]) - a track the
 /// television cannot decode is refused HERE, the playing track kept, and nothing reloads; the
 /// caller says so. Otherwise the pump reloads at the current position on its next tick
 /// (`engine::switch_audio_native`): the Load payload's audio codec is part of the declaration, so
@@ -1376,7 +1376,7 @@ pub fn request_audio_track(
 }
 
 /// [`request_audio_track`] by the track's position alone, reading its codec, channel count and
-/// Atmos flag off the probe — what a track menu over a probed stream (every playlist channel) has. `Err` for a
+/// Atmos flag off the probe - what a track menu over a probed stream (every playlist channel) has. `Err` for a
 /// track the television cannot decode (the playing track is kept) or that the probe did not see.
 pub fn request_probed_audio_track(
     ps: &mut crate::session::PlaybackSession,
@@ -1401,12 +1401,12 @@ pub fn chapters() -> Vec<Chapter> {
     SHARED.chapters.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
-/// **Start a playback — the one entry the application calls.** Stops whatever plays, installs
+/// **Start a playback - the one entry the application calls.** Stops whatever plays, installs
 /// `start` on the session (freezing its video, Dolby Vision and audio decisions against this
 /// television's codec table), selects its audio track, arms its start offset and
 /// starts the native Engine.
 ///
-/// `Err` is a start the session refused before anything reached the pipeline — a video codec the
+/// `Err` is a start the session refused before anything reached the pipeline - a video codec the
 /// set cannot decode, a Dolby Vision layering it cannot present, or an audio track that needs a
 /// software decoder this build does not have ([`crate::stream::AudioFeed::NeedsSoftwareDecode`]).
 /// [`state`] then reads `Error` and [`error_now`] names the refusal, until the next start or a
@@ -1414,8 +1414,8 @@ pub fn chapters() -> Vec<Chapter> {
 /// `Connecting` while the sandbox repair runs).
 ///
 /// **A start with no declaration (`start.stream == None`, every playlist channel) is probed first**:
-/// `Ok(BufferfeedStartOutcome::Probing)`, [`state`] reads `Connecting`, and [`pump`] — which the
-/// application already calls every frame — launches the native start when the probe resolves the
+/// `Ok(BufferfeedStartOutcome::Probing)`, [`state`] reads `Connecting`, and [`pump`] - which the
+/// application already calls every frame - launches the native start when the probe resolves the
 /// session, or leaves the refusal (`StartRefusal::Probe`, or any of the above for what the probe
 /// found) for [`error_now`]. A caller-supplied declaration skips the probe.
 pub fn begin_playback(
@@ -1478,7 +1478,7 @@ pub(crate) fn finish_probe(
     }
 }
 
-/// reset to the default audio stream — called on a new item so a prior track choice does not leak
+/// reset to the default audio stream - called on a new item so a prior track choice does not leak
 /// across items (`desired_audio_idx` persists across seeks, not across items).
 pub fn reset_audio_track() {
     SHARED.desired_audio_idx.store(-1, Relaxed);
@@ -1570,11 +1570,11 @@ fn vclock_ms() -> u32 {
 
 /// **The pipeline's `FRAMEREADY` cadence since the last call**: ticks received, and the worst gap
 /// between two consecutive ones in milliseconds. Draining, like
-/// [`tv_machine::idle::take_presents`] — the heartbeat is the one caller, once a second.
+/// [`tv_machine::idle::take_presents`] - the heartbeat is the one caller, once a second.
 ///
 /// **This is a liveness signal, not a frame rate.** See [`sf_on_event`]: the healthy reading on
 /// every codec, resolution and container measured so far is `5` and `201`, because the tick is
-/// ~5 Hz regardless of the stream's frame rate. What it is good for is the opposite question —
+/// ~5 Hz regardless of the stream's frame rate. What it is good for is the opposite question -
 /// whether the pipeline still thinks it is running. A steady `5 / 201` through a picture the
 /// viewer says is stuttering is a real and useful finding: it rules the fault OUT of everything
 /// this process can see, and sends the search to the display side.
@@ -1593,12 +1593,12 @@ pub fn vplane_take() -> (u32, u32) {
 /// webOS 4.10.2 (2026-08-21), it is a **~5 Hz position tick**: a 1080p H264 direct play, a 4K HEVC
 /// direct play and a visibly stuttering Dolby Vision direct play all deliver it 5 times a second,
 /// 201 ms apart, to the millisecond. So [`frames`](crate::player::shared::Shared::frames) counts
-/// TICKS, not frames — which is what `pump`'s ACB bind gate (`frames >= 2`, one tick while a
+/// TICKS, not frames - which is what `pump`'s ACB bind gate (`frames >= 2`, one tick while a
 /// paused preroll is open) really means (≈400 ms of playback, not two pictures) and what `app::diagnostics` really shows.
 ///
 /// The consequence for diagnosis: this callback can say the pipeline still believes it is
 /// presenting, and cannot say the picture is smooth. The video plane's real cadence is not
-/// observable from this process at all — the evidence for that lives in the TV's own kernel log
+/// observable from this process at all - the evidence for that lives in the TV's own kernel log
 /// (`kad-hdr`).
 /// Panic-guarded (unwinding into C is UB); touches only SHARED.
 #[no_mangle]
@@ -1655,10 +1655,10 @@ fn sf_on_event_inner(ty: c_int, num: i64, s: *const c_char, scope: shared::Event
         // what the read-out needs: "Load completed and then nothing ever called us" is the sharpest
         // symptom the stuck-buffering reports could carry, and it is invisible in a log the user
         // cannot reach. Kept here rather than in the `ty` dispatch below so an event we do not
-        // handle still counts — an unhandled callback is still the pipeline talking.
+        // handle still counts - an unhandled callback is still the pipeline talking.
         let n = SHARED.dg_cb_count.fetch_add(1, Relaxed) + 1;
         // Latch the FIRST error, with the callback index it arrived at. Sticky, because a later
-        // healthy callback must not erase the one event that explains the session — and the index
+        // healthy callback must not erase the one event that explains the session - and the index
         // separates "refused immediately" from "died after a long healthy run". Only `ty == 18`:
         // it is the one value this project has ever acted on, and it sits below the 0x1c point
         // where the numbering shifts between webOS 4 and 5+, so it means the same on both. Naming
@@ -1705,18 +1705,18 @@ fn sf_on_event_inner(ty: c_int, num: i64, s: *const c_char, scope: shared::Event
         // result on a set that refused the Load asynchronously (`Load()` returned ok=1, then
         // `type=18 num=601 Resource Allocation Error`): `load_failed` stayed false, the pump waited
         // in Connecting for a `loadCompleted` that could never come, the demuxer kept downloading,
-        // and the failure read-out — the one screen built to survive a phone photograph — never
+        // and the failure read-out - the one screen built to survive a phone photograph - never
         // ran, for ~70 s, on the failure it most exists for. Publishing the same flag the
         // synchronous refusal publishes (`threads::load_thread` on `sf_load == 0`) hands it to the
         // pump's existing `load_failed` arm: `Error` with `FailureKind::TvPipeline`.
         //
-        // Scoped to `!seen_frame` — SESSION-scoped, never `frames == 0`, which a seek zeroes (see
+        // Scoped to `!seen_frame` - SESSION-scoped, never `frames == 0`, which a seek zeroes (see
         // player/CLAUDE.md, "`frames` is SEEK-scoped"). A `loadCompleted` already received is NOT
         // an exemption: a completed Load is the pipeline accepting a declaration, and a refusal
         // that lands after it but before any picture is still a session that never started. A
         // type=18 after a picture stays diagnostic-only here except for the one number that has
         // been measured (the decoder release, below): what the others mean mid-play is unmeasured,
-        // and the lab could not say whether 18 is the only refusal type either — so their `num` is
+        // and the lab could not say whether 18 is the only refusal type either - so their `num` is
         // logged rather than filtered on.
         if ty == 18 && !SHARED.seen_frame.load(Relaxed) {
             log(&format!(
@@ -1726,7 +1726,7 @@ fn sf_on_event_inner(ty: c_int, num: i64, s: *const c_char, scope: shared::Event
         } else if ty == 18 && num == DECODER_REVOKED_BY_POLICY {
             // **After a picture, ONE number is measured: the decoder taken back.** A paused direct
             // play left until the screensaver came on (dev set, 2026-10-13) got exactly this, with
-            // no app-switch edge, and the pipeline refused every Play after it for good — so this
+            // no app-switch edge, and the pipeline refused every Play after it for good - so this
             // is not a statistic either. The app loop parks the session the way an app switch does
             // and rebuilds it on the viewer's next press (`take_decoder_revoked`). Every other
             // number after a picture stays diagnostic-only, as above.
@@ -1735,23 +1735,23 @@ fn sf_on_event_inner(ty: c_int, num: i64, s: *const c_char, scope: shared::Event
         }
     }
     if ty == 0 {
-        // a POSITION UPDATE — map fed pts -> real content position.
+        // a POSITION UPDATE - map fed pts -> real content position.
         //
         // **It is not one per presented frame, and `vtick`/`vgap` cannot see a dropped frame.**
         // Measured 2026-08-21 across every Profile 5 run: `vtick=5 vgap=201ms`, unvarying, on
-        // clean and visibly stuttering playback alike. The pipeline emits this at 5 Hz — it is a
+        // clean and visibly stuttering playback alike. The pipeline emits this at 5 Hz - it is a
         // position report, not a vsync. This comment used to say "a frame was PRESENTED" and the
         // `dg_vpres_*` block below still describes a cadence probe; both were written from the
         // callback's NAME rather than from its rate, and an instrument that reads a flat 201 ms
         // through the fault it exists to catch is worse than no instrument, because it is quoted.
         //
-        // The real per-frame cadence is only observable from LG's own tracing — `GST_DEBUG=
+        // The real per-frame cadence is only observable from LG's own tracing - `GST_DEBUG=
         // dualsequencer:6` via `/tmp/webosiptv-gstlog`, whose `push_dual` and `lxvideosink`
         // timestamps give one line per frame. That was long avoided as perturbing; it is not, at
         // level 6: the same scene measured 123 LUT misses uninstrumented and 122 with the trace
         // running. Level 9 IS perturbing and is what that reputation came from.
         //
-        // `pres_fed` below is still sound — the feed-ahead throttle wants a position, and a 200 ms
+        // `pres_fed` below is still sound - the feed-ahead throttle wants a position, and a 200 ms
         // granularity against a 1.6 s budget is ample. Only the TIMING half was wrong.
         let t = vclock_ms();
         let prev = SHARED.dg_vpres_at.swap(t, Relaxed);
@@ -1866,10 +1866,10 @@ mod tests {
     // The jail/rtkmem refusal (no Engine ever built, `state()` deriving `Error`, and the
     // refusal retiring on route exit) is exercised by
     // `native_failure_regressions::jail_refusal_enters_error_without_engine_and_retires_on_exit`
-    // below, against the real `ps.jail_load_blocked`-based gate in `engine.rs` — see that test.
+    // below, against the real `ps.jail_load_blocked`-based gate in `engine.rs` - see that test.
 
     /// Xvid (MPEG-4 Part 2) and the other codecs the buffer feed has no caps for are not "a codec
-    /// this TV has no decoder for" — the C1 lists decoders for most of them — so their read-out
+    /// this TV has no decoder for" - the C1 lists decoders for most of them - so their read-out
     /// says what is true: the TV's streaming player cannot take that format. A codec the feed does
     /// take but this set's table refuses (or a raster past its row) keeps the decoder wording.
     /// A link that answered an image (the field case: a torrent's HDR10+ test chart), an archive
@@ -2146,7 +2146,7 @@ mod tests {
 
     /// The four shapes a `type=18` can arrive in, graded on the ONE bit that decides them:
     /// `seen_frame`. Before any picture it is a refusal whether or not `loadCompleted` came first;
-    /// after a picture it is diagnostic only — including after a seek, which zeroes `frames` but
+    /// after a picture it is diagnostic only - including after a seek, which zeroes `frames` but
     /// never `seen_frame` (the trap player/CLAUDE.md names).
     #[test]
     fn a_type_18_before_any_picture_publishes_load_failed_and_after_one_does_not() {
@@ -2282,7 +2282,7 @@ mod tests {
 
     /// A SYNCHRONOUS Load refusal (`sf_load` returning 0) has no firmware number: Starfish's `Load`
     /// answers with a bare success flag, and the other refusals inside `sf_load` are the seam's own
-    /// lifecycle gates. So it publishes `load_failed` and leaves the latch at 0 — pinned so a
+    /// lifecycle gates. So it publishes `load_failed` and leaves the latch at 0 - pinned so a
     /// number is never invented for it.
     #[test]
     fn a_synchronous_load_refusal_publishes_no_firmware_number() {
@@ -2489,8 +2489,8 @@ mod tests {
     ///
     /// `request_seek` sets `SHARED.seeking`, and the ONLY place that cleared it was the successful
     /// prime→Play. `pump::set_state` publishes `PlaybackState::Seeking` from that flag ahead of
-    /// every other arm — deliberately, since the frames on the panel during a seek are the
-    /// pre-seek ones — so a leaked flag means a permanent spinner, a playhead frozen at the target
+    /// every other arm - deliberately, since the frames on the panel during a seek are the
+    /// pre-seek ones - so a leaked flag means a permanent spinner, a playhead frozen at the target
     /// and `is_playing()` false, while the pipeline plays on underneath. Device-measured: 84
     /// seconds of exactly that, through 37 segment acquisitions and four rung commits.
     ///
@@ -2576,7 +2576,7 @@ mod seek_hud_regressions {
 
     /// **A reload keeps the file's duration; a real stop does not.** `teardown` zeroed it on
     /// every reload, so for the few hundred ms until the demuxer reopened the file the HUD drew
-    /// the playhead at position ÷ 0 — the far left — while the clock beside it, which is the
+    /// the playhead at position ÷ 0 - the far left - while the clock beside it, which is the
     /// position alone, read correctly. Differential: before the fix the reload path called
     /// `reset_session` and the first assertion reads 0.
     #[test]
@@ -2604,7 +2604,7 @@ mod seek_hud_regressions {
         TX.reset();
         SHARED.pb_state.store(PlaybackState::Playing as u8, Relaxed);
         assert_eq!(state(&ps), PlaybackState::Playing);
-        // the REAL press path — and deliberately so: `tests/test_harness.py` holds that exactly
+        // the REAL press path - and deliberately so: `tests/test_harness.py` holds that exactly
         // one place in the tree arms this flag, which a test arming it by hand would break
         request_seek(90_000_000_000);
         assert_eq!(state(&ps), PlaybackState::Seeking, "the pump has not run yet");
@@ -2615,7 +2615,7 @@ mod seek_hud_regressions {
     }
 }
 
-/// **Which rebuild is "Switching audio…"?** Only the one an audio-track pick asked for: it begins
+/// **Which rebuild is "Switching audio..."?** Only the one an audio-track pick asked for: it begins
 /// at the pick, survives the reload, and ends at that session's first presented frame; a pick the
 /// server never rebuilt for expires; anything else (a seek's reload, no pick at all) is Buffering.
 #[cfg(test)]

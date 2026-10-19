@@ -31,7 +31,7 @@ impl FrameCache {
         self.snapshot = None;
     }
     /// Host logic tests construct dispatchers without a GL context, so they always take the live
-    /// fallback (`capture`/`draw`) rather than the FBO-render path `render_into` stands for — see
+    /// fallback (`capture`/`draw`) rather than the FBO-render path `render_into` stands for - see
     /// `gfx::FrameCache::render_available`'s doc, which this mirrors.
     pub(super) fn render_available(&self) -> bool {
         false

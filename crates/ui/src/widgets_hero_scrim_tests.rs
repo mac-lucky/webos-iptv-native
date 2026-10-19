@@ -6,13 +6,13 @@ use super::test_support::*;
 
 // ── The hero corner scrim: the wedge's shape, its seam, and the legibility it promises ──────
 //
-// All pure math over `theme` tokens and the two screens' own layout arithmetic — no GL, no
+// All pure math over `theme` tokens and the two screens' own layout arithmetic - no GL, no
 // globals, so these are ordinary parallel tests. The screens' contributions come from
 // `ui::landing_hero::base_scrim_a` / `detail::base_scrim_a` / `detail::hero_chain`, which is the whole
 // point of those three being pure: the contract below reads the SAME numbers the draw does.
 
 /// The bilinear field a `(rect, [tl, tr, br, bl])` quad actually rasterizes, at absolute
-/// `(x, y)` — the shader's own `mix(mix(tl,tr,u), mix(bl,br,u), v)`, in alpha. The anti-drift
+/// `(x, y)` - the shader's own `mix(mix(tl,tr,u), mix(bl,br,u), v)`, in alpha. The anti-drift
 /// yardstick: the closed-form [`hero_scrim_a`]/[`hero_scrim_right_a`] the contract is graded on
 /// and the corner colours that are actually drawn must agree, or the promise is about a field
 /// nobody paints.
@@ -26,7 +26,7 @@ fn bilerp_a(q: (Rect, [[f32; 4]; 4]), x: f32, y: f32) -> f32 {
 }
 
 /// The wedge is a DARKENER that peaks in the corner the text is in: monotone non-increasing in
-/// x, at full [`theme::SCRIM_TEXT_A`] at the margin, and exactly 0 from [`HERO_SCRIM_W`] out —
+/// x, at full [`theme::SCRIM_TEXT_A`] at the margin, and exactly 0 from [`HERO_SCRIM_W`] out -
 /// a non-zero value there would draw a vertical line across the hero where the quads end. Also
 /// pins that every out-of-range input clamps rather than going negative or past 1: `x` and
 /// `strength` both come from live animation state, and a negative alpha here would BRIGHTEN
@@ -81,7 +81,7 @@ fn the_wedge_never_brightens_toward_the_text() {
     );
 }
 
-/// **The seam** — the one structural bug this component can have, and invisible on the host in
+/// **The seam** - the one structural bug this component can have, and invisible on the host in
 /// every other form. The two left quads must share an EXACT float y and an identical colour
 /// pair along it: a gap leaves one row of unscrimmed artwork (BRIGHT) straight across the
 /// hero, an overlap composites two scrims on one row (BLACK). Neither is subtle and both look
@@ -112,7 +112,7 @@ fn the_wedges_two_quads_abut_with_no_step() {
         crate::consts::SCR_H,
         "the wedge runs to the foot of the panel"
     );
-    // …and the field is continuous ACROSS the seam, not merely the same colour at its ends:
+    // ...and the field is continuous ACROSS the seam, not merely the same colour at its ends:
     // sample both quads' own bilinear along it.
     for x in [0.0f32, 300.0, 900.0, HERO_SCRIM_W] {
         let below = bilerp_a(q[1], x, r1.y);
@@ -121,7 +121,7 @@ fn the_wedges_two_quads_abut_with_no_step() {
             "step at x={x}"
         );
         // The quad's CORNERS are `hero_scrim_a` by construction now, so what is left to grade in
-        // the interior is that the closed form is AFFINE in x — a curve there would be a field
+        // the interior is that the closed form is AFFINE in x - a curve there would be a field
         // `grad4`'s straight interpolation cannot reproduce, and the contract would be about a
         // shape nobody paints.
         assert!(
@@ -132,7 +132,7 @@ fn the_wedges_two_quads_abut_with_no_step() {
 }
 
 /// The top chrome owns its own legibility with its own dark capsule (`draw_tab_row`'s track).
-/// A wedge creeping up into that band is two treatments fighting over one strip — and the
+/// A wedge creeping up into that band is two treatments fighting over one strip - and the
 /// capsule was tuned assuming nothing else is under it.
 #[test]
 fn the_wedge_leaves_the_top_chrome_alone() {
@@ -147,7 +147,7 @@ fn the_wedge_leaves_the_top_chrome_alone() {
     }
     // The feather also has to start ABOVE the highest text anchor, which is what lets
     // `hero_scrim_a` be a function of x alone (see `HERO_SCRIM_KNEE`) and is what makes the
-    // legibility table below sound — every row it grades is at or below this line. A clearLogo
+    // legibility table below sound - every row it grades is at or below this line. A clearLogo
     // paints higher than any of them, but that is ART riding the feather, not a graded anchor.
     let highest = detail_title_cap_top().min(home_title_cap_top());
     assert!(
@@ -190,7 +190,7 @@ fn the_right_wedge_is_opt_in_and_starts_at_zero() {
             "the top edge must not draw a line"
         );
     }
-    // …and inside the quad the closed form must be the BILINEAR product `grad4` can actually
+    // ...and inside the quad the closed form must be the BILINEAR product `grad4` can actually
     // interpolate between those corners (u·v). The corners themselves are `hero_scrim_right_a`
     // by construction; this is the part of the shape that construction does not pin.
     for x in [1250.0f32, 1500.0, 1830.0, 1920.0] {
@@ -210,7 +210,7 @@ fn the_right_wedge_is_opt_in_and_starts_at_zero() {
 
 /// The wedge belongs to the HERO, not to the frame: at strength 0 there is nothing to draw.
 /// A residual wedge on the grid/shelf view would be a real regression and is invisible in a
-/// still — the shelves need the flat ground their card drop-shadows are tuned against.
+/// still - the shelves need the flat ground their card drop-shadows are tuned against.
 ///
 /// Graded on the closed forms alone. The quads' own corners USED to be swept here too, and that
 /// sweep is now a tautology: [`hero_scrim_quads`] builds every corner by evaluating these two
@@ -227,45 +227,45 @@ fn the_wedge_leaves_with_the_hero() {
 /// Every line of hero copy either screen draws over artwork, at the WORST point of its run (the
 /// right end, where the wedge is weakest), graded as
 /// `1 − (1 − base_scrim_a) · (1 − hero_scrim_a) · (1 − hero_scrim_right_a)` against two
-/// backdrops: a bright one (encoded 0.85 — a blown highlight, brighter than essentially any
+/// backdrops: a bright one (encoded 0.85 - a blown highlight, brighter than essentially any
 /// fanart pixel) and a blown-white one (1.0, the degenerate case the design only promises a
 /// floor for).
 ///
-/// The ys are READ from the screens' own layout arithmetic — `hero_chain` for detail, the
-/// bottom-anchored stack for home — so a layout change updates this contract rather than
+/// The ys are READ from the screens' own layout arithmetic - `hero_chain` for detail, the
+/// bottom-anchored stack for home - so a layout change updates this contract rather than
 /// silently invalidating it. The floors are the measured achieved ratios: the point is that
 /// this fires the day someone brightens `SCRIM_INK`, dims a text token, moves
 /// `HERO_TEXT_BOTTOM` or trims `HERO_SCRIM_W`, none of which is visible in a diff.
 ///
-/// The two TITLE rows grade the TEXT fallback, at its cap top — a clearLogo occupies that band
+/// The two TITLE rows grade the TEXT fallback, at its cap top - a clearLogo occupies that band
 /// instead on most items and paints higher than the knee, which is art riding the feather rather
 /// than an anchor this closed form can speak for (see [`HERO_SCRIM_KNEE`]).
 ///
 /// The design floor is 3:1 over bright art. ONE row misses it and is listed anyway rather than
-/// hidden: detail's **facts line** is `TEXT_TERTIARY` (L=0.317), which needs α≈0.79 for 4.5:1 —
+/// hidden: detail's **facts line** is `TEXT_TERTIARY` (L=0.317), which needs α≈0.79 for 4.5:1 -
 /// an essentially black corner. That is an INK decision, not a scrim one, and is deliberately
 /// deferred; when the facts line moves to `TEXT_SECONDARY` over artwork its floor becomes 3.0
 /// like the rest.
 ///
 /// The people column was the second such row for exactly one day. Bottom-anchoring it moved its
 /// worst case 74px up the frame, where the composite ground is ≈0.59 instead of ≈0.71, and at
-/// tertiary that is 2.37:1 — so the row's floor was written down as 2.35 to match. **A contract
+/// tertiary that is 2.37:1 - so the row's floor was written down as 2.35 to match. **A contract
 /// is not a measurement**: the entry below asserts the ordinary 3.0/2.5 again, and
-/// `detail::PEOPLE_INK` is what meets it (one ink step, no scrim retune — the arithmetic for
+/// `detail::PEOPLE_INK` is what meets it (one ink step, no scrim retune - the arithmetic for
 /// why that is the cheap half of the trade is on that const).
 #[test]
 fn the_hero_text_reads_over_bright_artwork() {
     use crate::consts::{MARGIN_X, SCR_W};
     let hc = crate::detail_layout::hero_chain(
-        // a two-line blurb — the shape `hero_chain`'s own doc is tuned on. Measuring is the one
+        // a two-line blurb - the shape `hero_chain`'s own doc is tuned on. Measuring is the one
         // thing the host cannot do, so the height is quoted, not computed.
         76.0, true, &crate::fixture::FixtureMeasure,
     );
     let band = crate::hero_logo::band_h(crate::hero_logo::LogoRung::Hero);
-    let home_col_r = MARGIN_X + crate::landing_hero::COL_W; // 750 — the column's right end
-    let det_col_r = MARGIN_X + crate::detail_layout::HERO_TEXT_W; // 990 — the synopsis' wrap edge,
+    let home_col_r = MARGIN_X + crate::landing_hero::COL_W; // 750 - the column's right end
+    let det_col_r = MARGIN_X + crate::detail_layout::HERO_TEXT_W; // 990 - the synopsis' wrap edge,
                                                                // and since nit 2 the title band's column too: a very wide wordmark runs the same 990.
-    let people_r = SCR_W - MARGIN_X; // 1830 — the right-aligned people column's own edge
+    let people_r = SCR_W - MARGIN_X; // 1830 - the right-aligned people column's own edge
 
     // (label, x, y, ink, right wedge?, floor over BRIGHT art, floor over BLOWN WHITE)
     let rows: [(&str, f32, f32, [f32; 4], bool, f32, f32); 9] = [
@@ -296,7 +296,7 @@ fn the_hero_text_reads_over_bright_artwork() {
             3.0,
             2.5,
         ),
-        // the blurb's FIRST line, at the top of its block — the weakest ground the run sees.
+        // the blurb's FIRST line, at the top of its block - the weakest ground the run sees.
         // Both its ink and its block height are read from the shared hero synopsis.
         (
             "home synopsis",
@@ -334,7 +334,7 @@ fn the_hero_text_reads_over_bright_artwork() {
             3.0,
             2.5,
         ),
-        // The deferred ink decision, now taken — `detail::FACTS_INK`, and with it the ordinary
+        // The deferred ink decision, now taken - `detail::FACTS_INK`, and with it the ordinary
         // floor. What came due was the hero rhythm: the atmospheric ramp is linear in `y`, so
         // every rung this row moves up sits in less of it, and at tertiary the row had no
         // headroom left to spend (2.63 against a lowered 2.6).
@@ -348,7 +348,7 @@ fn the_hero_text_reads_over_bright_artwork() {
             2.5,
         ),
         // The people column at its WORST case: the top line of the tallest block it can produce
-        // (a wrapped credit over a wrapped cast list), `PEOPLE_MAX_LINES` above the buttons —
+        // (a wrapped credit over a wrapped cast list), `PEOPLE_MAX_LINES` above the buttons -
         // 74px higher than the old top-anchored block, where the right wedge is feathering in
         // from y=702 and supplies about half the alpha it did (0.092 against 0.178). It clears
         // the ordinary floor because its ink is `detail::PEOPLE_INK`, which is read from the

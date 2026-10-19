@@ -1,11 +1,11 @@
-//! `Xfade` — the ONE content cross-fade choreography: fade the outgoing content OUT, swap the
+//! `Xfade` - the ONE content cross-fade choreography: fade the outgoing content OUT, swap the
 //! data at the floor, fade the incoming content IN. Sibling of
 //! [`Popover`](crate::popover::Popover), which owns the modal *appear*; this owns the case
 //! where a screen's CONTENT is replaced under it.
 //!
 //! **Why it SCHEDULES the swap instead of reacting to one.** The stores this rides on wipe
-//! themselves synchronously on the key press — `browse::requery` empties `st.items` in the same
-//! call as the input — so by the next frame there is nothing left to fade OUT. A fader that only
+//! themselves synchronously on the key press - `browse::requery` empties `st.items` in the same
+//! call as the input - so by the next frame there is nothing left to fade OUT. A fader that only
 //! *watched* the data could therefore only ever be a fade IN, which is the half that does not fix
 //! the complaint. So the fader owns the clock: [`Xfade::tick`] returns `true` on **exactly one**
 //! frame and the screen applies its own typed pending action there. The animation and the swap
@@ -16,22 +16,22 @@
 //! critically-damped spring, and that is right for a value the user steers (focus pop, scroll, a
 //! panel's appear). This one gates a STATE COMMIT, so it needs a hard deadline: a spring is
 //! asymptotic, "arrived" is a threshold guess, and the frame that threshold is crossed on depends
-//! on the entry VELOCITY — which is non-zero and pointing the wrong way whenever a second reload
+//! on the entry VELOCITY - which is non-zero and pointing the wrong way whenever a second reload
 //! interrupts a fade-in. From `gfx::spring`'s closed form `x(t) = (1 + ωt)·e^(−ωt)` (ω = √k), the
 //! shared `popover::K_APPEAR` = 300 takes ~337 ms to fall from 1 to 0.02; gating a 70 ms commit off
-//! it would need k ≈ 2800 — not a spring any more, an exponential with a threshold bolted on. So
+//! it would need k ≈ 2800 - not a spring any more, an exponential with a threshold bolted on. So
 //! the RAMP is linear (exact deadline) and the alpha handed out is smoothstepped, so the dissolve
 //! eases at both ends without moving the commit frame.
 //!
-//! It owns MOTION only — no pending action, no data. Each screen keeps its own typed pending
+//! It owns MOTION only - no pending action, no data. Each screen keeps its own typed pending
 //! value, exactly as each screen keeps its own focus; a generic boxed-closure queue in here would
 //! put a `Box<dyn FnOnce>` behind a `static mut` for no gain.
 
 /// Outgoing ramp (ms). Short on purpose: the data swap is deferred by exactly this long, and a
-/// control that acknowledges a press later than ~100 ms reads as dropped input. ≈4–5 frames at
+/// control that acknowledges a press later than ~100 ms reads as dropped input. ≈4-5 frames at
 /// 60 Hz; bounded at 2 frames by `app.rs`'s 0.05 s `dt` clamp.
 const OUT_MS: f32 = 70.0;
-/// Incoming ramp (ms) — deliberately longer than [`OUT_MS`]: leave fast, arrive gently, the
+/// Incoming ramp (ms) - deliberately longer than [`OUT_MS`]: leave fast, arrive gently, the
 /// standard dissolve asymmetry. ≈9 frames at 60 Hz.
 const IN_MS: f32 = 140.0;
 
@@ -51,7 +51,7 @@ enum Phase {
 ///
 /// Hold one per faded band (Library's grid is the first user). The screen calls [`reload`] on the
 /// press, [`tick`] beside its springs, and pushes [`alpha`] as ONE `Painter::alpha` around the
-/// content that is a function of the swapped data — never around the chrome that persists across
+/// content that is a function of the swapped data - never around the chrome that persists across
 /// the swap, and never around a loading spinner, which must stay legible while the band is dark.
 ///
 /// [`reload`]: Xfade::reload
@@ -59,7 +59,7 @@ enum Phase {
 /// [`alpha`]: Xfade::alpha
 pub struct Xfade {
     phase: Phase,
-    /// Linear 0..1 — 0 = fully faded out, 1 = fully present. The COMMIT deadline is measured on
+    /// Linear 0..1 - 0 = fully faded out, 1 = fully present. The COMMIT deadline is measured on
     /// this, not on [`Xfade::alpha`], so the easing can be retuned without moving the swap.
     t: f32,
 }
@@ -80,7 +80,7 @@ impl tv_machine::machine::LogicalState for Xfade {
 }
 
 impl Xfade {
-    /// A fader at rest with its content fully present — the state a screen that has never swapped
+    /// A fader at rest with its content fully present - the state a screen that has never swapped
     /// anything sits in, and what a `static mut` initializer needs (hence `const`).
     pub const fn new() -> Self {
         Xfade {
@@ -89,7 +89,7 @@ impl Xfade {
         }
     }
 
-    /// A content swap has been requested. Fades out **from wherever the alpha already is** — a
+    /// A content swap has been requested. Fades out **from wherever the alpha already is** - a
     /// second request mid-fade must not restart the ramp, or holding a tab key down would keep the
     /// content dark for as long as the user keeps pressing. A request while already parked at 0
     /// commits on the very next frame with no visible fade, which is correct: there is nothing on
@@ -107,24 +107,24 @@ impl Xfade {
         self.t = 0.0;
     }
 
-    /// The content changed under us and there is nothing to fade out — an async landing the screen
+    /// The content changed under us and there is nothing to fade out - an async landing the screen
     /// did not schedule. Ramp the new content straight in, with no commit.
     pub fn arrive(&mut self) {
         self.phase = Phase::In;
         self.t = 0.0;
     }
 
-    /// Abandon a fade-OUT and bring the content back, with **no commit** — the request that started
+    /// Abandon a fade-OUT and bring the content back, with **no commit** - the request that started
     /// it is being WITHDRAWN (BACK pressed inside the [`OUT_MS`] window; a destination re-pressed
     /// that turns out to be the one already showing). The ramp REVERSES from wherever `t` is rather
     /// than restarting, so a withdrawal 20 ms in costs 20 ms of fade-in, not a whole [`IN_MS`].
     ///
     /// Deliberately a no-op once the swap has happened (`Hold`/`In`) and while `Idle`: by then the
-    /// caller's pending action has been applied and there is nothing left to withdraw — undoing it
+    /// caller's pending action has been applied and there is nothing left to withdraw - undoing it
     /// is a fresh request, not a rewound animation.
     ///
     /// Returns whether it cancelled anything, so a caller holding a typed pending value beside the
-    /// fader drops it on exactly the frames the fader agrees it still can — and so an input that
+    /// fader drops it on exactly the frames the fader agrees it still can - and so an input that
     /// did NOT cancel anything can fall through to its normal handling instead of being swallowed.
     pub fn cancel(&mut self) -> bool {
         if self.phase == Phase::Out {
@@ -138,12 +138,12 @@ impl Xfade {
     /// Advance one frame with the SAME `dt` the screen's springs get. `ready` = the incoming
     /// content is drawable (Library: `!browse::loading_initial()`).
     ///
-    /// Returns `true` on **exactly one** frame — the frame the caller must apply its pending swap.
+    /// Returns `true` on **exactly one** frame - the frame the caller must apply its pending swap.
     ///
     /// A `dt` of 0 on a sub-millisecond frame simply leaves `Out` unadvanced for that frame; it
     /// cannot latch, because `SDL_GetTicks` is ms-resolution and the loop is ≥ 1 ms.
     pub fn tick(&mut self, dt: f32, ready: bool) -> bool {
-        // This ramp integrates MILLISECONDS, not a spring — so `tv_machine::idle`'s spring instrumentation
+        // This ramp integrates MILLISECONDS, not a spring - so `tv_machine::idle`'s spring instrumentation
         // is structurally blind to it, and before this line a route dip largely did not play: the
         // present gate froze the panel on the last presented frame (the OUTGOING page at alpha≈1)
         // until the 2 s keepalive hard-cut to the destination. BACK is the worst case, because it
@@ -167,7 +167,7 @@ impl Xfade {
                 // above) across three screens' replay fixtures, so this deliberately does NOT
                 // move onto `motion::Ramp`'s absolute-`Tick.ms` math, which would compute the
                 // same real quantity through a different sequence of float operations and so
-                // could change the hash bit-for-bit — for no correctness gain, since `tick`
+                // could change the hash bit-for-bit - for no correctness gain, since `tick`
                 // already reports motion correctly (`idle::invalidate()` below, the fix the
                 // module doc's own account describes) and `t` is bounded to one <=140ms phase,
                 // reset at every phase edge, with no accumulation-drift concern to fix.
@@ -207,14 +207,14 @@ impl Xfade {
         t * t * (3.0 - 2.0 * t)
     }
 
-    /// A swap is in flight — for a screen that must not treat a FOREIGN store change as a new
+    /// A swap is in flight - for a screen that must not treat a FOREIGN store change as a new
     /// reload while it is already running one.
     pub fn is_swapping(&self) -> bool {
         self.phase != Phase::Idle
     }
 
     /// The new content is on its way in and not yet fully opaque (`Hold` waiting on data, or the
-    /// `In` ramp). Motion that is meant to be SEEN — a focus pop — should start once this goes
+    /// `In` ramp). Motion that is meant to be SEEN - a focus pop - should start once this goes
     /// false, because under the ramp it is mostly dissolved away. Unlike
     /// [`is_swapping`](Self::is_swapping) it is false during `Out`, where the old content is
     /// still the one on screen.
@@ -226,11 +226,11 @@ impl Xfade {
 // ---------------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
-    //! Pure value semantics — with ONE exception that costs these tests their parallelism:
+    //! Pure value semantics - with ONE exception that costs these tests their parallelism:
     //! `tick` reports to `tv_machine::idle`'s process-global dirty flag (a ms ramp is invisible to the
     //! spring instrumentation, so it must say so itself). Driving an `Xfade` therefore mutates a
     //! crate global that `tv_machine::idle`'s own "a settled screen does not repaint" assertions read, so
-    //! every test here holds `tv_base::testlock::serial()` — the rule in `lib.rs::testlock`, not a
+    //! every test here holds `tv_base::testlock::serial()` - the rule in `lib.rs::testlock`, not a
     //! precaution. Without it these would intermittently fail *other modules'* tests, which is the
     //! worst shape a flake can take.
     //!
@@ -245,7 +245,7 @@ mod tests {
     /// answers for exactly the frames since the last one.
     ///
     /// `frame_begin` + `note_present` first, so neither leftover spring motion from another test on
-    /// this thread nor the 2 s keepalive can answer in the fader's place — this must isolate the
+    /// this thread nor the 2 s keepalive can answer in the fader's place - this must isolate the
     /// fader's own report and nothing else.
     fn asked_to_repaint() -> bool {
         tv_machine::idle::frame_begin(DT);
@@ -275,7 +275,7 @@ mod tests {
     }
 
     /// ...and a fader at rest must NOT, or every screen holding one pins the loop at 60fps
-    /// forever — the failure mode that costs the whole feature and that no floor-style gate sees.
+    /// forever - the failure mode that costs the whole feature and that no floor-style gate sees.
     #[test]
     fn a_fader_at_rest_never_asks() {
         let _g = tv_base::testlock::serial();
@@ -300,7 +300,7 @@ mod tests {
         let mut x = Xfade::new();
         x.mount(); // -> Hold
         for _ in 0..8 {
-            x.tick(DT, false); // not ready — parked
+            x.tick(DT, false); // not ready - parked
         }
         assert!(
             !asked_to_repaint(),
@@ -435,8 +435,8 @@ mod tests {
         assert_eq!(x.alpha(), 0.0, "and nothing flickers on the way");
     }
 
-    /// The nit's second trap. `Hold` waits on `ready` forever if it must — the screen's own
-    /// spinner is outside the faded band and the store retries by itself — but the moment content
+    /// The nit's second trap. `Hold` waits on `ready` forever if it must - the screen's own
+    /// spinner is outside the faded band and the store retries by itself - but the moment content
     /// exists the fader has to come back to full on its own, with no further input.
     #[test]
     fn the_fade_never_wedges_at_zero_when_the_content_never_arrives() {
@@ -462,7 +462,7 @@ mod tests {
         assert!(!x.is_swapping());
     }
 
-    /// Route entry must never fire a swap it did not queue — `mount` exists precisely for the case
+    /// Route entry must never fire a swap it did not queue - `mount` exists precisely for the case
     /// where there IS no outgoing content, so a stray commit there would apply whatever the screen
     /// happened to have left in its pending slot.
     #[test]
@@ -558,7 +558,7 @@ mod tests {
     }
 
     /// "BACK after the commit is an ordinary BACK, not a rewind." Once the swap has happened the
-    /// caller's pending action is spent, so the fader must refuse to un-run it — and must still
+    /// caller's pending action is spent, so the fader must refuse to un-run it - and must still
     /// finish its own fade-in whichever phase the refusal landed in.
     #[test]
     fn cancel_is_refused_once_the_swap_has_happened() {

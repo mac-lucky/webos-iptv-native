@@ -1,11 +1,11 @@
-//! **The HLS client**: a master or media playlist URL in, ONE continuous byte stream out — the
+//! **The HLS client**: a master or media playlist URL in, ONE continuous byte stream out - the
 //! initialization section (fMP4) and then every segment's bytes, decrypted, in media-sequence
-//! order — read through the same `>0 / 0 / error` contract the demuxer's AVIO callbacks already
+//! order - read through the same `>0 / 0 / error` contract the demuxer's AVIO callbacks already
 //! speak (`ff::read_cb`).
 //!
-//! It fetches through a [`Transport`] — the curl media plane ([`CurlTransport`], which applies
+//! It fetches through a [`Transport`] - the curl media plane ([`CurlTransport`], which applies
 //! the stream's request headers to every request, playlists, keys and segments alike) in the
-//! application, an in-memory double in the tests — and waits on a [`Clock`], which the tests fake.
+//! application, an in-memory double in the tests - and waits on a [`Clock`], which the tests fake.
 //! One request at a time: a segment is streamed to the demuxer as it arrives, and the next is
 //! requested when it is done. Nothing prefetches; the demuxer's own AU queues are the buffer.
 //!
@@ -14,8 +14,8 @@
 //!   and never for a 4xx: a 404 playlist is an error at once;
 //! - a segment (or key, or init section) that fails transiently is re-requested up to
 //!   [`ATTEMPTS`] times, with the bytes already handed on skipped, so the stream never repeats a
-//!   byte; a live segment that is gone (4xx, or retries spent) is skipped — at most
-//!   [`MAX_SKIPS_IN_ROW`] in a row — since the live edge has moved on; a VOD one ends the stream
+//!   byte; a live segment that is gone (4xx, or retries spent) is skipped - at most
+//!   [`MAX_SKIPS_IN_ROW`] in a row - since the live edge has moved on; a VOD one ends the stream
 //!   with an error;
 //! - a live playlist reload that fails is retried on the §6.3.4 cadence, at most
 //!   [`MAX_RELOAD_FAILURES`] times in a row, and a live playlist that stops growing is declared

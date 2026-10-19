@@ -1,4 +1,4 @@
-//! **The Player machine** — the playback state the application owns.
+//! **The Player machine** - the playback state the application owns.
 //!
 //! Everything about a playback that is a DECISION rather than a resource lives here, in one value
 //! with one owner: the [`PlaybackSession`] (what is playing and the decisions frozen from it), the
@@ -24,7 +24,7 @@ pub struct Player {
     pub repair: RepairAttempt,
     /// What is playing and the decisions frozen from it (`crate::session`).
     pub session: PlaybackSession,
-    /// This frame's millisecond stamp — see the module doc. Zero before the first frame.
+    /// This frame's millisecond stamp - see the module doc. Zero before the first frame.
     pub now_ms: u32,
     /// **Is the hardware video plane bound to our sink?** 
     ///
@@ -32,14 +32,14 @@ pub struct Player {
     /// re-derives: it is set when the ACB bind transaction has actually reached the sink and
     /// cleared only when the sink is confirmed unbound. Read it; never recompute it. Through
     /// phase 8 the same question was asked as `matches!(app.route, Route::Player)` at three
-    /// separate places in the loop, which is a claim about which SCREEN is up — true a second
+    /// separate places in the loop, which is a claim about which SCREEN is up - true a second
     /// before the plane binds and a second after it unbinds, when the compositor has an ordinary
     /// UI surface and the gate should be treating it like one.
     ///
     /// Its EDGES are the only source of [`tv_machine::present::PresentEvent::VideoPlane`]; see
     /// [`Player::set_video_plane_bound`].
     pub video_plane_bound: bool,
-    /// Last frame's player-page `clock_fingerprint` (the application's) — the machine's
+    /// Last frame's player-page `clock_fingerprint` (the application's) - the machine's
     /// memory of what the player page's clock-driven picture WAS, so a change can be a frame.
     clock_fp: u64,
 }
@@ -69,10 +69,10 @@ impl Player {
     ///
     /// Publishes on the EDGES only. That is not an optimisation: the present gate's video-plane
     /// input is a piece of STATE with one owner, and a level written every frame would be a second
-    /// formula term feeding it — exactly the risk the spec names, where the gate and the machine
+    /// formula term feeding it - exactly the risk the spec names, where the gate and the machine
     /// come to disagree about which frame the plane went away on and the false edge lands on a
     /// frame that was never presented.
-    /// `Some(bound)` when this was an EDGE — the loop forwards that, and only that, to the two
+    /// `Some(bound)` when this was an EDGE - the loop forwards that, and only that, to the two
     /// `tv_machine::present::Present` machines it owns beside the live gate.
     pub fn set_video_plane_bound(&mut self, bound: bool) -> Option<bool> {
         if self.video_plane_bound == bound {
@@ -80,7 +80,7 @@ impl Player {
         }
         self.video_plane_bound = bound;
         // ONE line per edge, in the event log. The bit decides the present gate, the opaque
-        // region, the capture skip and whether a frame may sample the framebuffer at all — and
+        // region, the capture skip and whether a frame may sample the framebuffer at all - and
         // every one of those is invisible from a log that does not say when the plane arrived.
         tv_base::eventlog::log(if bound {
             "videoplane: BOUND — the gate presents unconditionally and no frame may snapshot"
@@ -89,7 +89,7 @@ impl Player {
         });
         tv_machine::idle::note(tv_machine::present::PresentEvent::VideoPlane(bound));
         // The FALSE edge has to reach the panel, and the frame it lands on is very often one the
-        // gate would otherwise skip — the picture is gone and nothing is animating (spec §3.3
+        // gate would otherwise skip - the picture is gone and nothing is animating (spec §3.3
         // step 9). `invalidate` is what makes that frame present, so the opaque region is really
         // cleared and the UI surface really goes back to being blended.
         if !bound {

@@ -1,4 +1,4 @@
-//! player::pump — the main-thread pump. Runs each frame from the app loop: the failure gates, the
+//! player::pump - the main-thread pump. Runs each frame from the app loop: the failure gates, the
 //! pending-seek handler, the ACB-bind state machine (Stage), and the feed dispatch. All
 //! ACB/Starfish control calls happen here on the main thread.
 use super::engine::{drain_aq, feed_both_lanes, feed_sample, Engine, Source};
@@ -31,7 +31,7 @@ fn native_load_gate_ready(epoch: u32) -> bool {
         super::log("native: loadCompleted while Load in flight — deferring");
     }
     // D.1.4: bound the wait. A Load that never returns must not leave the player in Connecting
-    // forever — past the budget, publish the same signal an outright Load refusal sets, so the
+    // forever - past the budget, publish the same signal an outright Load refusal sets, so the
     // failure arm at the top of `pump` raises the failure read-out on the next tick.
     match SHARED.native_load_elapsed(epoch) {
         Some(elapsed) if elapsed >= NATIVE_LOAD_BUDGET => {
@@ -43,7 +43,7 @@ fn native_load_gate_ready(epoch: u32) -> bool {
             SHARED.load_timed_out.store(true, Release);
         }
         Some(_) => {}
-        // `native_load_elapsed` shares its precondition with `native_load_returned` — both
+        // `native_load_elapsed` shares its precondition with `native_load_returned` - both
         // require the epoch to still own `NativeSessionPhase::Active`. A synchronous
         // UnloadCompleted callback (firmware type=23) for this epoch flips the phase to
         // `Unloaded` *without* this arm ever having seen `Returned`, which would otherwise
@@ -62,20 +62,20 @@ fn native_load_gate_ready(epoch: u32) -> bool {
 }
 
 /// Publish the one value the HUD renders from. Pure derivation off signals the workers already
-/// maintain — no new cross-thread plumbing, and it runs on every path out of `pump` (including
+/// maintain - no new cross-thread plumbing, and it runs on every path out of `pump` (including
 /// the early returns) so the state can never go stale behind a spinner that never resolves.
 fn set_state(s: super::shared::PlaybackState) {
     SHARED.pb_state.store(s as u8, Relaxed);
 }
 
-/// How many seek requests this pump seek MERGED — i.e. requests that arrived while an earlier
+/// How many seek requests this pump seek MERGED - i.e. requests that arrived while an earlier
 /// seek was still resolving and so never got a seek of their own. Reset as it's read, so each
 /// logged seek reports only the requests it consumed.
 ///
 /// The count is what makes coalescing observable. `seek_to_ns` only ever holds the newest target,
 /// so a burst of six taps and a single tap leave identical state behind; and the burst is applied
 /// by whichever of two paths wins a race with the stuck-watchdog, which log different lines.
-/// Counting either line therefore measures reopen latency, not merging — `coalesced=` measures
+/// Counting either line therefore measures reopen latency, not merging - `coalesced=` measures
 /// merging directly, and both paths report it.
 /// Whether a direct-play seek in `mode` is a full fresh `Load` (`engine::reload_at`) rather than an
 /// in-place one. Only `Reload` is: `Segment` and `NativeSeek` (LG's public `Seek`, issue #568) both
@@ -91,8 +91,8 @@ pub(super) const SEEK_STUCK_MS: u32 = 1200;
 pub(super) const SEEK_STUCK_CAP_MS: u32 = 10_000;
 
 /// The stuck watchdog's timeout for this playback's server: the floor plus three measured range
-/// reopens (`SHARED.reopen_ms_est`, from `ff::seek_cb`) — a landed seek may still need a reopen or
-/// two before its keyframe (an MP4's first read after the seek; a heal) — capped.
+/// reopens (`SHARED.reopen_ms_est`, from `ff::seek_cb`) - a landed seek may still need a reopen or
+/// two before its keyframe (an MP4's first read after the seek; a heal) - capped.
 pub(super) fn seek_stuck_ms() -> u32 {
     stuck_ms_for(SHARED.reopen_ms_est.load(Relaxed))
 }
@@ -117,7 +117,7 @@ fn take_coalesced() -> u32 {
 /// Place the webOS 5+ exported window: source frame -> on-screen rect.
 ///
 /// No-op on the ACB path. `src` is the frame being FED and `dst` where it lands, and the pair is
-/// what expresses scaling — so a 4K direct play must not be described as 1080p, which passing the
+/// what expresses scaling - so a 4K direct play must not be described as 1080p, which passing the
 /// authoring canvas for both would do. The coded size comes from the demuxer, the only thing that
 /// knows it for certain; before it has published, the canvas is the least-wrong fallback and the
 /// caller re-places once the real one arrives.
@@ -141,7 +141,7 @@ fn place_exported(mt: &MainThread, eng: &mut super::engine::Engine) {
     // RECORD it, do not merely log it. These three fields had no writer anywhere in the tree, so
     // `dg_place_rv` sat at its `i32::MIN` "never called" sentinel for the life of the process and
     // the diagnostics read-out rendered `Placed: not placed` in DANGER bold on every webOS 5+ set
-    // — a fabricated fault, on the one firmware family nobody here can test, pointing every reader
+    // - a fabricated fault, on the one firmware family nobody here can test, pointing every reader
     // at the video plane. The dev TV takes the ACB path, so no amount of looking at it would have
     // caught this.
     SHARED.dg_place_rv.store(rv, Relaxed);
@@ -178,7 +178,7 @@ fn publish_diag(eng: &Engine, now: u32) {
     SHARED.dg_stage.store(eng.stage as u8, Relaxed);
     // Nobody is looking: skip it. `aq_bytes` takes each queue's pthread mutex, and the read-out
     // samples at 2 Hz, so publishing at 60 Hz is 30x more often than anything can observe. Costs
-    // no freshness — the loop order is pump → `Diagnostics::update` → `Diagnostics::draw`
+    // no freshness - the loop order is pump → `Diagnostics::update` → `Diagnostics::draw`
     // (`app/run.rs`), so the frame the panel
     // is switched on has already republished.
     if !super::DIAG_READOUT_ON.load(Relaxed) {
@@ -270,8 +270,8 @@ static MID_SEEK_CLAIMS: std::sync::atomic::AtomicU32 = std::sync::atomic::Atomic
 /// * a session with no picture yet under a viewer Pause (any reload, or a Pause before the first
 ///   frame) gets the same preroll, so it can present one frame (see the branch below);
 /// * once the preroll the pump owns has LANDED on whichever Engine is live (in place: the keyframe
-///   re-anchored; a reload: the fresh session re-anchored, and `frames` —
-///   zeroed by the arm and by every session reset — counts a POST-seek presentation), re-pause with
+///   re-anchored; a reload: the fresh session re-anchored, and `frames` -
+///   zeroed by the arm and by every session reset - counts a POST-seek presentation), re-pause with
 ///   [`super::finish_paused_seek`] (on the ACB route only once the plane is bound and a tick has
 ///   followed the bind: [`plane_shows_the_picture`]). A refused re-pause leaves the preroll and its ownership in
 ///   place, so the next tick retries; the film plays only for that long.
@@ -371,7 +371,7 @@ fn acb_bind_frames_needed(preroll_open: bool) -> i32 {
 }
 
 /// The viewer is paused and the pump is doing no work for a picture: the feed gate is shut (no
-/// preroll open) and no seek is waiting. "Buffering…" over a player in that state is a spinner for
+/// preroll open) and no seek is waiting. "Buffering..." over a player in that state is a spinner for
 /// nothing; the ladder reports `PlaybackState::Paused` (the normal paused transport) instead.
 /// A Load still opening (`Stage::Loading` -> Connecting) is real work and is decided before this
 /// is asked.
@@ -410,7 +410,7 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
         }
     };
     // Republish the Engine-confined values the diagnostics read-out needs, BEFORE the early
-    // returns below, so it keeps reporting through the `sf_ready` and producer-died bail-outs —
+    // returns below, so it keeps reporting through the `sf_ready` and producer-died bail-outs -
     // which is precisely when a stalled user is looking at the panel.
     publish_diag(eng, now);
     // `sf_load == 0` may leave no callable object, so this must precede the sf_ready wait below;
@@ -441,7 +441,7 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
 
     // The producer died before publishing a duration: the EOS path is gated on `duration_ns > 0`
     // so it can NEVER fire, and the player would sit on a black screen forever with no error and
-    // no exit. Surface it instead — BACK is already the escape. A transfer that died after open
+    // no exit. Surface it instead - BACK is already the escape. A transfer that died after open
     // (`demux_io_failed`) is an error too, rather than a successful early EOF.
     if SHARED.demux_io_failed.load(Acquire) || (SHARED.demux_failed.load(Acquire) && SHARED.frames.load(Relaxed) == 0) {
         if ps.is_preview() {
@@ -474,11 +474,11 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
     // Firing another now would race the demux reopen (rapid tap-seeks) and the rebase guard would
     // then eat everything → stuck. Hold the latest requested target (it stays in TX.seek_to_ns) and
     // process it once this seek anchors. If it hasn't anchored within SEEK_STUCK_MS the reopen was
-    // lost — first RETRY the reopen cheaply (re-interrupt the demuxer + re-arm), and only fall back
+    // lost - first RETRY the reopen cheaply (re-interrupt the demuxer + re-arm), and only fall back
     // to a full (slow) reload if the retries also fail.
     // SEEK_STUCK_MS must comfortably exceed a real reopen+av_seek+first-keyframe on 4K HEVC over a
     // LAN (~700ms): the retry closes the demux socket, so a premature watchdog KILLS an open that
-    // was about to succeed and restarts it — at 500ms a rapid tap-burst self-DoS'd into the
+    // was about to succeed and restarts it - at 500ms a rapid tap-burst self-DoS'd into the
     // reload fallback every time. It is the FLOOR: `seek_stuck_ms` scales it by the server's
     // measured reopen latency.
     //
@@ -545,7 +545,7 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
             settle_reload(
                 super::engine::reload_at(ps, pa, tgt),
                 "stuck in-place seek reload",
-            ); // REPLACES the engine — eng dangles, return
+            ); // REPLACES the engine - eng dangles, return
             return;
         }
     }
@@ -592,15 +592,15 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
         TX.seek_to_ns.store(-1, Relaxed);
         let coalesced = take_coalesced(); // read here so BOTH branches consume this seek's requests
         let t = t.max(0);
-        // IN-PLACE seek — pause, av_seek the demuxer and, in feed_stream on the first
+        // IN-PLACE seek - pause, av_seek the demuxer and, in feed_stream on the first
         // post-seek keyframe, re-anchor the GStreamer segment WITHOUT a reload/decoder re-init (no
         // A/V-resync glitch): `Segment` = flush here + setTimeToDecode + sendSegmentEvent (Kodi),
         // `NativeSeek` = LG's public Seek(millis), which flushes by itself. A plain flush()+refeed
         // with NO fresh segment left a STALE GStreamer segment → the HW sink stops draining ~48 s
         // later → permanent BufferFull + "Playing error" (root-caused by decompiling
-        // libpipeline/lxvideosink; see engine::reload_at). `Reload` mode — selected for old-ABI
+        // libpipeline/lxvideosink; see engine::reload_at). `Reload` mode - selected for old-ABI
         // libraries, or set by feed_stream when sendSegmentEvent can't find the pipeline or a
-        // native Seek is refused — is reload-per-seek. reload_at REPLACES the ENGINE, so `eng`
+        // native Seek is refused - is reload-per-seek. reload_at REPLACES the ENGINE, so `eng`
         // dangles after it: return immediately.
         if seek_reloads(seek_mode()) {
             own_seek_under_pause(t);
@@ -667,7 +667,7 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
         // between two reads (ff.rs's inner loop). Nothing here interrupts the socket: the pump
         // used to shutdown(2) it to break the read so the outer loop would reopen+seek, but our
         // AVIO is seekable, so libavformat just healed the broken read through `seek_cb` and read
-        // on — no reopen, no seek, and every direct-play seek escalated to a reload. See ff.rs.
+        // on - no reopen, no seek, and every direct-play seek escalated to a reload. See ff.rs.
         // eng.flushed → feed_stream fires setTimeToDecode+sendSegmentEvent on the first post-seek
         // keyframe. disp_base=0 (rebase to the landed keyframe).
         eng.flushed = true;
@@ -679,7 +679,7 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
             "seek(in-place): av_seek t={t} coalesced={coalesced}"
         ));
         // zero-base the fed timeline on the first post-seek keyframe (feed_stream), so it
-        // presents against the flush-reset clock immediately — no catch-up freeze
+        // presents against the flush-reset clock immediately - no catch-up freeze
         eng.rebase_pending = true;
         eng.rebase_drops = 0;
         // A seek armed under a viewer Pause: the pump opens the preroll and closes it on the landing.
@@ -691,19 +691,19 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
         eng.audio_start_fp = None;
         // Drop any AU held from BEFORE the seek (the per-lane BufferFull retry). drain_aq cleared the
         // QUEUES but not these pending AUs; feeding a stale pre-seek AU after the seek re-bases it to
-        // the NEW pts_shift → a big A/V desync — the stale audio pts advances max_fed_audio_pts, then
+        // the NEW pts_shift → a big A/V desync - the stale audio pts advances max_fed_audio_pts, then
         // the STALE_BACKJUMP guard drops the fresh post-seek audio as "too far back" → no sound. The
         // reopened stream supplies fresh post-seek AUs.
         eng.pending_video = None;
         eng.pending_audio = None;
         eng.prime_play = true; // paused above; Play once PRIME_NS is buffered (no fast-forward)
-                               // "no post-seek frame presented yet" — the feed-ahead throttle feeds freely until the first
+                               // "no post-seek frame presented yet" - the feed-ahead throttle feeds freely until the first
                                // real presented pts lands, instead of comparing the new fed pts against the STALE pre-seek
                                // presented position (which would wrongly break feeding on a forward in-place seek).
         SHARED.pres_fed.store(super::engine::PRES_NONE, Relaxed);
         eng.feed_pace = super::engine::FeedPace::default(); // the run-on belongs to the pre-seek report
         SHARED.frames.store(0, Relaxed); // count only POST-seek frames (rebind + resume re-pause gate)
-                                         // …and forget the last presentation stamp with it. The plane goes dark across a seek by
+                                         // ...and forget the last presentation stamp with it. The plane goes dark across a seek by
                                          // design, so the first frame after one would otherwise post a gap the size of the seek and
                                          // read as a stutter (`Shared`'s `dg_vpres_*` block).
         SHARED.dg_vpres_at.store(0, Relaxed);
@@ -712,12 +712,12 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
 
     // ---------- load -> Play (decode fed frames as soon as loaded) ----------
     // issue #74 D.1: the gate below requires `SHARED.native_load_returned(eng.native_epoch)`
-    // BEFORE this arm may even poll `sf_is_load_completed` — that poll is itself a concurrent
+    // BEFORE this arm may even poll `sf_is_load_completed` - that poll is itself a concurrent
     // Starfish call, and on v0.6.0 it was the FIRST thing this arm did while `sf_load` was still
     // executing (synchronously) on the load thread. See `src/starfish.c`'s `g_load_returned` for
     // the matching seam-side half; `threads::load_thread` flips the Rust side right after the
     // real, blocking `sf_load` call returns. Gated on `!eng.preview_abandon` too, same as the
-    // completion arm below: an abandoned trailer-preview Load must not drive any of this — no
+    // completion arm below: an abandoned trailer-preview Load must not drive any of this - no
     // deferral logging, no budget clock, nothing that reacts to it as if it were live. That is
     // why the guard is checked BEFORE `native_load_gate_ready` is even called: the helper is
     // where the deferral logging and D.1.4 budget actually live (see its own doc).
@@ -728,7 +728,7 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
     {
         // "native: Load returned after Nms" is logged unconditionally at the gate transition
         // itself (`threads::load_thread`, right where `mark_native_load_returned` flips it), not
-        // here — see `load-returned-log-is-conditional-on-loadcompleted-and-unbounded-after`. It
+        // here - see `load-returned-log-is-conditional-on-loadcompleted-and-unbounded-after`. It
         // used to live in this arm, which meant it only ever appeared paired with the deferral
         // line above, and never at all on the path this fix is most likely to be read on: Load
         // eventually returns but `loadCompleted` goes quiet, so this arm never runs.
@@ -737,7 +737,7 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
         SHARED.dg_load_at.store(now, Relaxed);
         super::log("SMP loadCompleted");
         eng.stage = Stage::Playing;
-        // webOS 5+: place the exported window HERE, the instant Load reports success — which is
+        // webOS 5+: place the exported window HERE, the instant Load reports success - which is
         // exactly where ss4s does it (smp_player.c calls StarfishResourcePostLoad synchronously
         // on the line after StarfishMediaAPIs_load returns true).
         //
@@ -745,14 +745,14 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
         // DEADLOCK on this path: the pipeline does not emit frames until its sink is bound, and
         // the sink is not placed until frames arrive. The symptom is a player stuck in buffering
         // forever, which is what webOS 6 and 10 reported. The gate is right for ACB and only for
-        // ACB — `setMediaVideoData` there needs the sourceInfo envelope, which cannot exist until
+        // ACB - `setMediaVideoData` there needs the sourceInfo envelope, which cannot exist until
         // the pipeline has produced something. The exported window has no such dependency: the
         // BINDING already happened via `option.windowId` in the Load payload, and this call is
         // pure geometry.
         place_exported(mt, eng);
         if super::sink().window_mode() == super::VP_EXPORTED {
             // Playing -> Streaming directly: there is no bind sequence to sit in the middle of.
-            // The transition is load-bearing beyond bookkeeping — `pushEOS` is gated on
+            // The transition is load-bearing beyond bookkeeping - `pushEOS` is gated on
             // `>= Streaming`, so without it the last frames never drain and Up Next never fires.
             eng.stage = Stage::Streaming;
         }
@@ -790,7 +790,7 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
         && SHARED.native_load_returned(eng.native_epoch)
     {
         // Load HAS returned here (the first arm's `native_load_gate_ready` failed) and
-        // `loadCompleted` has NOT arrived (the previous arm's condition also failed) — the other
+        // `loadCompleted` has NOT arrived (the previous arm's condition also failed) - the other
         // half of issue #74 D.1's budget, and the one `load-returned-log-is-conditional-on-
         // loadcompleted-and-unbounded-after` found unbounded: on v0.6.0 and unchanged until now,
         // a Load that returns ok=1 and then never signals `loadCompleted` left the player parked
@@ -798,7 +798,7 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
         // `!eng.preview_abandon` too: an abandoned trailer-preview Load has nobody watching a
         // failure read-out for, and must not publish `load_failed`/`load_timed_out` either.
         // Budget it from
-        // the moment Load RETURNED, not from when it was ISSUED — `native_load_elapsed` (used
+        // the moment Load RETURNED, not from when it was ISSUED - `native_load_elapsed` (used
         // above) never resets, so a Load that used most of its own budget getting here would
         // otherwise leave this second wait almost none of its own.
         match SHARED.native_load_returned_elapsed(eng.native_epoch) {
@@ -832,14 +832,14 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
         if let Some(id) = id {
             unsafe { super::sink().plane_bind(mt, id.as_ptr()) };
             super::log(&format!("SMP ACB bound id={}", id.to_string_lossy()));
-            // **Dolby Atmos, to ACB, exactly here** — this is where LG's own client fires it
+            // **Dolby Atmos, to ACB, exactly here** - this is where LG's own client fires it
             // (`libcbe` 0x1b98d78, on LOADCOMPLETED): after setMediaId, and BEFORE the
             // frame-gated setMediaVideoData below. It needs no decoded frame and reads no
             // state; `context` is the `id` we have in hand, which is the whole reason the call
             // exists rather than a forward of the pipeline's own AUDIO_INFO callback (that
             // string carries `track` and `dualMono` and no context). See `acb_send_atmos`.
             //
-            // **This looks like it breaks the "never feed audio to ACB" rule and it does not** —
+            // **This looks like it breaks the "never feed audio to ACB" rule and it does not** -
             // the rule is about the audio ELEMENTARY STREAM, which the pipeline owns and which we
             // still never hand ACB. This is a two-key metadata descriptor, and the distinction is
             // now readable rather than remembered (see `acb_send_atmos` in `src/starfish.c` for
@@ -848,7 +848,7 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
             //
             // Ran behind `/tmp/webosiptv-atmosacb` first, then measured, then made the default:
             // `rv=1` accepted, 1600 audio AUs fed with `reply=O` and no error of any kind, and the
-            // television's own read-out — "Dolby Vision / Dolby Atmos", both lines — photographed
+            // television's own read-out - "Dolby Vision / Dolby Atmos", both lines - photographed
             // in a DISPLAY capture at 11 s. `/tmp/webosiptv-noatmosacb` is the way back out.
             if ps.stream().atmos && !tv_base::devtrig::flag("noatmosacb") {
                 let rv = unsafe { super::sink().plane_send_atmos(mt, id.as_ptr()) };
@@ -912,9 +912,9 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
 
     // ---------- webOS 5+ (VP_EXPORTED): correct the placement if the real frame size only
     // became known after Load. The demuxer publishes the coded size when it opens the stream,
-    // which races the load thread — so the placement above may have used the fallback. Re-placing
+    // which races the load thread - so the placement above may have used the fallback. Re-placing
     // costs one call, and Kodi re-places on every render-area change anyway. The viewer's aspect
-    // mode moving (`…` > Aspect ratio) is the same kind of change.
+    // mode moving (`...` > Aspect ratio) is the same kind of change.
     // ----------
     if eng.stage >= Stage::Playing && eng.placed_src != (0, 0) {
         let now = SHARED.video_raster();
@@ -928,10 +928,10 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
     // ---------- feed AUs after the initial Load has reached Playing. The native clock may itself
     // be Running or Paused: ResumePrime deliberately fills both lanes before issuing Play. NOT
     // while a seek is armed: on a resume the seek is armed before PLAYING, so feeding first would
-    // present the file start for a frame before the seek repositions — a visible jump. ----------
+    // present the file start for a frame before the seek repositions - a visible jump. ----------
     if eng.stage >= Stage::Playing && TX.feed_allowed() && TX.seek_to_ns.load(Relaxed) < 0 {
         if stream {
-            // Two-lane feed, then the prime attempt — the ordering and the reason both live in
+            // Two-lane feed, then the prime attempt - the ordering and the reason both live in
             // `feed_both_lanes`, so this call site cannot drift from them.
             tv_base::diag::spans::span("feed", || feed_both_lanes(mt, eng));
         } else {
@@ -942,7 +942,7 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
     // ---------- end-of-stream: the producer hit file EOF (eos_pushed → all AUs to the end were
     // fed) and the pipeline has now played out to within EOS_TAIL of the duration. Mark ended so
     // app.rs tears the player down at the credits instead of freezing on the last frame. Paused
-    // at the end stays paused (playpos won't climb) — correct; it fires when resumed. Any seek
+    // at the end stays paused (playpos won't climb) - correct; it fires when resumed. Any seek
     // clears the flag (request_seek), so seeking back from the end doesn't re-trigger. ----------
     // ---------- publish the derived UI state (see PlaybackState's doc) ----------
     // Order matters: a seek in flight outranks "we have frames", because the frames on the panel
@@ -1361,9 +1361,9 @@ mod native_seek_pump_tests {
 
     /// The field log: a Matroska file's first seek spent 2966 ms inside `av_seek_frame` (Cues at
     /// 102 GB, then back), the watchdog retried twice into it and then reloaded, and the reload's
-    /// teardown aborted the reopen that was landing (`curlio: seek … failed: Aborted`). A seek in
+    /// teardown aborted the reopen that was landing (`curlio: seek ... failed: Aborted`). A seek in
     /// flight is now never retried or reloaded, and a target that arrived meanwhile is applied
-    /// once it has landed — nothing aborted, one av_seek per target.
+    /// once it has landed - nothing aborted, one av_seek per target.
     #[test]
     fn a_seek_in_flight_is_never_retried_or_reloaded_and_a_newer_target_follows_its_landing() {
         let _serial = tv_base::testlock::serial();
@@ -1426,7 +1426,7 @@ mod native_seek_pump_tests {
         assert_eq!(TX.owned_paused_seek(), Some(TARGET_NS));
         TX.reset(); // a stop
         assert!(TX.owned_paused_seek().is_none() && !TX.seek_preroll_active());
-        // …and a Resume that closes the preroll drops the ownership with it.
+        // ...and a Resume that closes the preroll drops the ownership with it.
         TX.commit_paused(true);
         assert!(TX.own_paused_seek(1));
         TX.finish_seek_preroll();
@@ -1684,7 +1684,7 @@ mod native_seek_pump_tests {
         assert_ended_paused();
     }
 
-    /// The owner's framing: "Buffering…" while the player does NO work is a lie. A viewer-paused
+    /// The owner's framing: "Buffering..." while the player does NO work is a lie. A viewer-paused
     /// session with no picture, the feed gate shut, and nothing in flight (no seek,
     /// no preroll, the Engine loaded) publishes a state the HUD draws as the normal paused
     /// transport, not the centred spinner. (The clock is left un-held here so the preroll rule

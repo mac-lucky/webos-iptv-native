@@ -1,4 +1,4 @@
-//! Reusable decision alert — two choices, or a one-answer card. The caller owns focus; this
+//! Reusable decision alert - two choices, or a one-answer card. The caller owns focus; this
 //! component shares measured geometry for paint and hits, retained paragraphs, and answer styling.
 //! Complete translated titles and bodies use the shared left padding edge. Oversized disclosures
 //! scroll inside the safe frame while their answers stay visible.
@@ -10,8 +10,8 @@
 //! report cards retain their disclosures on the alert, so the body-free test separately guards
 //! that simpler geometry. The body is held on the ALERT
 //! rather than passed to [`DecisionAlert::draw`] because it moves the controls, and
-//! [`DecisionAlert::frames`] — the geometry an owning Engine screen registers its own hit stops
-//! from — has to measure the same retained content the draw consumes.
+//! [`DecisionAlert::frames`] - the geometry an owning Engine screen registers its own hit stops
+//! from - has to measure the same retained content the draw consumes.
 //!
 //! **Focus and hit-testing are the owning screen's, not this type's** (restructure phase 12):
 //! `DecisionAlert` used to carry its own `move_focus`/`press_at` ladder, driven by a caller that
@@ -25,7 +25,7 @@
 //! (`Answers::One`), which takes the centred cancel slot while the destructive rect collapses to
 //! zero width so no caller can register or draw it. The sign-in failure's *Details* is the caller
 //! (its Report ID and support line, *Close*, and *Send report* only while the report can still be
-//! sent) — a disclosure that used to grow the read-out under its control row, and was replaced by
+//! sent) - a disclosure that used to grow the read-out under its control row, and was replaced by
 //! this card because three buttons and three labels stacked on one page read as a mess (owner,
 //! 2026-09-19).
 //! A live card feeds its rendered content back through [`DecisionAlert::reconcile_card`] before
@@ -33,17 +33,17 @@
 //! and retain any still-valid selection; they never restart the entrance or steal focus for a
 //! newly available action. The host's focus engine reconciles a removed action to that selection.
 //!
-//! **Every interactive exit — confirm, cancel, or BACK — takes [`DecisionAlert::dismiss`], never
+//! **Every interactive exit - confirm, cancel, or BACK - takes [`DecisionAlert::dismiss`], never
 //! [`DecisionAlert::close`].** `close` is [`Popover::close`]'s case: a subject that vanished out
 //! from under the alert, or a defensive reset before opening it fresh (`consent`'s `open`/
 //! `open_settings` both call it for exactly that, unconditionally, before the alert has ever shown
 //! anyone anything). A person's OWN answer is not that case, however destructive: the alert has
 //! already been seen and already been answered, and the caller learns the choice from
-//! [`DecisionAlert::choice`] before anything the answer authorizes runs — so there is always a
+//! [`DecisionAlert::choice`] before anything the answer authorizes runs - so there is always a
 //! frame in which fading it out costs nothing but a few frames of a panel already leaving. Reported
 //! off `consent.rs`'s "Delete all local data" flow (2026-09-03): confirming jumped straight to an
 //! instant hide because the confirm arm reused the screen's own defensive `close()` reset instead
-//! of `dismiss()` — this alert had the same appearance animation `exit_alert` shares, and none
+//! of `dismiss()` - this alert had the same appearance animation `exit_alert` shares, and none
 //! leaving. A
 //! caller that tears its OWN host down synchronously under the alert (as that same confirm arm
 //! still does, to the Settings screen behind it) may keep doing so; the alert's fade then simply
@@ -67,10 +67,10 @@ const QUESTION_GAP: f32 = theme::space::LG;
 /// Question → body. Smaller than [`QUESTION_GAP`], which separates the whole text block from the
 /// controls: the body belongs to the question, not to the buttons.
 const BODY_GAP: f32 = theme::space::SM;
-/// Between two body paragraphs — one rung under [`BODY_GAP`]: they are one disclosure in two
+/// Between two body paragraphs - one rung under [`BODY_GAP`]: they are one disclosure in two
 /// parts (a Report ID, then the line support reads it with), not two blocks.
 const PARA_GAP: f32 = theme::space::XS;
-/// The body's measuring width — the panel minus its side padding, so a caller can measure without
+/// The body's measuring width - the panel minus its side padding, so a caller can measure without
 /// reaching into the layout.
 pub const BODY_W: f32 = PANEL_W - 2.0 * PAD_X;
 pub const BUTTON_W: f32 = 260.0;
@@ -82,13 +82,13 @@ pub enum Choice {
     Destructive,
 }
 
-/// Which face the second answer wears. **Not every two-choice question ends something** — issue
+/// Which face the second answer wears. **Not every two-choice question ends something** - issue
 /// #75's one-off "Send report" needed a second button beside "Not now", and the alert's only look
 /// until then was [`ControlStyle::Danger`] for that slot. Shipping "Send report" in the same red
 /// [`theme::DANGER`] face `ui::consent`'s *Delete all local data* uses would say the press is
-/// destructive when it is the opposite — a report leaves, nothing is lost. `Destructive` is the
+/// destructive when it is the opposite - a report leaves, nothing is lost. `Destructive` is the
 /// default and the delete alert's own look is unchanged by this existing at all.
-/// How many answers the alert offers. **`One` is an information card, not a question** — the
+/// How many answers the alert offers. **`One` is an information card, not a question** - the
 /// sign-in failure's *Details*, which has nothing to decide once its report has gone and so offers
 /// only *Close*. Its one answer is the CANCEL slot, centred on the panel: the slot BACK already
 /// means, so the card needs no second vocabulary.
@@ -101,7 +101,7 @@ pub enum Answers {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tone {
     Destructive,
-    /// Both answers are ordinary controls — no danger tint on either.
+    /// Both answers are ordinary controls - no danger tint on either.
     Neutral,
 }
 
@@ -110,7 +110,7 @@ pub struct Layout {
     pub panel: Rect,
     pub question: Rect,
     /// Zero-height when the alert has no body, in which case every other rect is exactly what it
-    /// was before bodies existed — see `no_body_leaves_the_geometry_untouched`.
+    /// was before bodies existed - see `no_body_leaves_the_geometry_untouched`.
     pub body: Rect,
     pub cancel: Rect,
     pub destructive: Rect,
@@ -126,7 +126,7 @@ pub fn layout(question_h: f32, body_h: f32) -> Layout {
 }
 
 /// [`layout`] for either answer count. With [`Answers::One`] the cancel slot is centred on the
-/// panel and the destructive rect is the zero-width point at the row's centre — nothing draws
+/// panel and the destructive rect is the zero-width point at the row's centre - nothing draws
 /// there and nothing registers it.
 pub fn layout_with(question_h: f32, body_h: f32, answers: Answers) -> Layout {
     let body_block = if body_h > 0.0 { BODY_GAP + body_h } else { 0.0 };
@@ -175,19 +175,19 @@ pub struct DecisionAlert {
     body: Vec<Cow<'static, str>>,
     scroll: Spring,
     scroll_target: f32,
-    /// One answer or two — see [`Answers`].
+    /// One answer or two - see [`Answers`].
     answers: Answers,
-    /// Which face the destructive-slot answer wears — see [`Tone`]. Defaults to
+    /// Which face the destructive-slot answer wears - see [`Tone`]. Defaults to
     /// [`Tone::Destructive`], so every alert built before this field existed looks exactly as it
     /// did.
     tone: Tone,
     /// The panel's material: the page under the alert, latched ONCE per open from the framebuffer
-    /// at the head of [`draw_scrim`](Self::draw_scrim), before the alert's own dim touches it —
+    /// at the head of [`draw_scrim`](Self::draw_scrim), before the alert's own dim touches it -
     /// the same field `containers::modal::ModalUnderlay` latches for a surface, owned here because
     /// this alert is drawn from inside its page rather than as a `ModalStack` surface, so no
     /// container field describes what is actually behind it (over Privacy & data, the stack's
     /// field is HOME's, one surface further down). Over the video plane (the player's repair
-    /// alert) the sample refuses and the panel draws the flat sheet — what the old glass did there.
+    /// alert) the sample refuses and the panel draws the flat sheet - what the old glass did there.
     field: crate::underlay::UnderlayField,
 }
 
@@ -195,7 +195,7 @@ impl DecisionAlert {
     pub const fn new() -> Self {
         Self {
             // The page under a decision alert is frozen into the shared host snapshot
-            // (`popover::host`) — the alert's own contents are a question and two answers, and
+            // (`popover::host`) - the alert's own contents are a question and two answers, and
             // what made "Cancel / Delete" lag was the full page being re-rendered under it on every
             // frame its focus spring moved. Over the Settings family (the delete-data alert) the
             // page closure is already skipped and nothing is captured, which costs nothing; over
@@ -212,7 +212,7 @@ impl DecisionAlert {
             field: crate::underlay::UnderlayField::new(),
         }
     }
-    /// Set the second answer's face. Called once, outside the draw loop — a tone is a property of
+    /// Set the second answer's face. Called once, outside the draw loop - a tone is a property of
     /// what the alert is FOR, not something that changes frame to frame.
     pub fn set_tone(&mut self, tone: Tone) {
         self.tone = tone;
@@ -222,7 +222,7 @@ impl DecisionAlert {
     }
     /// **Has the sheet finished arriving?** A key acts on the logical state, but a POINTER hit is
     /// positional and [`Self::frames`] tests FINAL coordinates while the sheet is still drawn
-    /// through the entrance painter — so an immediate click lands on a control that is displaced
+    /// through the entrance painter - so an immediate click lands on a control that is displaced
     /// and nearly invisible. Every pointer caller gates on this (`ui::route_screen`'s rule 11).
     pub fn settled(&self) -> bool {
         self.pop.appear_settled()
@@ -234,7 +234,7 @@ impl DecisionAlert {
         self.answers = Answers::Two;
         self.open_inner();
     }
-    /// Ask it with a paragraph underneath — for a question whose consequences are not fully stated
+    /// Ask it with a paragraph underneath - for a question whose consequences are not fully stated
     /// by its verb. The destructive delete is the case: "Delete all local data" is accurate about
     /// what it removes and silent about what it CANNOT reach, and the confirmation is the last
     /// moment that difference can be stated.
@@ -342,7 +342,7 @@ impl DecisionAlert {
             .h(theme::alert::TEXT_ALIGN)
             .break_long_words()
     }
-    /// Instant hide — see [`Popover::close`]. Interactive answers take [`dismiss`](Self::dismiss).
+    /// Instant hide - see [`Popover::close`]. Interactive answers take [`dismiss`](Self::dismiss).
     pub fn close(&mut self) {
         self.pop.close();
         tv_machine::idle::invalidate();
@@ -352,7 +352,7 @@ impl DecisionAlert {
         self.pop.dismiss();
         tv_machine::idle::invalidate();
     }
-    /// Open or still fading out — the DRAW gate, never the input gate.
+    /// Open or still fading out - the DRAW gate, never the input gate.
     pub fn visible(&self) -> bool {
         self.pop.visible()
     }
@@ -371,7 +371,7 @@ impl DecisionAlert {
             return;
         }
         // The appear spring and the two answers' focus pops are the ALERT's motion, not the
-        // page's — `popover::own_motion`.
+        // page's - `popover::own_motion`.
         let _own = crate::popover::own_motion();
         self.pop.update(dt);
         self.scroll.step(self.scroll_target, K_SCROLL, dt);
@@ -382,10 +382,10 @@ impl DecisionAlert {
     }
     pub fn draw_scrim(&mut self) {
         if self.visible() {
-            // Live over the frozen host — and the first `live` of a frame is what takes the
+            // Live over the frozen host - and the first `live` of a frame is what takes the
             // snapshot, before this scrim lands on it. See `popover::host::live`.
             let _live = crate::popover::host::live();
-            // The panel's field, from the page as it stands before the dim below touches it —
+            // The panel's field, from the page as it stands before the dim below touches it -
             // idempotent once latched; until the read lands, and on a refusal (the video plane),
             // the flat sheet.
             let _ = self.field.latch_from_frame(
@@ -407,7 +407,7 @@ impl DecisionAlert {
         if !self.visible() {
             return;
         }
-        // Everything below is LIVE over the frozen host page — see `popover::host::live`.
+        // Everything below is LIVE over the frozen host page - see `popover::host::live`.
         let _live = crate::popover::host::live();
         let l = self.measured(measure);
         let p = self.pop.content_painter(Popover::RISE);
@@ -455,7 +455,7 @@ impl DecisionAlert {
 }
 
 /// The body block's height from each paragraph's measured height: stacked [`PARA_GAP`] apart, and
-/// 0.0 — the no-body geometry — when there are none.
+/// 0.0 - the no-body geometry - when there are none.
 fn body_h(heights: &[f32]) -> f32 {
     if heights.is_empty() {
         return 0.0;
@@ -582,11 +582,11 @@ mod tests {
     }
 
     /// **A body must not move an alert that has none.** The body arithmetic has to vanish
-    /// completely at `body_h == 0.0` — not merely add a small gap. Written by computing the panel
+    /// completely at `body_h == 0.0` - not merely add a small gap. Written by computing the panel
     /// both ways and comparing.
     ///
-    /// Every shipping alert carries a body today — `ui::exit_alert`, which asked its question
-    /// alone, was retired on 2026-09-03 along with the root-BACK question itself — so this test is
+    /// Every shipping alert carries a body today - `ui::exit_alert`, which asked its question
+    /// alone, was retired on 2026-09-03 along with the root-BACK question itself - so this test is
     /// the whole of what holds the body-free case. It stays for that reason rather than in spite of
     /// it: arithmetic nothing exercises is arithmetic that drifts.
     #[test]
@@ -594,7 +594,7 @@ mod tests {
         let plain = layout(40.0, 0.0);
         assert_eq!(plain.body.h, 0.0);
         // Against the arithmetic as it stood BEFORE a body was possible, written out rather than
-        // recomputed from the constants under test — the first version of this compared
+        // recomputed from the constants under test - the first version of this compared
         // `plain.panel` to `plain.panel`, which is true of every layout ever written.
         let legacy_h = PAD_TOP + 40.0 + QUESTION_GAP + StatusOverlay::CTRL_H + PAD_BOTTOM;
         assert_eq!(plain.panel.h, legacy_h);
@@ -613,11 +613,11 @@ mod tests {
         let with = layout(40.0, 90.0);
         assert_eq!(with.body.h, 90.0);
         assert_eq!(with.panel.h, plain.panel.h + BODY_GAP + 90.0);
-        // The question keeps its POSITION within the panel, not merely its height — the earlier
+        // The question keeps its POSITION within the panel, not merely its height - the earlier
         // version asserted the height, which the body arithmetic could never have changed.
         assert_eq!(with.question.y - with.panel.y, plain.question.y - plain.panel.y);
         assert_eq!(with.question.h, plain.question.h);
-        // …and the controls move by exactly the body block, measured against the no-body layout.
+        // ...and the controls move by exactly the body block, measured against the no-body layout.
         assert_eq!(
             with.cancel.y - with.panel.y,
             (plain.cancel.y - plain.panel.y) + BODY_GAP + 90.0
@@ -627,8 +627,8 @@ mod tests {
         assert!(with.cancel.y > with.body.y + with.body.h);
     }
 
-    /// **The tone defaults to `Destructive`**, so a caller that never touches it — every alert
-    /// this app shipped before issue #75 — looks exactly as it always did.
+    /// **The tone defaults to `Destructive`**, so a caller that never touches it - every alert
+    /// this app shipped before issue #75 - looks exactly as it always did.
     #[test]
     fn tone_defaults_to_destructive_and_the_setter_changes_it() {
         let mut a = DecisionAlert::new();

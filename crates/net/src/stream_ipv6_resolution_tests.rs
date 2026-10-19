@@ -7,7 +7,7 @@ use super::test_support::*;
 /// The v6 sibling of the two connect tests above, on a real AF_INET6 socket: a live `::1`
 /// listener connects and is handed back BLOCKING (every read path below depends on that, and
 /// `connect_timeout` restores the flags itself), and a `::1` port with no listener is refused
-/// at once rather than waited out. Neither is inferrable from the v4 pair — a family this file
+/// at once rather than waited out. Neither is inferrable from the v4 pair - a family this file
 /// never opened before is exactly where a wrong `socklen_t` or a stray `sockaddr_in` cast shows
 /// up, and it shows up as a `connect` that fails for a reason nothing logs.
 #[test]
@@ -53,8 +53,8 @@ fn a_v6_listener_connects_blocking_and_a_v6_refusal_is_immediate() {
 }
 
 /// The bracket asymmetry, which is the single easiest thing to get backwards here: the URI
-/// authority carries them (RFC 3986 §3.2.2, and so `Host:` does — RFC 9110 §7.2), the RESOLVER
-/// does not. `getaddrinfo("[::1]", …)` is EAI_NONAME, so passing the authority form through
+/// authority carries them (RFC 3986 §3.2.2, and so `Host:` does - RFC 9110 §7.2), the RESOLVER
+/// does not. `getaddrinfo("[::1]", ...)` is EAI_NONAME, so passing the authority form through
 /// would make every IPv6 server read as "does not resolve".
 #[test]
 fn a_v6_literal_is_bracketed_for_the_host_header_and_bare_for_the_resolver() {
@@ -108,8 +108,8 @@ fn an_address_literal_is_told_apart_from_a_name() {
     }
 }
 
-/// `AI_ADDRCONFIG` suppresses AF_INET6 results on a host whose only IPv6 address is loopback —
-/// which is most developer machines — so a v6 LITERAL must not be resolved under it. This is
+/// `AI_ADDRCONFIG` suppresses AF_INET6 results on a host whose only IPv6 address is loopback -
+/// which is most developer machines - so a v6 LITERAL must not be resolved under it. This is
 /// the assertion behind `resolve`'s flag split; without it `::1` resolves to nothing on a
 /// perfectly healthy machine and every v6 case below fails for a reason that looks like ours.
 /// Both of these are purely local: `AI_NUMERICHOST` sends no packet and loads no NSS module.
@@ -128,12 +128,12 @@ fn an_address_literal_resolves_without_a_resolver() {
         "a non-loopback v6 literal too"
     );
 
-    // An out-of-range port FAILS instead of wrapping into a plausible one — 70000 used to dial
+    // An out-of-range port FAILS instead of wrapping into a plausible one - 70000 used to dial
     // 4464. Note what this is asserting: `resolve`'s OWN range check, not `AI_NUMERICSERV`'s.
     // Darwin rejects the service string and glibc does not, so had this been left to the
     // resolver the assertion would have passed here and the app would still have truncated on
-    // the television. It is the shape this file's own notes warn about — a green host run about
-    // a platform difference — and it was caught in review, not by the suite.
+    // the television. It is the shape this file's own notes warn about - a green host run about
+    // a platform difference - and it was caught in review, not by the suite.
     assert!(
         unsafe { resolve("127.0.0.1", 70_000) }.is_none(),
         "an out-of-range port must fail, not truncate into a dialable one"
@@ -153,8 +153,8 @@ fn an_address_literal_resolves_without_a_resolver() {
 }
 
 /// IPv6 end to end, which is checklist #43 CASE2: a listener on `::1`, an AF_INET6 socket
-/// opened because the RESOLVER said so, a 200 read back, and — the half a connect alone cannot
-/// show — a bracketed `Host:` on the wire. Both spellings of the host reach the same server,
+/// opened because the RESOLVER said so, a 200 read back, and - the half a connect alone cannot
+/// show - a bracketed `Host:` on the wire. Both spellings of the host reach the same server,
 /// since a URL reader hands back the bracketed one.
 #[test]
 fn a_v6_literal_connects_and_sends_a_bracketed_host_header() {
@@ -191,7 +191,7 @@ fn a_v6_literal_connects_and_sends_a_bracketed_host_header() {
     }
 }
 
-/// A NAME, which is the other half of the limitation being removed — and the three things that
+/// A NAME, which is the other half of the limitation being removed - and the three things that
 /// have to hold at once for one to work. `localhost` resolves to both families on every machine
 /// this runs on, while the listener is bound to 127.0.0.1 ONLY, so on a host that offers `::1`
 /// first this only passes by WALKING past a refused address to a live one.
@@ -222,7 +222,7 @@ fn a_hostname_resolves_and_the_host_header_carries_the_name_not_the_address() {
     );
 }
 
-/// The v4 literal path still says what it always said — the regression guard for every existing
+/// The v4 literal path still says what it always said - the regression guard for every existing
 /// caller, all of which hand `http_open` a dotted quad.
 #[test]
 fn a_v4_literal_still_sends_its_own_address_as_the_host_header() {
@@ -244,7 +244,7 @@ fn a_v4_literal_still_sends_its_own_address_as_the_host_header() {
 /// wearing a resolver. The chain here is built by hand rather than resolved, because which
 /// addresses a name yields and in what order is the machine's business and not something a test
 /// can arrange: a REFUSED v6 loopback port first, a live v4 listener second. It is also a
-/// mixed-family chain on purpose — the socket family comes from each node, so a walk that
+/// mixed-family chain on purpose - the socket family comes from each node, so a walk that
 /// assumed AF_INET would open the wrong socket for the first, and one that assumed AF_INET6
 /// would open the wrong socket for the second.
 #[test]
@@ -284,7 +284,7 @@ fn the_whole_address_chain_is_walked_until_one_connects() {
     unsafe { close_owned(&hs) };
 }
 
-/// …and a chain with nothing live fails as one failure, leaving no descriptor behind: every
+/// ...and a chain with nothing live fails as one failure, leaving no descriptor behind: every
 /// attempt has to be retired through `close_owned`, not bare-closed and not simply abandoned.
 #[test]
 fn a_chain_with_no_live_address_fails_closed_and_leaks_nothing() {
@@ -319,7 +319,7 @@ fn a_chain_with_no_live_address_fails_closed_and_leaks_nothing() {
     // Same slack, and the same reason, as `every_failed_open_retires_its_fd_and_leaks_nothing`:
     // `open_fd_count` is PROCESS-wide and this suite runs in parallel, so the sibling socket
     // tests hold descriptors open across this window and the reading drifts by a handful either
-    // way — measured at +9 against a first draft that allowed +8, on a run with nothing wrong.
+    // way - measured at +9 against a first draft that allowed +8, on a run with nothing wrong.
     // The separation is what makes the gate mean something rather than the tightness: 64 rounds
     // of a two-address walk leak 128 descriptors if a single `close_owned` is missed, which is
     // most of an order of magnitude clear of the noise.
@@ -330,15 +330,15 @@ fn a_chain_with_no_live_address_fails_closed_and_leaks_nothing() {
     );
 }
 
-/// A teardown mid-open must not be ANSWERED by dialling the next address — that would consume
+/// A teardown mid-open must not be ANSWERED by dialling the next address - that would consume
 /// the interrupt and hand a caller being torn down a brand-new connection, quietly undoing the
 /// interruptibility the publish-before-connect invariant exists to give.
 ///
 /// The latch is armed here instead of raced, deliberately: `shutdown(2)` aborting a handshake in
 /// progress is TRUE on the TV's kernel and NOT on the Darwin host these tests run on
 /// (`tools/sockprobe.c`), so timing the real interrupt would be asserting the host's behaviour.
-/// What is portable, and what actually decides the outcome, is the branch — a failed attempt
-/// plus a latched interrupt stops the walk — and `http_shutdown` is the real API that arms it,
+/// What is portable, and what actually decides the outcome, is the branch - a failed attempt
+/// plus a latched interrupt stops the walk - and `http_shutdown` is the real API that arms it,
 /// including with the fd already retired, which is the between-attempts window.
 #[test]
 fn an_interrupted_walk_does_not_dial_the_next_address() {

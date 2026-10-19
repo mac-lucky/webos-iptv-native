@@ -1,4 +1,4 @@
-//! The `hostsim` stand-in for `src/starfish.c` — the television's media seam, absent.
+//! The `hostsim` stand-in for `src/starfish.c` - the television's media seam, absent.
 //!
 //! This file has two behaviours and the default is still the honest failure.
 //!
@@ -7,7 +7,7 @@
 //! The simulator has no StarfishMediaAPIs, no `libAcbAPI`, and no hardware video plane. Every verb
 //! reports the same failure the seam itself reports when a television has no usable video path
 //! (`vp_mode() == VP_NONE`, `sf_load` returning 0), which is a state the engine, the pump and the
-//! HUD already handle — a real firmware can be in it, and issue #22 was exactly that. So pressing
+//! HUD already handle - a real firmware can be in it, and issue #22 was exactly that. So pressing
 //! Play in the simulator lands on the app's genuine full-screen failure read-out rather than on a
 //! hang or a panic.
 //!
@@ -19,7 +19,7 @@
 //! # Opt-in: a REFUSED Load (`webosiptv-refuseload[=N]`)
 //!
 //! With the sink armed, refuse the first N Loads (bare flag: every Load) the way webOS 10.3.1
-//! refused the 4K60 H.264 envelope — asynchronously, by callback, after `Load()` returned ok=1.
+//! refused the 4K60 H.264 envelope - asynchronously, by callback, after `Load()` returned ok=1.
 //! See `sf_load`. It exists so the failure read-out that refusal reaches can be driven and
 //! screenshotted on a Mac, and so a rollback that reloads can be made to fail a second time.
 //!
@@ -31,8 +31,8 @@
 //! backpressure, the feed-ahead throttle, seek and PTS rebase.
 //!
 //! **Why that is worth having, stated as what it can and cannot decide.** The reachable reserve is
-//! `B_max = lead + queue_bytes / rate`, and every term in it is OURS — `AQ_VIDEO_BYTES`,
-//! `AQ_AUDIO_BYTES`, `MAX_FEED_AHEAD_NS`, `AUDIO_SLACK_NS` — not Starfish's; this is the only way to
+//! `B_max = lead + queue_bytes / rate`, and every term in it is OURS - `AQ_VIDEO_BYTES`,
+//! `AQ_AUDIO_BYTES`, `MAX_FEED_AHEAD_NS`, `AUDIO_SLACK_NS` - not Starfish's; this is the only way to
 //! check it without a television. It can also answer whether the queues drain as modelled and
 //! whether backpressure behaves.
 //!
@@ -43,12 +43,12 @@
 //! this sink is a device measurement, and a number taken here must never be quoted as one.**
 //!
 //! **Why a clock and not AVFoundation.** `AVSampleBufferDisplayLayer` is a genuinely close
-//! analogue of Starfish's buffer-feed mode and would decode for real — but the questions it would
+//! analogue of Starfish's buffer-feed mode and would decode for real - but the questions it would
 //! newly answer are about Apple's decoder, and the ones that break this app are about LG's. The
 //! pixels are not the uncertainty. This is ~1% of the work for the part that is.
 //!
 //! It reports [`VP_EXPORTED`](super::VP_EXPORTED), the webOS 5+ path, because that one binds video
-//! through an exported window id and never touches ACB — so the whole ACB stage sequence stays
+//! through an exported window id and never touches ACB - so the whole ACB stage sequence stays
 //! skipped rather than faked.
 //!
 //! # How it is reached
@@ -78,14 +78,14 @@ const FEED_OK: c_char = b'O' as c_char;
 /// How often the sink reports a position, milliseconds.
 ///
 /// **Measured from the television, not chosen.** LG's pipeline emits its position callback at
-/// **5 Hz** — `vtick=5 vgap=201ms`, unvarying across every Profile 5 run — and the app's
+/// **5 Hz** - `vtick=5 vgap=201ms`, unvarying across every Profile 5 run - and the app's
 /// feed-ahead throttle is built against exactly that granularity (200 ms against a 1.6 s budget).
 /// Ticking faster here would give the host a smoother position than any television produces and
 /// would hide a throttle bug that a device would show.
 const TICK_MS: u64 = 200;
 
 /// **Test-only arming, deliberately NOT the trigger file.** `enabled()` latches in a `OnceLock`
-/// and the runtime root it consults latches in another, both process-wide — so a unit test that
+/// and the runtime root it consults latches in another, both process-wide - so a unit test that
 /// armed the sink by writing `webosiptv-clocksink` would pass alone and fail in a full run,
 /// depending on which test touched a root first. It would also have to write into the same
 /// directory a real simulator reads. This overrides the answer directly instead, so the test is
@@ -163,14 +163,14 @@ pub(super) static FLUSH_CALLS: AtomicU64 = AtomicU64::new(0);
 #[cfg(any(test, feature = "test-support"))]
 pub(super) static SEGMENT_CALLS: AtomicU64 = AtomicU64::new(0);
 
-/// issue #74 D.1 test seam — real (v0.6.0) `sf_load` publishes `SMP_READY(1)` and then calls the
+/// issue #74 D.1 test seam - real (v0.6.0) `sf_load` publishes `SMP_READY(1)` and then calls the
 /// blocking, synchronous Load, so there is a real window during which every OTHER seam verb is
 /// dispatchable but must not be dispatched. The unmodified host `sf_load` above has no such
 /// window (it emits `loadCompleted` and returns `1` in the same call), so these controls carve
 /// one open for the regression test: `LOAD_IN_FLIGHT` is true from the moment `sf_load` emits
 /// `loadCompleted` until it actually returns, `HOLD_LOAD` is what makes it block there on demand,
 /// and `IN_FLIGHT_CALLS`/`IN_FLIGHT_VERB` are what let a test PROVE nothing reached the seam
-/// during that window (this project's silent-instrument rule — see `note_dispatch`).
+/// during that window (this project's silent-instrument rule - see `note_dispatch`).
 #[cfg(any(test, feature = "test-support"))]
 pub(super) static LOAD_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 /// How many seam verbs were dispatched while [`LOAD_IN_FLIGHT`] was true. Zero across a whole
@@ -178,12 +178,12 @@ pub(super) static LOAD_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 /// makes.
 #[cfg(any(test, feature = "test-support"))]
 pub(super) static IN_FLIGHT_CALLS: AtomicU32 = AtomicU32::new(0);
-/// The FIRST verb name recorded while [`LOAD_IN_FLIGHT`] was true — for the failure message, so a
+/// The FIRST verb name recorded while [`LOAD_IN_FLIGHT`] was true - for the failure message, so a
 /// red run says exactly what reached the seam rather than only that something did.
 #[cfg(any(test, feature = "test-support"))]
 pub(super) static IN_FLIGHT_VERB: Mutex<Option<&'static str>> = Mutex::new(None);
 /// Bumped at the top of every host verb the real seam routes through `sf_ready_object()`. Records
-/// only while `LOAD_IN_FLIGHT` is true — a call before the window opens or after it closes is
+/// only while `LOAD_IN_FLIGHT` is true - a call before the window opens or after it closes is
 /// exactly what the fix is supposed to allow.
 #[cfg(any(test, feature = "test-support"))]
 fn note_dispatch(verb: &'static str) {
@@ -196,13 +196,13 @@ fn note_dispatch(verb: &'static str) {
     }
 }
 /// Makes the host `sf_load` block (after emitting `loadCompleted`, so `LOAD_IN_FLIGHT` is already
-/// true) until [`release_load_for_test`] is called — the only way to get a REAL two-thread window
+/// true) until [`release_load_for_test`] is called - the only way to get a REAL two-thread window
 /// open on the host, rather than a single-threaded simulation of one.
 #[cfg(any(test, feature = "test-support"))]
 pub(super) static HOLD_LOAD: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
 /// Arm the hold BEFORE spawning `threads::load_thread`, so its `sf_load` call blocks once it
 /// reaches the wait above. A test that never calls this gets the unmodified, non-blocking
-/// `sf_load` — this is opt-in per test, not a global change in behaviour.
+/// `sf_load` - this is opt-in per test, not a global change in behaviour.
 #[cfg(test)]
 pub(super) fn hold_load_for_test() {
     let mut held = HOLD_LOAD.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -214,7 +214,7 @@ pub(super) fn release_load_for_test() {
     *held = false;
     HOLD_LOAD.1.notify_all();
 }
-/// How long the host `sf_unload` takes, in ms — the device's `StarfishMediaAPIs::Unload` blocks
+/// How long the host `sf_unload` takes, in ms - the device's `StarfishMediaAPIs::Unload` blocks
 /// for 110-150 ms (`engine::PendingRelease`), and a test of the frame that pays for it needs a
 /// sink that takes measurable time too. 0 (the default) is the unmodified, instant Unload.
 #[cfg(test)]
@@ -232,7 +232,7 @@ pub(super) fn in_flight_verb_for_test() -> Option<&'static str> {
     *IN_FLIGHT_VERB.lock().unwrap_or_else(|e| e.into_inner())
 }
 /// Force [`LOAD_IN_FLIGHT`] directly, for a test that simulates the window without a real
-/// second thread (`the_gate_is_epoch_scoped`) — see that test for why it still needs this even
+/// second thread (`the_gate_is_epoch_scoped`) - see that test for why it still needs this even
 /// though it never calls `sf_load`.
 #[cfg(test)]
 pub(super) fn set_load_in_flight_for_test(on: bool) {
@@ -411,11 +411,11 @@ pub(super) fn force_callback_intercepts_for_test(value: u32) {
 /// Force `OBJECT_READY` directly, without a real `sf_load` call. `sf_load`'s host stub
 /// unconditionally emits the `loadCompleted` callback before it can ever return (see its own
 /// doc), so it cannot represent "Load constructed the pipeline but `loadCompleted` never
-/// arrives" — the exact state
+/// arrives" - the exact state
 /// `native_load_returned_loadcompleted_never_arrives_fires_load_failed` needs. This flips only
 /// the half `sf_ready()` reads, leaving `LOADED` (and so `sf_is_load_completed()`) at its
 /// default `false`.
-/// Whether the host object is quarantined (`LIFECYCLE_BLOCKED`) — separates a D1 release from a
+/// Whether the host object is quarantined (`LIFECYCLE_BLOCKED`) - separates a D1 release from a
 /// quarantine, which both leave `sf_ready()` at 0.
 #[cfg(test)]
 pub(super) fn lifecycle_blocked_for_test() -> bool {
@@ -519,8 +519,8 @@ impl Clock {
 
     /// One thread for the process, reporting position at the device's own cadence.
     ///
-    /// It calls [`super::sf_on_event`] — the same `#[no_mangle]` entry point LG's library thread
-    /// calls, with the same arguments — rather than writing `SHARED` directly. That is deliberate:
+    /// It calls [`super::sf_on_event`] - the same `#[no_mangle]` entry point LG's library thread
+    /// calls, with the same arguments - rather than writing `SHARED` directly. That is deliberate:
     /// the mapping from a fed PTS to `playpos_ns` (the `pts_shift`/`disp_base` rebase) lives in
     /// that callback, and a sink that bypassed it would be testing a path the television does not
     /// take.
@@ -548,7 +548,7 @@ impl Clock {
 
 unsafe fn sf_load(payload: *const c_char, epoch: u32) -> c_int {
     if !enabled() || epoch == 0 || OBJECT_READY.load(Relaxed) || LIFECYCLE_BLOCKED.load(Relaxed) {
-        return 0; // "pipeline could not be constructed" — the engine's existing failure path
+        return 0; // "pipeline could not be constructed" - the engine's existing failure path
     }
     Clock::rewind();
     // `webosiptv-simvideo`: the screenshot picture (`player::sim_video`) learns the codec here.
@@ -565,7 +565,7 @@ unsafe fn sf_load(payload: *const c_char, epoch: u32) -> c_int {
     if take_refusal() {
         // **`webosiptv-refuseload[=N]`: the webOS 10.3.1 refusal, on a Mac.** The sequence is the
         // lab set's own (`docs/webos10-lab-report.md` §3.2): the pipeline acknowledges, echoes the
-        // sink envelope it was handed as `type=5`, and then refuses with `type=18 num=601` —
+        // sink envelope it was handed as `type=5`, and then refuses with `type=18 num=601` -
         // AFTER `Load()` has returned ok=1. That asynchronous shape is what left the app on a black
         // screen for 70 s with a healthy-looking state machine, and it is the one no other host
         // path can produce: `LIFECYCLE_BLOCKED` makes `sf_load` return 0, which is the synchronous
@@ -594,7 +594,7 @@ unsafe fn sf_load(payload: *const c_char, epoch: u32) -> c_int {
     CALLBACK_INTERCEPTS.fetch_add(1, Relaxed);
     super::sf_on_event(epoch, 2, 0, c"{\"loadCompleted\":true}".as_ptr());
     // issue #74 D.1 test seam: on the real (v0.6.0) seam this is the exact window between
-    // `SMP_SET_READY(1)` and the real, blocking Load call returning — `loadCompleted` has
+    // `SMP_SET_READY(1)` and the real, blocking Load call returning - `loadCompleted` has
     // already fired (LG's pipeline can signal it from inside `Load()`) but the call has not come
     // back yet. The unmodified host stub has no such window at all; `HOLD_LOAD` opens one only
     // when a test has armed it (`hold_load_for_test`), so every other host test's `sf_load` is
@@ -770,7 +770,7 @@ unsafe fn sf_send_segment() -> c_int {
 /// clock outrun the pictures it claims to be presenting.
 ///
 /// Always `'O'`. `'B'` (BufferFull) is the real pipeline's own backpressure, and the sink has no
-/// buffer to fill — the app's backpressure is upstream, in the AU queues' byte caps and the
+/// buffer to fill - the app's backpressure is upstream, in the AU queues' byte caps and the
 /// feed-ahead throttle, and those are exactly what this exists to exercise. Returning `'B'` here
 /// would add a second, fictional one.
 unsafe fn sf_feed(p: *const u8, size: c_uint, pts: i64, es_data: c_int) -> c_char {
@@ -856,7 +856,7 @@ unsafe fn sf_quarantine() {
     crate::player::sim_video::stop();
 }
 
-/// `VP_NONE` — "video cannot be displayed, but the app still runs", which is precisely the
+/// `VP_NONE` - "video cannot be displayed, but the app still runs", which is precisely the
 /// simulator's situation and an existing, handled television state.
 ///
 /// With the clock sink armed this becomes `VP_EXPORTED`, the webOS 5+ path: video binds through an
@@ -876,7 +876,7 @@ unsafe fn vp_create_window() -> *const c_char {
         std::ptr::null()
     }
 }
-/// Never NUL — contracted to return a valid string even when no window exists, and `ui::stats`
+/// Never NUL - contracted to return a valid string even when no window exists, and `ui::stats`
 /// reads it unconditionally.
 unsafe fn vp_window_id() -> *const c_char {
     if enabled() {
@@ -1134,7 +1134,7 @@ mod tests {
         fresh();
         // Playing, started a long time ago, but only 2 s of video ever fed: the sink must report
         // 2 s and not the elapsed wall time. This is the whole difference between a plant and a
-        // fiction — an unclamped clock reports healthy playback straight through a starved
+        // fiction - an unclamped clock reports healthy playback straight through a starved
         // pipeline, which is the one failure the sink exists to make visible.
         BASE_NS.store(0, Relaxed);
         FED_MAX_NS.store(2_000_000_000, Relaxed);
@@ -1202,7 +1202,7 @@ mod tests {
 
     /// `sf_unload` is one of the nine verbs the real seam routes through `sf_ready_object()`
     /// (`grep -n 'sf_ready_object()' src/starfish.c`), so the in-flight instrument must see it
-    /// too — otherwise an Unload reaching the seam mid-Load (the one verb that would destroy the
+    /// too - otherwise an Unload reaching the seam mid-Load (the one verb that would destroy the
     /// object the Load call is still inside) would score zero dispatches and
     /// `nothing_reaches_the_seam_while_load_is_still_in_flight` would pass having proven nothing
     /// about that verb.

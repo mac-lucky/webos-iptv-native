@@ -1,4 +1,4 @@
-// Kawase 4-tap blur pass — the backdrop-blur chain's only shader (`gfx::blur_snapshot`).
+// Kawase 4-tap blur pass - the backdrop-blur chain's only shader (`gfx::blur_snapshot`).
 //
 // FOUR taps, not a Gaussian kernel, and that is the whole point on a tiler. Each tap sits on a
 // DIAGONAL half-texel-aligned offset, so GL_LINEAR resolves it as a 2x2 box for free: one fetch

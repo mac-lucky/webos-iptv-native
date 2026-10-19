@@ -4,11 +4,11 @@ use super::*;
 #[allow(unused_imports)]
 use super::test_support::*;
 
-/// **[`GLASS_TRACK_MAX`] is the budget, solved for width** — asserted rather than asserted-in-a-
+/// **[`GLASS_TRACK_MAX`] is the budget, solved for width** - asserted rather than asserted-in-a-
 /// comment, because the two numbers live in different files and the one that moves is the
 /// budget. A glass surface is charged for the blurred RECTANGLE: itself grown
 /// [`tv_gfx::gfx::BLUR_MARGIN`] on every side. At the limit width that must still fit
-/// [`tv_gfx::gfx::GLASS_REGION_BUDGET`], which is what a MOVING host carries at 60 fps — and this
+/// [`tv_gfx::gfx::GLASS_REGION_BUDGET`], which is what a MOVING host carries at 60 fps - and this
 /// bar's host is always moving, since the page under it is what the user is scrolling.
 ///
 /// **It is priced as the PAIR now**, and that is the change worth reading twice. This asserted
@@ -17,12 +17,12 @@ use super::test_support::*;
 /// two glass surfaces in one frame converge on ONE grab (`gfx::blur_region_union`) that has to
 /// span both. A track that passes on its own and fails as a pair is exactly the regression this
 /// exists to catch, so the counterexample moved with it: the old one was a 1050-wide track,
-/// which is far outside either limit, where 940 — the width the TRACK alone could afford — is
+/// which is far outside either limit, where 940 - the width the TRACK alone could afford - is
 /// inside its own budget and outside the band's. That is the boundary the second surface moved.
 /// [`BAND_REGION_BUDGET`] is a restatement of a `cfg(test)` constant, so it can only be kept
 /// honest by an equality. Both halves of [`GLASS_TRACK_MAX`] are also re-derived here through
 /// `gfx::blur_region` itself, which is the check that `BAND_REGION_H`'s clamp assumption still
-/// holds — the constant would silently over-state the region if the bar ever dropped past
+/// holds - the constant would silently over-state the region if the bar ever dropped past
 /// `BLUR_MARGIN`.
 #[test]
 fn the_band_budget_restated_here_is_the_measured_one() {
@@ -47,22 +47,22 @@ fn the_whole_bands_glass_fits_one_region_budget() {
     );
 }
 
-/// **The unfurled chip and the glass track can never touch** — the one thing about this band
+/// **The unfurled chip and the glass track can never touch** - the one thing about this band
 /// that no shader can fix, so it is arithmetic and it is asserted.
 ///
 /// There is ONE blur cache. A second glass surface drawn over the first samples that same
-/// snapshot, so an overlap gets no second blur — only a second scrim and a second rim
+/// snapshot, so an overlap gets no second blur - only a second scrim and a second rim
 /// composited over material that already carries both, which is the doubling `draw_tab_row`'s
 /// source-pass note measures from the other side (a face reading (52,60,38) came out at
 /// (33,38,26) once it contained itself). The capsule is bounded by [`CHIP_NAME_MAX`] and the
 /// track is centred, so the clearance is two constants and needs no font.
 ///
 /// **Be clear about what each half can catch, because as long as [`GLASS_TRACK_MAX`] is SOLVED
-/// for this both are identities.** That is the design working — the constant is the clearance,
-/// so nothing is left to check — and it means the assertions only bite under an EDIT. The first
+/// for this both are identities.** That is the design working - the constant is the clearance,
+/// so nothing is left to check - and it means the assertions only bite under an EDIT. The first
 /// fires the moment the limit goes back to being a literal (it was `940.0` until 2026-08-21,
 /// which leaves the widest capsule 42px inside the widest track). The second is the opposite
-/// guard, and it is NOT "a wider track would be overlapped" — a track past the limit wears no
+/// guard, and it is NOT "a wider track would be overlapped" - a track past the limit wears no
 /// glass at all, so it can never be overlapped as glass. It pins the clearance TIGHT: within a
 /// pixel of [`BAND_AIR`] and not an arbitrary gulf, so nobody buys safety here by quietly
 /// spending the strip.
@@ -87,7 +87,7 @@ fn the_unfurled_chip_never_reaches_the_glass_track() {
         track_x(GLASS_TRACK_MAX),
         BAND_AIR,
     );
-    // **The cap is TIGHT against whichever constraint binds** — a limit that gives away more
+    // **The cap is TIGHT against whichever constraint binds** - a limit that gives away more
     // strip than either rule needs is a cost nobody decided to pay. This used to be pinned
     // within a pixel of `BAND_AIR`, which said the same thing while the touch rule was the one
     // that bound; since the bar dropped to clear the overscan frame the BUDGET binds instead,
@@ -95,7 +95,7 @@ fn the_unfurled_chip_never_reaches_the_glass_track() {
     // against the widest track the budget admits.
     //
     // Both bounds are RE-DERIVED here rather than read back: the touch one off the rect
-    // `chip_cap` draws, the budget one by searching `band_region` — which asks
+    // `chip_cap` draws, the budget one by searching `band_region` - which asks
     // `gfx::blur_region_union` itself. Comparing `GLASS_TRACK_MAX` against the two module
     // constants it is literally the `min` of would be an identity that only NaN could fail, and
     // it would have missed exactly the error this catches: `GLASS_TRACK_BUDGET_MAX`'s closed
@@ -142,7 +142,7 @@ fn the_unfurled_chip_never_reaches_the_glass_track() {
 /// `fs_glass.frag` writes `max(u_tint.a * cov, rimw)`: the rim is deliberately allowed to exceed
 /// its own surface's coverage, so that a 1px line survives its antialiased edge. Fade only the
 /// tint and the consequence is a bright empty hairline capsule snapping on around the avatar in
-/// the first milliseconds of focus — visible, and not something the tint can walk back.
+/// the first milliseconds of focus - visible, and not something the tint can walk back.
 ///
 /// And at rest it is the track's face to the bit, which is the claim the whole arrangement
 /// rests on: one solve, one material, two surfaces.
@@ -183,8 +183,8 @@ fn the_chips_capsule_fades_its_rim_with_its_scrim_and_rests_on_the_tracks_own_fa
 }
 
 /// The chip is a contained control before it is focused: the resting surround is a circle in
-/// the same inset band as the tab track, and focus only WIDENS it rightward for the name —
-/// `profile_chip` draws `chip_cap(e, …)` at every `e`, at full face.
+/// the same inset band as the tab track, and focus only WIDENS it rightward for the name -
+/// `profile_chip` draws `chip_cap(e, ...)` at every `e`, at full face.
 #[test]
 fn the_profile_chip_has_a_round_surround_at_rest_and_only_widens_on_focus() {
     let closed = chip_cap(0.0, CHIP_NAME_MAX);
@@ -238,7 +238,7 @@ fn the_shipped_cadence_is_every_changed_present() {
 
 /// The one-pass hero ground's WEDGE field must be the four-quad wedge, not a lookalike. Graded
 /// at every corner of both quads [`hero_scrim_quads`] builds, because a bilinear quad IS its
-/// corners — reproduce those and the interiors follow, since both expressions are the same
+/// corners - reproduce those and the interiors follow, since both expressions are the same
 /// product of two linear factors. This is the test that would have caught a swapped feather
 /// range or a peak taken at the wrong x.
 #[test]
@@ -248,7 +248,7 @@ fn the_one_pass_ground_reproduces_the_wedge_at_every_corner_of_both_quads() {
         let (q, n) = hero_scrim_quads(strength, false);
         assert_eq!(n, 2, "home's hero has no right wedge");
         for (r, k) in q.iter().take(n) {
-            // (tl, tr, br, bl) — the order `Painter::grad4` and `fs_ambient.frag` agree on
+            // (tl, tr, br, bl) - the order `Painter::grad4` and `fs_ambient.frag` agree on
             for (corner, (x, y)) in [
                 (k[0], (r.x, r.y)),
                 (k[1], (r.x + r.w, r.y)),
@@ -266,9 +266,9 @@ fn the_one_pass_ground_reproduces_the_wedge_at_every_corner_of_both_quads() {
     }
 }
 
-/// …and the ATMOSPHERIC ramp must be the SCREEN's own curve, sampled where it bends. Home's is
+/// ...and the ATMOSPHERIC ramp must be the SCREEN's own curve, sampled where it bends. Home's is
 /// a two-stop ramp with a midpoint knee and detail's a single linear stop, so the parameters
-/// are the caller's — this pins the packing (`y0, knee, a_knee, a_foot`) against the curve the
+/// are the caller's - this pins the packing (`y0, knee, a_knee, a_foot`) against the curve the
 /// legibility table is graded on, at both stops and either side of each.
 #[test]
 fn the_one_pass_ground_reproduces_the_screens_atmospheric_ramp() {
@@ -308,7 +308,7 @@ fn the_veil_ramp_is_the_veil_on_every_row() {
 
 /// The whole reason one pass can stand in for three: two straight-alpha layers of ONE ink
 /// compose as `a1 + a2 - a1*a2`, and the art under them folds into the same single blend. This
-/// is `fs_hero.frag`'s algebra, executed — if it is wrong the panel shows a differently-lit
+/// is `fs_hero.frag`'s algebra, executed - if it is wrong the panel shows a differently-lit
 /// hero and nothing else in the suite would notice.
 #[test]
 fn one_blend_lands_where_three_stacked_ones_do() {
@@ -337,11 +337,11 @@ fn one_blend_lands_where_three_stacked_ones_do() {
 
 /// **Every glass policy COMPOSITES**, and the axis that let one not to is gone.
 ///
-/// This test used to assert the source-dim arithmetic — `Glass::DYNAMIC.source_rgb(0.5) == 0.75`
-/// and so on — for a preset nothing outside this module ever constructed. The mechanism was
+/// This test used to assert the source-dim arithmetic - `Glass::DYNAMIC.source_rgb(0.5) == 0.75`
+/// and so on - for a preset nothing outside this module ever constructed. The mechanism was
 /// measured against the item menu over one checker ground and rejected (`e75b5e49`): dimming the
 /// page going INTO the backdrop destroys the modulation the frost is layered over, so the panel
-/// arrives flat. What is worth pinning now is that no policy can reintroduce it by accident —
+/// arrives flat. What is worth pinning now is that no policy can reintroduce it by accident -
 /// a material carries no private scheduling policy.
 #[test]
 fn live_glass_carries_no_private_source_policy() {
@@ -356,7 +356,7 @@ fn live_glass_carries_no_private_source_policy() {
 /// **Glass is chrome-only; no popover panel frosts a backdrop blur.** Every panel stands on the
 /// latched underlay field through `panel_ground` (directly, or through `Popover::panel`), and the
 /// blur chain's users are the top bar's standing track, the profile chip's capsule, the dev tile
-/// band — all in `widgets.rs` — the standing hold hint's capsule (`hold_hint.rs`: a non-interactive
+/// band - all in `widgets.rs` - the standing hold hint's capsule (`hold_hint.rs`: a non-interactive
 /// standing note, the track's own material, budgeted by
 /// `hold_hint::tests::the_capsules_own_blur_region_fits_the_budget_and_never_meets_the_top_band`),
 /// plus the frame mechanism and the dev load dial.
@@ -423,7 +423,7 @@ fn no_popover_panel_uses_the_blur_path_and_every_one_stands_on_the_field() {
         offenders.join("\n")
     );
 
-    // …and every panel that used to frost one now stands on the field.
+    // ...and every panel that used to frost one now stands on the field.
     for rel in [
         "screens/src/item_menu.rs",
         "screens/src/account_menu.rs",

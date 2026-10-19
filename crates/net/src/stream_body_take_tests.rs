@@ -1,7 +1,7 @@
 //! A sized body over 4 GiB on the 32-bit television. `remaining` (an `i64`) used to be cast to
 //! `usize` before the comparison, which on armv7 keeps only its low 32 bits: a 23,346,250,742-byte
 //! film read as finished at file byte 1,871,414,262 (the size minus 5·2³²), and again every 4 GiB
-//! after a seek — a premature end of the movie. On a 64-bit host the cast is lossless, so these
+//! after a seek - a premature end of the movie. On a 64-bit host the cast is lossless, so these
 //! tests can only fail on a 32-bit target (they were observed failing in an armv7 container).
 
 use super::body_take;

@@ -15,7 +15,7 @@ pub fn emit() {
     // The television target is the one build cargo does not link, so it is the one that wants
     // none of this. It is identified by ARCHITECTURE rather than by the full triple: the target is
     // `arm-unknown-linux-gnueabi` (32-bit ARM, `target_arch = "arm"`), while every host that runs
-    // this crate's tests is `aarch64` or `x86_64` — including CI's `ubuntu-24.04-arm` runner, whose
+    // this crate's tests is `aarch64` or `x86_64` - including CI's `ubuntu-24.04-arm` runner, whose
     // own arch is `aarch64` and which only ever asks for the ARM32 target explicitly.
     //
     // Read from `CARGO_CFG_TARGET_ARCH` rather than `cfg!`, because a build script is compiled for
@@ -33,7 +33,7 @@ pub fn emit() {
             println!("cargo:rustc-link-search=native={}", libdir.display());
         }
     } else {
-        // Not fatal — a system-wide install may need no extra search path. This is not labelled
+        // Not fatal - a system-wide install may need no extra search path. This is not labelled
         // "hostsim": plain host tests now reach the same drawing symbols.
         println!(
             "cargo:warning=host link: could not discover SDL2/SDL2_ttf with the platform package \

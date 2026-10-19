@@ -171,7 +171,7 @@ impl Drop for Bus {
             unsafe { g_main_loop_unref(self.main_loop) };
         } else {
             // A handle that would not unregister is still attached to this loop, so the loop is
-            // leaked rather than freed under it — a bounded leak, once per failed teardown,
+            // leaked rather than freed under it - a bounded leak, once per failed teardown,
             // against a use-after-free. Matches `webos::ls2::Registration::drop` in the main app
             // crate; this bin crate has no `tv_base::eventlog::log`, so it logs the same way `backend.rs`'s
             // `stage_error` does, through syslog.

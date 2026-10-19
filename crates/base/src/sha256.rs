@@ -4,7 +4,7 @@
 //! The consumer is `plex::session::PinVerifier`: the four-digit Plex Home PIN a
 //! protected profile is behind has to be checked with plex.tv unreachable, and plex.tv is the only
 //! party that knows the PIN. What this stores instead is PBKDF2 of the PIN under a random salt,
-//! so the file holds something a PIN can be checked AGAINST and never the PIN itself — a household
+//! so the file holds something a PIN can be checked AGAINST and never the PIN itself - a household
 //! PIN is the kind of number people reuse for their phone. Nothing here is a secrecy claim beyond
 //! that: the space of four-digit PINs is ten thousand entries, so anybody who can read the
 //! session file can grind through it, and the same file already holds the account token that
@@ -30,7 +30,7 @@ const H0: [u32; 8] = [
     0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 ];
 
-/// Incremental SHA-256 state — one 64-byte block at a time, so HMAC's two passes and PBKDF2's
+/// Incremental SHA-256 state - one 64-byte block at a time, so HMAC's two passes and PBKDF2's
 /// inner loop never build the message they hash.
 #[derive(Clone)]
 pub struct Sha256 {
@@ -191,7 +191,7 @@ pub fn hmac_sha256(key: &[u8], msg: &[u8]) -> [u8; 32] {
     HmacKey::new(key).mac(msg)
 }
 
-/// PBKDF2-HMAC-SHA-256 (RFC 8018 §5.2), one 32-byte block — the derived length a verifier needs.
+/// PBKDF2-HMAC-SHA-256 (RFC 8018 §5.2), one 32-byte block - the derived length a verifier needs.
 /// `iters` of 0 is treated as 1: an iteration count that ran nothing would make every PIN match.
 pub fn pbkdf2_hmac_sha256(password: &[u8], salt: &[u8], iters: u32) -> [u8; 32] {
     let key = HmacKey::new(password);
@@ -302,7 +302,7 @@ mod tests {
             hex(&pbkdf2_hmac_sha256(b"password", b"salt", 4096)),
             "c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a"
         );
-        // A zero count would XOR nothing into nothing — it is clamped to one, not honoured.
+        // A zero count would XOR nothing into nothing - it is clamped to one, not honoured.
         assert_eq!(
             pbkdf2_hmac_sha256(b"password", b"salt", 0),
             pbkdf2_hmac_sha256(b"password", b"salt", 1)

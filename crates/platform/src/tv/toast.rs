@@ -14,7 +14,7 @@ pub enum Identity {
     /// A plain anonymous call: no application id, no service name. The probe's control leg only.
     #[cfg(any(feature = "devtriggers", test, feature = "test-support"))]
     Anonymous,
-    /// `LSCallFromApplication…` carrying this app's id — what `luna-send -a <id>` does.
+    /// `LSCallFromApplication...` carrying this app's id - what `luna-send -a <id>` does.
     AsApp,
 }
 
@@ -41,7 +41,7 @@ pub struct Sent {
     pub outcome: Outcome,
 }
 
-/// Show `message` as a system toast, attributed to this app — the as-app call.
+/// Show `message` as a system toast, attributed to this app - the as-app call.
 ///
 /// Blocks for a platform round trip: never call it from the frame thread.
 pub fn toast(message: &str) -> Outcome {

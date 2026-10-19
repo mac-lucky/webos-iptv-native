@@ -10,7 +10,7 @@
 //! its title: a left-pointing chevron and the name of the place BACK returns to (see
 //! [`RouteLayout::draw_narrative`]). That line replaced the `Press [BACK] to return` hint this
 //! family used to draw in the bottom action row, and the trade is the point rather than a tidy-up
-//! — the hint spent a whole 60px band restating a key the remote already has, and it could not
+//! - the hint spent a whole 60px band restating a key the remote already has, and it could not
 //! say where the key WENT, which on a three-deep push (Settings → Legal notices → a document) is
 //! the only part anybody needs. Freeing the band is what lets first-run consent put its two
 //! answers there ([`RouteLayout::action_pair`]) instead of hiding them among the readable rows of
@@ -18,17 +18,17 @@
 //!
 //! **The rule for `None` is "BACK does not go anywhere inside the app", not "the Settings root".**
 //! Three routes qualify today and a hard count here would be the fourth transcription of a number
-//! this project keeps letting rot — take the census by CALL SITE: a screen composed through
-//! `table_screen.rs` names its crumb in `Header::new(layout, None, …)` and the literal
+//! this project keeps letting rot - take the census by CALL SITE: a screen composed through
+//! `table_screen.rs` names its crumb in `Header::new(layout, None, ...)` and the literal
 //! `draw_narrative` call sits once, generically, inside `Header::paint`, so
 //! `git grep -nE 'draw_narrative\(|Header::new\(' -- 'rust-modules/ui/src/*.rs' 'rust-modules/screens/src/*.rs'`
-//! with the `None` crumbs read off each site is the census — a call-site grep rather than a
+//! with the `None` crumbs read off each site is the census - a call-site grep rather than a
 //! transcribed count exactly so a file move cannot make it stale silently, which already happened
 //! once: phase 5b moved every real screen of this family out of `ui/` and into `screens/`, and a
 //! pathspec of `'rust-modules/ui/src/*.rs'` alone now matches neither of the family's `Header::new`
 //! sites at all (grepping the method alone, even over both directories, now finds only ONE of the
-//! three — `ui/login.rs`'s QR sign-in, the one screen here that never joined the family's
-//! `Header`/`TableScreen` — because 5b moved the FIRST first-run consent stage's `None` crumb
+//! three - `ui/login.rs`'s QR sign-in, the one screen here that never joined the family's
+//! `Header`/`TableScreen` - because 5b moved the FIRST first-run consent stage's `None` crumb
 //! behind `Header::new` too, beside the Settings root's since 5a). They are the Settings modal
 //! (BACK leaves the family), the FIRST first-run consent question (sign-in is behind it and
 //! cannot be undone) and the QR sign-in itself (there is no app behind it yet).
@@ -39,14 +39,14 @@
 //! rows, or a document), and the **action band** at the bottom of the left column (0, 1 or 2
 //! controls). [`RouteFocus`] holds where focus is and [`RouteShape`] is what a screen tells it
 //! about itself this frame; the rules below are pure, live here, and every screen in the family
-//! obeys all of them. They exist because the family had drifted into five different answers —
+//! obeys all of them. They exist because the family had drifted into five different answers -
 //! Legal entered on RIGHT and left on LEFT while the Settings root ignored both; the Home editor
 //! reached its Done pill only with LEFT; Privacy & data jumped focus onto Done after a toggle and
 //! then had no way back; and first-run consent's two answers could not be left rightward at all.
 //!
 //! 1. **UP/DOWN walk the content column.** A table moves its selection; a document scrolls.
 //! 2. **DOWN off the LAST row enters the band**, on the control the band's cursor last rested on.
-//! 3. **UP leaves the band for the content column**, on the row it left from — so 2 and 3 are an
+//! 3. **UP leaves the band for the content column**, on the row it left from - so 2 and 3 are an
 //!    exact round trip.
 //! 4. **DOWN on the band is the floor.** The band is the bottom of the screen; there is nothing
 //!    under it.
@@ -54,14 +54,14 @@
 //!    (The band sits in the LEFT column, so this is the spatial move, not a shortcut.)
 //! 6. **LEFT inside the band steps to the control on its left.**
 //! 7. **RIGHT inside the band steps to the control on its right; from the trailing control it
-//!    returns to the content column** — the inverse of rule 5.
+//!    returns to the content column** - the inverse of rule 5.
 //! 8. **RIGHT on a row that opens nested content (a chevron row) enters it**, exactly as OK does.
 //!    RIGHT on any other row does nothing.
 //! 9. **LEFT is BACK once there is nothing further to its left, UNLESS the screen is holding an
-//!    uncommitted edit** ([`RouteShape::uncommitted`]). This is what makes the crumb literal — it
+//!    uncommitted edit** ([`RouteShape::uncommitted`]). This is what makes the crumb literal - it
 //!    is drawn as a left-pointing chevron naming where BACK goes, and LEFT follows it. The
 //!    exception is the one thing a directional key must never do: BACK on these screens DISCARDS
-//!    (Privacy & data drops its draft, the Home editor drops its — nothing was written), and
+//!    (Privacy & data drops its draft, the Home editor drops its - nothing was written), and
 //!    overshooting the band's leading control by one press is not consent to lose an edit.
 //!    **`uncommitted` is stated by the screen and is NOT "the screen has a band".** That inference
 //!    was this rule's first justification and it is false in both directions: the Home editor's
@@ -70,7 +70,7 @@
 //!    their crumb, while a dirty draft does not.
 //! 10. **Focus can never rest on nothing.** [`RouteFocus::settle`] runs after every rebuild: a band
 //!    that has gone away hands focus back to the content column, and a content column with no rows
-//!    hands it to the band. Privacy & data used to lose focus entirely by toggling a value back —
+//!    hands it to the band. Privacy & data used to lose focus entirely by toggling a value back -
 //!    it parked focus on a Done that the same edit had just removed.
 //! 11. **The pointer PARKS focus and nothing else.** Hover moves focus to the row or band control
 //!    under the pointer on every screen in the family ([`ActionRow::hit`] +
@@ -102,19 +102,19 @@ const ACTION_H: f32 = crate::widgets::StatusOverlay::CTRL_H;
 /// The crumb's mark, drawn at the smallest rung a mark is worn at anywhere in the product. It is
 /// a return affordance rather than a heading, so it may not outweigh the caption beside it.
 const CRUMB_MARK: f32 = theme::size::MICRO as f32;
-/// The crumb LINE's height — the mark's, because the mark is the taller of the two things on it
+/// The crumb LINE's height - the mark's, because the mark is the taller of the two things on it
 /// (a `CAPTION` cap band is a few px shorter) and both are centred in it.
 ///
 /// A constant rather than a measured cap height, and that is not a shortcut: `text::cap_h` opens
 /// the font through SDL2_ttf, which the host suite cannot LINK, so a measured band would make
-/// every route's vertical flow ungradeable off-device — the boundary `ui/CLAUDE.md` records as
+/// every route's vertical flow ungradeable off-device - the boundary `ui/CLAUDE.md` records as
 /// stopping the whole suite linking rather than skipping one test.
 const CRUMB_BAND: f32 = CRUMB_MARK;
 
 /// Where the crumb's word starts so that its CAP BAND is centred on the mark's centre `cy`.
 ///
 /// `TextView` pins line 0's cap band to the frame's top, and the mark is centred in the band, so
-/// handing the word the band's top put its cap centre a few px ABOVE the chevron's — the word read
+/// handing the word the band's top put its cap centre a few px ABOVE the chevron's - the word read
 /// as riding high off the line on every route that wears a crumb. The mark's ink is symmetric
 /// about its box (`chevron-left.svg` spans y=6..18 of 24), so its centre is the box centre and
 /// the two meet on `cy`. Takes the cap height as a PARAMETER for the reason `CRUMB_BAND` is a
@@ -130,13 +130,13 @@ const CHILD_LEAD: f32 = 0.22;
 ///
 /// **PR2 stage B (2026-09-19):** it holds an [`UnderlayField`] rather than its own four-corner
 /// [`AmbientWash`](crate::widgets::AmbientWash) envelope, so it owns a GL texture and is no
-/// longer `Copy` — every owner already held it by field (a screen struct, exactly as before), so
+/// longer `Copy` - every owner already held it by field (a screen struct, exactly as before), so
 /// nothing but this type's own derive had to change. [`UnderlayField::latch_from_corners`] grades a
 /// four-corner source through the SAME `AmbientWash::keyed_one` a wash used to, so a route drawn
-/// from a seed or from the authored fallback reads the same colour it always did — the migration is
+/// from a seed or from the authored fallback reads the same colour it always did - the migration is
 /// a change of SHAPE, not of palette (see `ui::underlay`'s module doc). [`Self::draw_host`] is the
 /// one path that gets MORE than a corner envelope now: it latches from the rendered frame itself
-/// (120 cells, spatially faithful — title glyphs, faces and poster edges still cannot survive the
+/// (120 cells, spatially faithful - title glyphs, faces and poster edges still cannot survive the
 /// reduction, exactly as a four-corner wash's wider blur could not, but the light that does is no
 /// longer four degrees of freedom) and only falls back to a corner envelope when the frame is not a
 /// readable source this frame. Once latched a ground never samples again; nested push/back
@@ -149,12 +149,12 @@ pub struct RouteGround {
 /// number (`components/panels/RouteScreen.jsx`: `font: var(--font-weight-bold) var(--size-hero)/1.05`)
 /// and NOT [`TextView`]'s derived default of `sz * 1.32`.
 ///
-/// The default is a READING pitch — it is right for the copy under this title and for a synopsis,
+/// The default is a READING pitch - it is right for the copy under this title and for a synopsis,
 /// and wrong for one 72px line of display type, where 1.32 puts 95px of box under a 52px cap. On a
 /// one-line title every pixel of that surplus becomes air between the title and the copy, because
 /// [`RouteLayout::draw_narrative`] stacks the copy at `title_h + space::MD`: the family's stated
 /// 24px gap was arriving as ~43 (owner report on the Filmography route, 2026-09-06, which is simply
-/// where it was noticed — every route in this family drew it). On a WRAPPED title it is also the
+/// where it was noticed - every route in this family drew it). On a WRAPPED title it is also the
 /// pitch between the two lines, and the same argument applies there: display type sets tight.
 const TITLE_LEADING: f32 = theme::size::HERO as f32 * 1.05;
 
@@ -169,7 +169,7 @@ impl RouteGround {
         self.field.reset();
     }
 
-    /// `theme::ROUTE_GROUND_FALLBACK`, dropping its alpha column — the corners every authored
+    /// `theme::ROUTE_GROUND_FALLBACK`, dropping its alpha column - the corners every authored
     /// atmosphere below reaches for when it has no artwork to key from: the pre-Home fallback
     /// ([`Self::authored`], [`Self::draw_default`]) and, since PR2 stage B,
     /// [`Self::draw_host`]'s own answer when the live frame is not a readable source this frame.
@@ -180,11 +180,11 @@ impl RouteGround {
     /// A pre-content page's ground: the authored default ambient, latched at construction.
     /// Neither construction nor drawing this UI value reads a catalog or session file.
     ///
-    /// It is deliberately NOT keyed from any artwork — not a hero's `UltraBlur` corners, not a
+    /// It is deliberately NOT keyed from any artwork - not a hero's `UltraBlur` corners, not a
     /// remembered one. The first-run pages (favourite libraries, the consent question) open before
     /// Home has anything to show, and keying them from whatever hero the server happened to list
     /// painted a saturated rainbow wherever the art's corners were. The authored fallback is not
-    /// artwork, it IS the finished colour ([`Grade::Dim`], the identity grade) — see
+    /// artwork, it IS the finished colour ([`Grade::Dim`], the identity grade) - see
     /// `theme::ROUTE_GROUND_FALLBACK`'s own doc for why grading it again would be wrong.
     pub fn authored() -> Self {
         let mut ground = Self::new();
@@ -197,7 +197,7 @@ impl RouteGround {
     /// the consent question moved ahead of the profile picker it usually has no rendered host to
     /// sample at all.
     ///
-    /// `latch_from_frame` refuses on `gfx::field_kick`'s list (§9's video-plane door among them —
+    /// `latch_from_frame` refuses on `gfx::field_kick`'s list (§9's video-plane door among them -
     /// see [`tv_gfx::gfx::field_kick`]'s doc): whenever it answers [`FrameLatch::Refused`] this falls
     /// back to the same authored atmosphere [`Self::draw_default`] uses when it has no host at all,
     /// graded [`Grade::Ground`] because it is standing in for a live sample rather than being drawn
@@ -207,7 +207,7 @@ impl RouteGround {
     /// live-frame-fails-so-fall-back-to-corners decision without ever reaching `field.draw`'s real
     /// GL: a host test binary links `OpenGL.framework` but never creates a context, so any draw that
     /// is not gated behind a `PROG == 0`/`tex == 0` check (`field.draw`'s `Role::Ground` arm is not,
-    /// once latched, is not either — see [`UnderlayField::draw`]) is an immediate SIGSEGV.
+    /// once latched, is not either - see [`UnderlayField::draw`]) is an immediate SIGSEGV.
     ///
     /// The read never stalls the frame ([`UnderlayField::latch_from_frame`]): it lands a frame or
     /// two into the Settings fade, and until it does the ground draws the flat app surface an
@@ -226,7 +226,7 @@ impl RouteGround {
     }
 
     pub fn draw_host(&mut self, p: Painter) {
-        // `ModalStack::draw_scrims_on`'s rule, for its reason — see [`ground_reads_host`].
+        // `ModalStack::draw_scrims_on`'s rule, for its reason - see [`ground_reads_host`].
         if ground_reads_host(p.opacity(), tv_gfx::gfx::snapshot_captured_this_frame()) {
             self.latch_host();
         }
@@ -239,7 +239,7 @@ impl RouteGround {
         self.draw_default(p);
     }
 
-    /// The latch half of [`Self::draw_default`] — see [`Self::latch_host`] for why this is split
+    /// The latch half of [`Self::draw_default`] - see [`Self::latch_host`] for why this is split
     /// out from the draw call rather than inlined.
     fn latch_default(&mut self) {
         if !self.field.is_latched() {
@@ -262,10 +262,10 @@ impl RouteGround {
     ///
     /// It exists for an EDGE FADE. A route that scissor-clips a scrolling strip cuts it at a hard
     /// line; laying this colour over the cut at a falling alpha dissolves it instead. The constant
-    /// a caller would otherwise guess cannot work here — the ground is keyed to the host page's
+    /// a caller would otherwise guess cannot work here - the ground is keyed to the host page's
     /// artwork, so it is a different colour on every person's page. Before the first latch this is
     /// `theme::SURFACE_APP` everywhere, the same flat answer an unlatched field's own [`Role::Ground`]
-    /// draw falls back to — [`UnderlayField::sample`] has no such guard of its own (an unlatched
+    /// draw falls back to - [`UnderlayField::sample`] has no such guard of its own (an unlatched
     /// field's cells are zero, not the surface), so it belongs here rather than being forwarded raw.
     pub fn sample(&self, x: f32, y: f32) -> [f32; 3] {
         if self.field.is_latched() {
@@ -312,7 +312,7 @@ impl RoutePush {
         }
     }
 
-    /// A push parked mid-flight at `t` — for tests that grade one frame of the slide.
+    /// A push parked mid-flight at `t` - for tests that grade one frame of the slide.
     #[cfg(any(test, feature = "test-support"))]
     pub const fn at(t: f32) -> Self {
         Self {
@@ -332,7 +332,7 @@ impl RoutePush {
         self.progress.pos.clamp(0.0, 1.0)
     }
 
-    /// **At rest at `open`'s endpoint** — position AND velocity, the integrator's own stop rule.
+    /// **At rest at `open`'s endpoint** - position AND velocity, the integrator's own stop rule.
     /// Stricter than [`settled`](Self::settled), which is the pointer's positional guard.
     pub fn resting(&self, open: bool) -> bool {
         let target = if open { 1.0 } else { 0.0 };
@@ -365,21 +365,21 @@ impl RoutePush {
         }
     }
 
-    /// Seed this push's spring — position AND velocity, not just [`amount`](Self::amount)'s
-    /// clamped read-out — from ANOTHER push's current state. For a screen that gets its OWN
+    /// Seed this push's spring - position AND velocity, not just [`amount`](Self::amount)'s
+    /// clamped read-out - from ANOTHER push's current state. For a screen that gets its OWN
     /// dedicated `RoutePush` split out of a shared one so a sibling's fade cannot bleed into it
     /// (`settings::HOME_PUSH` off `settings::CHILD`, 2026-09-04), a caller that starts the new
-    /// push cold at rest whenever it starts driving it is right in the ordinary case — both begin
-    /// at 0 together — but wrong the moment the shared push is NOT at rest, because a sibling
+    /// push cold at rest whenever it starts driving it is right in the ordinary case - both begin
+    /// at 0 together - but wrong the moment the shared push is NOT at rest, because a sibling
     /// (Privacy/Legal) was open a moment ago and is still reversing out of it: the shared root
     /// would resume mid-fade while the freshly-opened child painted itself from a cold zero,
     /// which is two supposedly-complementary halves of one crossfade disagreeing about how far it
     /// has travelled (Codex review, 2026-09-04). Call this once, on the RISING EDGE of the new
-    /// push starting to drive toward open — detected from that flag's own transition, never from
+    /// push starting to drive toward open - detected from that flag's own transition, never from
     /// `self.amount() == 0.0`: this type's spring only APPROACHES its target (see [`amount`]'s
     /// own doc), so a settled-closed push sits at some tiny positive residual, not exactly zero,
     /// and an equality guard reads as "already synced" forever after the first open (Codex review,
-    /// 2026-09-04, round 3 — the first version of this call site's guard made exactly that
+    /// 2026-09-04, round 3 - the first version of this call site's guard made exactly that
     /// mistake). Unconditional on the edge is deliberately simpler than gating on `other` being
     /// away from rest: when `other` already IS at rest the copy is a harmless no-op.
     pub fn sync_to(&mut self, other: &RoutePush) {
@@ -391,7 +391,7 @@ impl RoutePush {
     /// A key press acts on the LOGICAL state and is right to: `DOCUMENT_OPEN` goes false the
     /// instant BACK is pressed, and the next UP belongs to the list underneath whatever the
     /// animation is still showing. A pointer hit cannot borrow that reasoning, because it is
-    /// POSITIONAL — it means "the thing I can see at these coordinates", and mid-push the thing at
+    /// POSITIONAL - it means "the thing I can see at these coordinates", and mid-push the thing at
     /// those coordinates is somewhere else, half-transparent, or both. The rects an `ActionRow`
     /// records and the frame a `TableView` is hit-tested against are both FINAL-position, so every
     /// pointer path in this family refuses until the layer it belongs to has arrived.
@@ -421,7 +421,7 @@ impl RoutePush {
 ///
 /// `ui::press` holds ONE press at a time and assumes focus cannot move while it is in flight. The
 /// nav keys pay that by cancelling; the pointer has to pay it differently, and the difference is
-/// this enum. A press that began under the POINTER is bound to the coordinates it began on — the
+/// this enum. A press that began under the POINTER is bound to the coordinates it began on - the
 /// pointer leaving that control, dead space included, is the person taking the click back. A press
 /// that began on the OK KEY is bound to the focus stop instead: hover that moves the ring off it
 /// cancels, but hover across dead space is not a retraction of a key the user is still holding.
@@ -432,7 +432,7 @@ pub enum PressFrom {
     Pointer,
 }
 
-/// A focus stop on a route screen — see the module doc's rule list.
+/// A focus stop on a route screen - see the module doc's rule list.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Stop {
     /// The content column: a row of the table, or the document reader.
@@ -450,7 +450,7 @@ pub enum RouteStep {
     Wall,
     /// Focus moved. Repaint; there is nothing else to do.
     Moved,
-    /// The content column takes this vertical delta — a table moves its selection, a document
+    /// The content column takes this vertical delta - a table moves its selection, a document
     /// scrolls.
     Scroll(i32),
     /// Activate the focused row: enter the nested content behind it, exactly as OK does.
@@ -472,7 +472,7 @@ pub struct RouteShape {
     pub rows: bool,
     /// Whether the table's selection is on its LAST focusable row (rule 2).
     pub at_last_row: bool,
-    /// Whether the focused row opens nested content — a chevron row (rule 8).
+    /// Whether the focused row opens nested content - a chevron row (rule 8).
     pub opens: bool,
     /// **Is leaving on LEFT UNPROVEN to be lossless?** Rule 9's only guard, and it is answered by
     /// the screen rather than inferred from the band, because the two are not the same question:
@@ -480,7 +480,7 @@ pub struct RouteShape {
     /// nothing until OK. A screen that answers `true` never leaves on LEFT.
     ///
     /// **The negative framing is deliberate and it is not the same as "an edit exists."** A screen
-    /// can also be unable to TELL — the Home editor's baseline is captured once and its roster
+    /// can also be unable to TELL - the Home editor's baseline is captured once and its roster
     /// lands on a worker, so an editor opened before discovery answered cannot say whether a row
     /// that arrived afterwards has been touched. `true` there is a refusal to trust an answer, not
     /// a claim about an edit; erring toward the wall costs one press of BACK, and erring the other
@@ -518,14 +518,14 @@ pub struct RouteFocus {
 }
 
 impl RouteFocus {
-    /// Open in the content column — a Settings child arrives on its list.
+    /// Open in the content column - a Settings child arrives on its list.
     pub const fn content() -> Self {
         Self {
             on_band: false,
             cursor: 0,
         }
     }
-    /// Open on the band's leading control — first run arrives on its answer, because the defaults
+    /// Open on the band's leading control - first run arrives on its answer, because the defaults
     /// are already an answer and the screen opens on the way out of itself.
     pub const fn band() -> Self {
         Self {
@@ -549,7 +549,7 @@ impl RouteFocus {
     pub fn band_index(self) -> Option<usize> {
         self.on_band.then_some(self.cursor)
     }
-    /// The band control the ring would RETURN to, focused or not — what a draw uses to decide
+    /// The band control the ring would RETURN to, focused or not - what a draw uses to decide
     /// which of two answers wears the ring.
     pub fn cursor(self) -> usize {
         self.cursor
@@ -584,7 +584,7 @@ impl RouteFocus {
         *self != before
     }
 
-    /// Rules 1–4.
+    /// Rules 1-4.
     pub fn updown(&mut self, s: RouteShape, delta: i32) -> RouteStep {
         self.settle(s);
         if self.on_band {
@@ -653,33 +653,33 @@ impl RouteFocus {
     }
 }
 
-/// **The shared PRESS SURFACE for a route's bottom action row** — every control
+/// **The shared PRESS SURFACE for a route's bottom action row** - every control
 /// [`RouteLayout::action_pair`] (or a single-control action band) lays out owns one of these,
 /// rather than a private [`widgets::CtlPop`] field of its own.
 ///
 /// It exists because a control face is not a table row: focus arriving on it must grow a real
 /// [`widgets::CtlPop`] pop, and a click must dip and ring back exactly like every other control
 /// face in the app (`ui/press.rs`'s `begin_ctl`/`take_commit`, folded into [`Self::scale`] for
-/// free — `CtlPop::scale` already applies `press::scale()` to whichever index is focused). Before
-/// this existed, `consent.rs`'s two answers drew through `Button::focused()` alone — no pop, no
-/// dip — while `onboard.rs`'s single action pill built its own private `CtlPop<1>` to get both.
+/// free - `CtlPop::scale` already applies `press::scale()` to whichever index is focused). Before
+/// this existed, `consent.rs`'s two answers drew through `Button::focused()` alone - no pop, no
+/// dip - while `onboard.rs`'s single action pill built its own private `CtlPop<1>` to get both.
 /// One name for the thing every action row needs is what makes the second screen a two-line
 /// change instead of a second hand-rolled spring.
 ///
-/// `N` is the row's own control count — `2` for consent's Share/Don't-share, `1` for a lone Done
+/// `N` is the row's own control count - `2` for consent's Share/Don't-share, `1` for a lone Done
 /// or Start-watching pill. Nothing here draws a button: a caller still builds its own
 /// [`widgets::Button`]/[`widgets::CircleButton`] at its own rect and label, and passes
-/// [`Self::scale`] to it — the geometry and the words stay the screen's, only the press machinery
+/// [`Self::scale`] to it - the geometry and the words stay the screen's, only the press machinery
 /// is shared.
 pub struct ActionRow<const N: usize> {
     pop: crate::widgets::CtlPop<N>,
-    /// Each control's drawn frame, recorded at draw for the pointer — the `TOOL_RECTS` idiom.
+    /// Each control's drawn frame, recorded at draw for the pointer - the `TOOL_RECTS` idiom.
     /// Parked OFF the panel rather than at the origin, because [`Rect::contains`] is inclusive and
     /// a zero-size rect at (0,0) would "contain" a click at exactly (0,0).
     rects: [Rect; N],
 }
 
-/// Where a control's frame sits while it is not drawn — see [`ActionRow::rects`].
+/// Where a control's frame sits while it is not drawn - see [`ActionRow::rects`].
 const OFF_PANEL: Rect = Rect::new(-1.0, -1.0, 0.0, 0.0);
 
 impl<const N: usize> ActionRow<N> {
@@ -699,7 +699,7 @@ impl<const N: usize> ActionRow<N> {
         }
     }
 
-    /// Forget every frame — call this on the branch that does NOT draw the band, so a control that
+    /// Forget every frame - call this on the branch that does NOT draw the band, so a control that
     /// is not on screen is not hit-testable either. (Settings' Done exists only while the draft
     /// differs from the stored answer; a stale rect would leave a live click target where it used
     /// to be.)
@@ -715,13 +715,13 @@ impl<const N: usize> ActionRow<N> {
     }
 
     /// Advance every control's pop toward its target for this frame. `focused` is the index of the
-    /// control CURRENTLY holding focus in this row, or `None` when nothing in it does — the row is
+    /// control CURRENTLY holding focus in this row, or `None` when nothing in it does - the row is
     /// hidden, or the route's focus is elsewhere (the list, a different band).
     pub fn step(&mut self, focused: Option<usize>, dt: f32) {
         self.pop.step(focused, dt);
     }
 
-    /// Control `i`'s drawn scale this frame — the focus pop, and, once focused and only once the
+    /// Control `i`'s drawn scale this frame - the focus pop, and, once focused and only once the
     /// caller has armed [`crate::press::begin_ctl`] on its OK-down, the tvOS press dip/ring on
     /// top of it (`CtlPop::scale`'s own fold). Pass straight to `Button::scale`; never draw an
     /// action-row control without it, or it arrives at focus with no pop and clicks with no dip.
@@ -742,7 +742,7 @@ impl RouteLayout {
         Self::screen_with_copy_w(NARRATIVE_W)
     }
 
-    /// The same two columns with the narrative one at a **stated measure** — `--route-copy-w`, the
+    /// The same two columns with the narrative one at a **stated measure** - `--route-copy-w`, the
     /// one number in this layout the design system lets a route retune.
     ///
     /// The default is the Home hero's editorial measure (660), which is right for a screen whose
@@ -753,7 +753,7 @@ impl RouteLayout {
     ///
     /// **The REGION GAP does not move with it.** `COLUMN_GAP` is what makes the two columns read as
     /// related rather than as two screens side by side, and it is the one number here that belongs
-    /// to every route — so a retune of the copy column slides the content column and resizes it,
+    /// to every route - so a retune of the copy column slides the content column and resizes it,
     /// and changes nothing else.
     pub fn screen_with_copy_w(copy_w: f32) -> Self {
         let top = SAFE.y + TOP_INSET;
@@ -847,15 +847,15 @@ impl RouteLayout {
     /// of the fix for "on Settings screens that contain plain text rather than a table, the title
     /// appears too high and is aligned roughly with the Back navigation control". A table's frame
     /// is lifted by [`Self::sectioned_table`] so its first section LABEL lands on the shared top
-    /// guide — the guide the crumb also sits on — and the first thing that reads as content, the
+    /// guide - the guide the crumb also sits on - and the first thing that reads as content, the
     /// first row's own label, therefore lands well below it, beside the narrative title. A
     /// document has no section label to spend that band on, so drawn at the bare `content` rect
-    /// its first line — which on every document here is a bold all-caps heading, i.e. exactly what
-    /// a reader takes for the screen's title — landed ON the crumb's line, a whole title block
+    /// its first line - which on every document here is a bold all-caps heading, i.e. exactly what
+    /// a reader takes for the screen's title - landed ON the crumb's line, a whole title block
     /// above the title it belongs to.
     ///
     /// So: one geometry rule in the layout, not an offset per screen. Both anchors are now used by
-    /// both columns — the guide carries the crumb and a table's first label, the title anchor
+    /// both columns - the guide carries the crumb and a table's first label, the title anchor
     /// carries the narrative title and a document's first line.
     ///
     /// `has_crumb` for the same reason [`Self::narrative_top`] takes it: the title anchor moves by
@@ -878,7 +878,7 @@ impl RouteLayout {
     /// separates them vertically and the trailing control retains the bottom anchor. Both retain
     /// the normal control height. A screen supplies measured widths, never private coordinates.
     ///
-    /// **Its one caller is first-run consent's two answers, and they are EQUALS** — no primary,
+    /// **Its one caller is first-run consent's two answers, and they are EQUALS** - no primary,
     /// no secondary, no danger face. This doc used to describe a primary beside a BACK
     /// affordance (`Start watching` + `Press [BACK] to return`), which is the pairing the crumb
     /// deleted from this family; there is no BACK affordance in an action band any more. The gap
@@ -900,7 +900,7 @@ impl RouteLayout {
         }
     }
 
-    /// Draw the return crumb — `‹ <where BACK goes>` — in the band whose top is at `top`.
+    /// Draw the return crumb - `‹ <where BACK goes>` - in the band whose top is at `top`.
     ///
     /// The gap between mark and word is measured to the chevron's INK, not to its box: the asset
     /// carries about a third of its width as bearing, so a box-to-text gap on a spacing rung comes
@@ -911,7 +911,7 @@ impl RouteLayout {
     /// Pure and separate from [`Self::draw_narrative`] because it is the whole of the crumb's
     /// layout cost, and a test that cannot call the draw (it measures through SDL2_ttf) can still
     /// grade it. The first version of this test compared `RouteLayout::screen().content.y` with
-    /// its own `l.content.y` — a value against itself, which cannot fail.
+    /// its own `l.content.y` - a value against itself, which cannot fail.
     pub fn narrative_top(self, has_crumb: bool) -> f32 {
         if has_crumb {
             self.narrative.y + CRUMB_BAND + theme::space::SM
@@ -952,13 +952,13 @@ impl RouteLayout {
             .draw(p, Rect::new(x, ty, self.narrative.x + self.narrative.w - x, h));
     }
 
-    /// **The narrative title, as the view [`draw_narrative`] actually draws** — its rung, its
+    /// **The narrative title, as the view [`draw_narrative`] actually draws** - its rung, its
     /// weight, its wrap and its [`TITLE_LEADING`] line pitch, in one place a host test can call.
     ///
     /// It is split out for exactly that reason and the reason is a lesson: the first test for the
     /// leading correction asserted `TITLE_LEADING == HERO * 1.05` and nothing else, so deleting
-    /// `.leading(TITLE_LEADING)` from the builder below — reverting the whole fix, putting the copy
-    /// 19.4px back down on all eight callers of this function — left it green. A test that grades a
+    /// `.leading(TITLE_LEADING)` from the builder below - reverting the whole fix, putting the copy
+    /// 19.4px back down on all eight callers of this function - left it green. A test that grades a
     /// constant grades the constant. Building the view here lets it grade the thing that is drawn.
     /// App-owned titles and questions wrap completely; following content uses their measured height.
     pub fn narrative_title(title: &str) -> TextView<'_> {
@@ -972,7 +972,7 @@ impl RouteLayout {
     /// wrapped height, never after a screen-specific y offset, and the copy stops before the
     /// shared action slot.
     ///
-    /// `back_to` is `None` exactly when BACK does not go anywhere inside the app — see the module
+    /// `back_to` is `None` exactly when BACK does not go anywhere inside the app - see the module
     /// doc for which routes those are and how to census them.  Passing it here rather than letting
     /// screens draw their own line is what makes that a contract instead of a convention: a new
     /// route cannot forget to answer without deleting an argument.
@@ -1018,7 +1018,7 @@ impl RouteLayout {
 /// **When a route ground reads its host**: on the frame that captured the host (nothing presents
 /// after it until its GPU work is done, `gfx::snapshot_frame_begin`, so the reduction queued with
 /// it costs no presented frame), or else on the first frame the ground is seen. A held, invisible
-/// frame that captured nothing reads nothing — nothing is drawn through the field at opacity 0.
+/// frame that captured nothing reads nothing - nothing is drawn through the field at opacity 0.
 fn ground_reads_host(opacity: f32, captured: bool) -> bool {
     opacity > 0.0 || captured
 }
@@ -1027,7 +1027,7 @@ fn ground_reads_host(opacity: f32, captured: bool) -> bool {
 mod tests {
     /// `ModalStack::draw_scrims_on`'s rule, for a route ground: the host is read on the frame that
     /// captured it (whose GPU work is waited out before anything presents) or once the ground is
-    /// seen — never on a held, invisible frame that captured nothing.
+    /// seen - never on a held, invisible frame that captured nothing.
     #[test]
     fn a_route_ground_reads_its_host_on_the_capture_frame_or_once_seen() {
         use super::ground_reads_host;
@@ -1083,7 +1083,7 @@ mod tests {
     ///
     /// `RouteScreen.jsx` states `var(--size-hero)/1.05`; `TextView` derives `sz * 1.32` when no
     /// leading is given, which is a pitch for PROSE. The difference is 19.4px, and on a one-line
-    /// title all of it lands between the title and the copy — `draw_narrative` stacks the copy at
+    /// title all of it lands between the title and the copy - `draw_narrative` stacks the copy at
     /// `title_h + space::MD`, so the family's stated 24px gap was drawing as ~43. This is the whole
     /// of that correction as arithmetic, and it is here rather than in `filmography.rs` because the
     /// route that noticed it is not the only one that drew it.
@@ -1124,14 +1124,14 @@ mod tests {
             (TITLE_LEADING - theme::size::HERO as f32 * 1.05).abs() < 0.01,
             "the mock's own ratio, not a rounded pixel"
         );
-        // …and, the half that actually guards the fix: the view `draw_narrative` DRAWS carries it.
-        // Asserting the constant alone is a tautology — deleting `.leading(TITLE_LEADING)` from the
+        // ...and, the half that actually guards the fix: the view `draw_narrative` DRAWS carries it.
+        // Asserting the constant alone is a tautology - deleting `.leading(TITLE_LEADING)` from the
         // builder reverts the entire correction and leaves that assertion green.
         assert!(
             (RouteLayout::narrative_title("Filmography").line_h() - TITLE_LEADING).abs() < 0.01,
             "the drawn title must set at TITLE_LEADING, not at TextView's derived reading pitch"
         );
-        // …and the default it replaces, named so the size of the bug stays legible.
+        // ...and the default it replaces, named so the size of the bug stays legible.
         let reading_default = theme::size::HERO as f32 * 1.32;
         assert!(
             reading_default - TITLE_LEADING > 19.0,
@@ -1194,7 +1194,7 @@ mod tests {
     }
 
     /// **The crumb costs the TITLE its own height and nothing else pays.** The content column is
-    /// anchored at `--route-top` whether or not the narrative carries a crumb — a crumb that
+    /// anchored at `--route-top` whether or not the narrative carries a crumb - a crumb that
     /// pushed nothing would overprint the title, and one that moved the CONTENT would break the
     /// alignment contract `sectioned_table`'s lift exists to hold.
     #[test]
@@ -1235,7 +1235,7 @@ mod tests {
     }
 
     /// The crumb's mark and its word are ONE object, so the gap between them is measured to the
-    /// chevron's ink rather than to its box — the asset is a third bearing, and a box-to-text gap
+    /// chevron's ink rather than to its box - the asset is a third bearing, and a box-to-text gap
     /// on a spacing rung reads as two separate things.
     #[test]
     fn the_crumb_measures_its_gap_to_the_marks_ink() {
@@ -1251,13 +1251,13 @@ mod tests {
     }
 
     /// **The whole reason `ActionRow` exists**: a control holding row focus pops, an unfocused
-    /// sibling in the same row does not, and both reach a settled rest — the same shape
+    /// sibling in the same row does not, and both reach a settled rest - the same shape
     /// `CtlPop`'s own doc promises, pinned again here because this is the type every action-row
     /// caller is meant to reach for instead of a private field.
     #[test]
     fn action_row_pops_the_focused_control_and_leaves_its_sibling_at_rest() {
-        // `CtlPop::scale` reads the crate-global `press` machine for whichever index is focused —
-        // see `[[test-suite-global-pollution]]` — so this holds the same lock every `press.rs`
+        // `CtlPop::scale` reads the crate-global `press` machine for whichever index is focused -
+        // see `[[test-suite-global-pollution]]` - so this holds the same lock every `press.rs`
         // test does for its own body.
         let _g = tv_base::testlock::serial();
         let mut row: ActionRow<2> = ActionRow::new();
@@ -1316,7 +1316,7 @@ mod tests {
         assert_eq!(f.stop(), Stop::Content, "…and UP comes straight back");
     }
 
-    /// **Rule 4: the band is the floor**, and **rule 2 does not fire without a band** — a screen
+    /// **Rule 4: the band is the floor**, and **rule 2 does not fire without a band** - a screen
     /// with none must keep handing DOWN to its list rather than inventing a stop.
     #[test]
     fn the_band_is_the_floor_and_a_bandless_screen_has_no_band_to_fall_into() {
@@ -1329,7 +1329,7 @@ mod tests {
     }
 
     /// **Rules 5, 6 and 7: LEFT and RIGHT are one horizontal walk across the whole screen.** Two
-    /// peer answers plus a list is three stops, and every step is reversible — which is exactly
+    /// peer answers plus a list is three stops, and every step is reversible - which is exactly
     /// what first-run consent lacked (RIGHT off the trailing answer went nowhere) and what
     /// Privacy & data lacked in both directions.
     #[test]
@@ -1349,18 +1349,18 @@ mod tests {
         assert_eq!(f.stop(), Stop::Band(1));
         assert_eq!(f.right(s), RouteStep::Moved);
         assert_eq!(f.stop(), Stop::Content, "RIGHT off the trailing control returns to the list");
-        // …and coming back in lands on the control it left, not on the band's first.
+        // ...and coming back in lands on the control it left, not on the band's first.
         assert_eq!(f.left(s), RouteStep::Moved);
         assert_eq!(f.stop(), Stop::Band(1));
     }
 
-    /// **Rule 9, and its one guard.** LEFT off the left-most stop leaves the screen — unless the
+    /// **Rule 9, and its one guard.** LEFT off the left-most stop leaves the screen - unless the
     /// screen says it is holding an uncommitted edit, which BACK would discard.
     ///
     /// The guard is `uncommitted`, NOT "the screen has a band", and this test exists because the
     /// rule's first justification made exactly that inference and it is false in both directions:
     /// the Home editor's `Try again` is a band with nothing behind it, and first run's two answers
-    /// record nothing until OK. So a band is not a wall on its own — a DRAFT is.
+    /// record nothing until OK. So a band is not a wall on its own - a DRAFT is.
     #[test]
     fn left_leaves_unless_the_screen_is_holding_an_edit_that_back_would_discard() {
         let mut bandless = RouteFocus::content();
@@ -1371,7 +1371,7 @@ mod tests {
             "a document is a read: nothing to its left and nothing to lose"
         );
 
-        // A band with nothing behind it is NOT a wall — this is the Home editor's `Try again`, and
+        // A band with nothing behind it is NOT a wall - this is the Home editor's `Try again`, and
         // first run's two answers, both of which record nothing until OK.
         let mut clean_band = RouteFocus::band();
         assert_eq!(clean_band.left(table_shape(1, false)), RouteStep::Back);
@@ -1384,7 +1384,7 @@ mod tests {
         let mut on_done = RouteFocus::band();
         assert_eq!(on_done.left(dirty), RouteStep::Wall);
         assert_eq!(on_done.stop(), Stop::Band(0), "…and focus does not wander either");
-        // …and the guard reaches the bandless case too: a screen holding an edit with no band to
+        // ...and the guard reaches the bandless case too: a screen holding an edit with no band to
         // step into still may not be left by a directional key.
         let mut on_list = RouteFocus::content();
         assert_eq!(
@@ -1440,7 +1440,7 @@ mod tests {
         assert!(f.on_content());
     }
 
-    /// **Rule 10: focus may never rest on nothing** — the reported "toggling the value back can
+    /// **Rule 10: focus may never rest on nothing** - the reported "toggling the value back can
     /// cause focus to disappear completely", as a pure transition. A band that goes away hands
     /// focus back to the list; a list with no rows yet hands it to the band; and a cursor left
     /// past the end of a shrunken band is pulled back inside it.
@@ -1493,7 +1493,7 @@ mod tests {
                 "a band that is gone must not answer as though focus were still on it: {step:?}"
             );
         }
-        // …and the LEFT case is the one that matters most: settled onto the list of a bandless
+        // ...and the LEFT case is the one that matters most: settled onto the list of a bandless
         // screen, LEFT is the way out of it rather than a step to a control that is not drawn.
         assert_eq!(
             RouteFocus::band().left(table_shape(0, false)),
@@ -1502,7 +1502,7 @@ mod tests {
     }
 
     /// **Rule 11's geometry half**: only a control DRAWN this frame is hit-testable, and dead
-    /// space parks nothing. `clear` is what retires a Done that an undo has just removed — without
+    /// space parks nothing. `clear` is what retires a Done that an undo has just removed - without
     /// it the band leaves a live click target where it used to be.
     #[test]
     fn only_a_placed_action_control_can_be_hit_and_dead_space_hits_nothing() {
@@ -1519,7 +1519,7 @@ mod tests {
     }
 
     /// **Issue 2's geometry rule.** A text-only content column hangs from the TITLE's anchor, not
-    /// from the crumb's — so its first line is level with the title beside it instead of sitting up
+    /// from the crumb's - so its first line is level with the title beside it instead of sitting up
     /// on the return chevron's line. Written against the two anchors rather than against a number,
     /// because the number is `narrative_top`'s and must not be transcribed twice.
     #[test]
@@ -1573,7 +1573,7 @@ mod tests {
     /// atmosphere the FIRST call saw, or nested push/back transitions would repaint their ground out
     /// from under the content moving over it.
     ///
-    /// Exercises `latch_default` rather than `draw_default` itself — see [`RouteGround::latch_host`]'s
+    /// Exercises `latch_default` rather than `draw_default` itself - see [`RouteGround::latch_host`]'s
     /// doc for why a host test cannot call through to `field.draw`.
     #[test]
     fn a_latched_route_ground_does_not_re_latch() {
@@ -1591,15 +1591,15 @@ mod tests {
     }
 
     /// **A route whose live-frame latch fails still gets an atmosphere.** `draw_host` cannot force
-    /// `gfx::field_kick` to answer — a video-plane frame, a blur source pass, a frozen
+    /// `gfx::field_kick` to answer - a video-plane frame, a blur source pass, a frozen
     /// page and a drawable the exact-2x chain cannot be built for are all real "no honest frame this
-    /// time" answers this route does not get to pick between — so it has to fall back, once, to the
+    /// time" answers this route does not get to pick between - so it has to fall back, once, to the
     /// same authored corners `draw_default` uses when it has no host at all. The video-plane refusal
     /// is the one member of that list a host test can DRIVE (`gfx::set_video_plane_frame`, thread-
-    /// local — see its own doc — so this cannot leak into another test): the other three would need
+    /// local - see its own doc - so this cannot leak into another test): the other three would need
     /// a live GL context this binary never creates.
     ///
-    /// Exercises `latch_host` rather than `draw_host` itself — see [`RouteGround::latch_host`]'s doc
+    /// Exercises `latch_host` rather than `draw_host` itself - see [`RouteGround::latch_host`]'s doc
     /// for why a host test cannot call through to `field.draw`.
     #[test]
     fn a_route_ground_whose_frame_latch_fails_falls_back_to_corners() {
@@ -1629,7 +1629,7 @@ mod tests {
     /// **THE POINT OF STAGE B, seen through `RouteGround` itself**: `sample()` is spatially
     /// faithful, not a four-corner bilinear wearing a new implementation. Green in the bottom-left
     /// corner must read greener there than in the top-right, which a wash of only four degrees of
-    /// freedom could also manage — the case that actually discriminates is `underlay_tests.rs`'s
+    /// freedom could also manage - the case that actually discriminates is `underlay_tests.rs`'s
     /// `the_field_samples_greener_where_the_green_is`; this one exists to prove `RouteGround::sample`
     /// is wired to the field's OWN sample rather than to some remaining four-corner shortcut.
     #[test]
@@ -1671,7 +1671,7 @@ mod tests {
     }
 
     /// WCAG relative luminance and contrast, duplicated in miniature from `widgets.rs`'s private
-    /// `rel_luma`/`contrast` — this module cannot see those (`widgets`' are not `pub`) and a
+    /// `rel_luma`/`contrast` - this module cannot see those (`widgets`' are not `pub`) and a
     /// third home for the two formulas is worse than one small, obviously-correct copy that a host
     /// test can run with no font or GL loaded.
     fn linearize(c: f32) -> f32 {
@@ -1691,7 +1691,7 @@ mod tests {
 
     /// **The regression this fallback shipped with**: a device capture of first-run consent read as
     /// "no ambient light" because three of the four authored stops sat within ~15 8-bit codes of
-    /// `theme::SURFACE_APP` in both hue and luminance — a wash with almost no wash in it. A real
+    /// `theme::SURFACE_APP` in both hue and luminance - a wash with almost no wash in it. A real
     /// keyed hero ground gets its contrast from an actual photograph; this one has to author its
     /// own, so it is pinned directly: the brightest and darkest corners must differ by a real
     /// multiple (not `AmbientWash`'s own ~1.8x floor, which a near-uniform fallback could still
@@ -1723,14 +1723,14 @@ mod tests {
         }
     }
 
-    /// The fallback must not merely be brighter — it must stay materially distinct from a flat
+    /// The fallback must not merely be brighter - it must stay materially distinct from a flat
     /// `SURFACE_APP` fill, which is the specific failure mode the correction fixed (three of four
     /// stops used to sit within ~15 8-bit codes of it in both hue AND luminance). Measured as raw
     /// mean per-channel distance (display-encoded, not WCAG-linearized) rather than luminance
     /// alone: WCAG luminance compresses the shadow end sharply, so a corner that is UNMISTAKABLY
     /// darker at the near-black end (this fallback's own `ATMOS_CHARCOAL`) can read as luminance-
-    /// close to the surface while an 8-bit-code comparison — closer to how banding-free darks
-    /// actually read on a panel — shows it plainly is not.
+    /// close to the surface while an 8-bit-code comparison - closer to how banding-free darks
+    /// actually read on a panel - shows it plainly is not.
     #[test]
     fn every_fallback_corner_is_visibly_apart_from_the_app_surface() {
         for (i, corner) in theme::ROUTE_GROUND_FALLBACK.iter().enumerate() {

@@ -74,7 +74,7 @@ struct Inner<K, V> {
     dropped: u32,
     /// Running (including cancelled) and queued-terminal reservations, by exact address.
     inflight: BTreeMap<(MachineId, u32), Reservation>,
-    /// Results dropped, per addressee — hashed state.
+    /// Results dropped, per addressee - hashed state.
     dropped_for: BTreeMap<MachineId, u32>,
 }
 
@@ -318,7 +318,7 @@ impl<K, V> Landing<K, V> {
         true
     }
 
-    /// Per-landing drop counter — hashed state (§5.2).
+    /// Per-landing drop counter - hashed state (§5.2).
     pub fn dropped_count(&self) -> u32 {
         self.lock().dropped
     }
@@ -470,7 +470,7 @@ mod tests {
         assert_eq!(l.admit(addr(3)), Ok(()), "the slot is free again");
     }
 
-    /// Spec §15.1 / §5.2: the key carries identity — `(server, ratingKey)` — so a landing for
+    /// Spec §15.1 / §5.2: the key carries identity - `(server, ratingKey)` - so a landing for
     /// another server's item of the same number is skipped and counted, never delivered.
     #[test]
     fn a_same_rating_key_on_a_different_server_is_skipped() {

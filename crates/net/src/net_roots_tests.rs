@@ -1,6 +1,6 @@
 //! The bundled public roots fallback (`roots::Mode::Roots`): an https certificate that chains to a
 //! root the television's trust store lacks (Let's Encrypt's newer roots on a 2020 firmware, verify
-//! result 20) is verified once more against `pkg/le-roots.pem` — for ANY host — while a date
+//! result 20) is verified once more against `pkg/le-roots.pem` - for ANY host - while a date
 //! failure, a name mismatch and a self-signed chain never are.
 //!
 //! The "device store" of these tests is `test_ca_bundle` (what `Tls::CaBundle` hands libcurl), the
@@ -208,7 +208,7 @@ fn a_latched_roots_start_the_bundle_refuses_retries_once_in_strict() {
 }
 
 /// The retry is once: a latched start refused by the bundle, then refused by the device store too
-/// (the issuer is in neither), fails — it does not loop, and does not go back to the bundle.
+/// (the issuer is in neither), fails - it does not loop, and does not go back to the bundle.
 #[test]
 fn a_latched_roots_start_refused_by_both_stores_fails_after_one_strict_retry() {
     let _serial = tv_base::testlock::serial();
@@ -313,7 +313,7 @@ fn a_url_with_userinfo_never_uses_the_bundle() {
     assert!(!roots::is_latched(&roots::key_of("127.0.0.1", i32::from(port))));
 }
 
-/// A bundle that is on disk but cannot verify anything — empty, or unreadable — is not a bundle: with
+/// A bundle that is on disk but cannot verify anything - empty, or unreadable - is not a bundle: with
 /// it the fallback would hand libcurl a `CURLOPT_CAINFO` it cannot load (rc 77 on every request whose
 /// strict attempt lacked an issuer), where without it the request fails as it always did (rc 60 with
 /// the verify result that says why). So `roots_bundle` is only a non-empty readable file.
@@ -559,7 +559,7 @@ DKrIb2EKk5NpOpE6/XttQYZV/3gilB9l+Cc/DOVwmyg=\n\
     }
 
     /// The point of the bundle: `leaf -> YR1 -> Root YR` (and the ECDSA twin) verifies against it,
-    /// and verifies against NOTHING the old firmware stores hold (X1 and X2 alone) — the same
+    /// and verifies against NOTHING the old firmware stores hold (X1 and X2 alone) - the same
     /// failure, an unknown issuer, the television reports as OpenSSL result 20.
     #[test]
     fn the_new_roots_chain_verifies_against_the_bundle_and_not_against_the_older_ones() {
@@ -579,7 +579,7 @@ fn only_a_missing_issuer_or_a_self_signed_chain_under_rc_60_is_an_untrusted_chai
     for verify in [2, 18, 19, 20, 21] {
         assert_eq!(roots::untrusted_chain_verify(60, Some(verify)), Some(verify as u8), "verify {verify}");
     }
-    // 9 and 10 are the wrong-clock case; the rest are a name mismatch, a bad signature or "not reported" — none of them says the store lacks a root.
+    // 9 and 10 are the wrong-clock case; the rest are a name mismatch, a bad signature or "not reported" - none of them says the store lacks a root.
     for verify in [None, Some(0), Some(7), Some(9), Some(10), Some(17), Some(22), Some(62), Some(-1), Some(274)] {
         assert_eq!(roots::untrusted_chain_verify(60, verify), None, "verify {verify:?}");
     }

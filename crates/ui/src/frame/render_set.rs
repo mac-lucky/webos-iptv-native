@@ -1,4 +1,4 @@
-/// **The residency ceiling for every render alive in one frame** (§8.3), derived — 64 MiB.
+/// **The residency ceiling for every render alive in one frame** (§8.3), derived - 64 MiB.
 ///
 /// It was `48 << 20` and the doc said "a placeholder until phase 11 sets it from the 160 MB
 /// `requiredMemory` measurement". Here is that arithmetic. Every measured figure is from
@@ -15,31 +15,31 @@
 /// ```
 ///
 /// 1. **The peak binds, not the browsing figure.** Browsing alone leaves 160 − 119 = 41 MB of
-///    apparent room, but the browsing caches stay resident when playback starts — that is what
-///    turns 119 into 155,292 KiB — so the headroom this ceiling may spend is measured from the
+///    apparent room, but the browsing caches stay resident when playback starts - that is what
+///    turns 119 into 155,292 KiB - so the headroom this ceiling may spend is measured from the
 ///    PEAK. Read `requiredMemory` as decimal MB (the conservative reading; as MiB it is 4.5 MiB
 ///    more generous, and this constant is chosen to hold under either): 156,250 − 155,292 = 958 KiB.
-/// 2. **Texture memory is what this rule bounds.** `VmRSS` on this set INCLUDES the Mali pages —
+/// 2. **Texture memory is what this rule bounds.** `VmRSS` on this set INCLUDES the Mali pages -
 ///    proven arithmetically in that same measurement, 38,540 + 80,636 = 119,176 against a `VmRSS`
-///    of 119,044 — so all texture memory may be at most 80,636 + 958 = 81,594 KiB ≈ 79.7 MiB.
+///    of 119,044 - so all texture memory may be at most 80,636 + 958 = 81,594 KiB ≈ 79.7 MiB.
 /// 3. **The set is a SUBSET of that**, and the one large, exactly known exclusion is the blur
 ///    chain: `grab` 1920x1080 + `mid` 960x540 + `a`/`b` 480x270, RGBA8 = 11,404,800 B ≈ 10.9 MiB,
 ///    built once and never resized, so it is a fixed subtraction rather than a term.
 ///    79.7 − 10.9 = **68.8 MiB** for the screens' own renders, the `FrameCache`, `extra_bytes`,
 ///    and the two smaller exclusions (the 160-slot glyph cache, `ui::icons`).
-/// 4. Round down to **64 MiB**, which leaves those two about 4.8 MiB and — the other side of the
-///    same question — sits above the largest per-screen GPU residency ever measured here (the
+/// 4. Round down to **64 MiB**, which leaves those two about 4.8 MiB and - the other side of the
+///    same question - sits above the largest per-screen GPU residency ever measured here (the
 ///    detail hero, 54.5 MB whole-process; Home's grid 35.8 MB, the profile picker 11.7 MB). A
 ///    ceiling under that would assert on a healthy screen the moment `tex::resident_bytes()`
 ///    joins the sum, which is the failure mode a tighter number buys.
-/// 5. **`ui::tex::TEX_RESIDENT_BYTES_MAX` (44 MiB) is the pool's OWN ceiling under this one** —
+/// 5. **`ui::tex::TEX_RESIDENT_BYTES_MAX` (44 MiB) is the pool's OWN ceiling under this one** -
 ///    it is what actually bounds `tex::resident_bytes()`, the term this constant's derivation
 ///    leaves room for above; that module's doc has its own arithmetic against this constant.
 ///
 /// **What is not settled.** Every figure above is whole-PROCESS: nothing has yet measured what
 /// this set's own sum reads per screen, because until phase 11 it could not be non-zero.
 /// **TV session 7 leg 8** (`VmRSS` + `/proc/gpu/<pid>` per screen, panel off) is the measurement
-/// that confirms or moves this constant — if the set's own sum on the detail hero comes back
+/// that confirms or moves this constant - if the set's own sum on the detail hero comes back
 /// within 10 % of this number, the number is wrong rather than the app, and it moves DOWN to fit
 /// what is actually held; if a screen's whole-process GPU exceeds ~80 MiB, the app is over its
 /// declaration and no ceiling here is the fix.
@@ -47,14 +47,14 @@ pub const RENDER_BYTES_MAX: usize = 64 << 20;
 /// One full-viewport `FrameCache` (1920×1080×4), the single one a Cached host is served from.
 pub const FRAME_CACHE_BYTES: usize = 1920 * 1080 * 4;
 
-/// **What ONE screen holds of this frame's render residency** — the answer to `Screen::render_report`
+/// **What ONE screen holds of this frame's render residency** - the answer to `Screen::render_report`
 /// (§8.3), and the only thing the [`RenderSet`] learns from a screen.
 ///
-/// `textures` counts the GL textures the screen OWNS and keeps across frames — the ones its own
+/// `textures` counts the GL textures the screen OWNS and keeps across frames - the ones its own
 /// code created and its own code deletes. It is not a count of draws, and a texture the screen
 /// merely SAMPLES from a shared pool (`ui::tex`'s poster cache, `ui::icons`, the glyph cache, the
 /// one `popover::host` `FrameCache`, the blur chain) belongs to that pool and is counted once
-/// there, never per screen that looks at it — otherwise every screen showing a poster would report
+/// there, never per screen that looks at it - otherwise every screen showing a poster would report
 /// the whole poster cache and the sum would be meaningless. That is exactly the distinction rule
 /// (b) exists to make: "a Cached host holds NO render of its own (it is a quad from the one shared
 /// `FrameCache`, never a second full-viewport texture)".
@@ -90,7 +90,7 @@ impl RenderReport {
 pub struct RenderSet {
     /// Page renders drawn: the top page, plus the level beneath it under a push.
     pub pages: u32,
-    /// `(surface, renders)` per Active surface — the surface's OWN backing render textures
+    /// `(surface, renders)` per Active surface - the surface's OWN backing render textures
     /// ([`RenderReport::textures`]), which is zero for every surface served from the shared
     /// `FrameCache`.
     pub surfaces: Vec<(tv_machine::machine::EntryId, u32)>,
@@ -155,12 +155,12 @@ impl RenderSet {
 /// place so both halves are reachable from a host test.
 ///
 /// A debug build dies: a breach is a bug in the frame plan and the host suite is where it must be
-/// paid for. A release build logs ONCE — a television that has started leaking renders would
+/// paid for. A release build logs ONCE - a television that has started leaking renders would
 /// otherwise write this line 60 times a second into the one debugging surface anybody can ask a
 /// user for. `logged` is the caller's once-flag; the returned line is `None` when it has already
 /// been spent.
 ///
-/// In a release build this function IS [`breach_line`] — `debug_assert!` compiles out — which is
+/// In a release build this function IS [`breach_line`] - `debug_assert!` compiles out - which is
 /// what makes `a_render_breach_logs_once_on_the_release_path` a test of the shipped path rather
 /// than of a second copy of it.
 pub fn on_breach(breach: &RenderBreach, logged: &mut bool) -> Option<String> {
@@ -182,7 +182,7 @@ mod tests {
     use super::*;
     use tv_machine::machine::EntryId;
 
-    /// The RELEASE half of the breach policy: one line, ever, however many frames breach — and it
+    /// The RELEASE half of the breach policy: one line, ever, however many frames breach - and it
     /// names which rule and by how much. In a release build `on_breach` is this function, the
     /// `debug_assert!` above it having compiled out.
     #[test]

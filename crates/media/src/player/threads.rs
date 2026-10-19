@@ -1,4 +1,4 @@
-//! player::threads — the worker threads beside the demuxer (load / progress) + the
+//! player::threads - the worker threads beside the demuxer (load / progress) + the
 //! SendPtr spawn seam. The demux thread body is `ff::demux` (libavformat over a custom
 //! AVIO on stream.rs); its HttpStream box lives in the Engine (main owns it, closes it
 //! to interrupt, and outlives the threads).
@@ -11,7 +11,7 @@ pub struct SendPtr<T>(pub *mut T);
 unsafe impl<T> Send for SendPtr<T> {}
 
 /// media/load thread: construct + Load (uid=NULL). The library owns its own GMainContext + loop,
-/// and callbacks arrive on its thread — but Load itself is SYNCHRONOUS here and on some chassis
+/// and callbacks arrive on its thread - but Load itself is SYNCHRONOUS here and on some chassis
 /// blocks for a long time inside video-output init (issue #74, k5lp/k3lp), which is why the C seam
 /// refuses every other verb until it returns (`g_load_returned`) and the pump bounds the wait
 /// with `NATIVE_LOAD_BUDGET`.
@@ -29,14 +29,14 @@ pub fn load_thread(payload: SendPtr<c_char>, native_epoch: u32) {
         ));
         std::thread::sleep(std::time::Duration::from_millis(ms));
     }
-    // issue #74 D.1: flip the epoch-scoped gate BEFORE `load_failed` is set below — `pump.rs`'s
+    // issue #74 D.1: flip the epoch-scoped gate BEFORE `load_failed` is set below - `pump.rs`'s
     // loadCompleted arm (and every other Starfish/ACB verb) must never observe "Load has
     // returned" any later than this.
     if let Some(elapsed) = SHARED.mark_native_load_returned(native_epoch) {
         // Captured HERE, at the moment the flag actually flips, so the "native: Load returned
         // after Nms" log measures the real in-flight duration rather than however long it took
         // the main-thread pump to next run and notice. Logged unconditionally, right at the gate
-        // transition, rather than from `pump.rs`'s `loadCompleted` arm — that arm only runs once
+        // transition, rather than from `pump.rs`'s `loadCompleted` arm - that arm only runs once
         // `loadCompleted` also arrives, so on a session where Load returns but `loadCompleted`
         // never does, the old placement left this line unlogged forever, with no way to tell
         // "Load is still on the stack" from "Load returned and the pipeline went quiet". See
@@ -58,7 +58,7 @@ pub fn load_thread(payload: SendPtr<c_char>, native_epoch: u32) {
 /// How long the progress reporter waits between reports.
 const REPORT_INTERVAL_S: u64 = 10;
 
-/// One reporter's stop signal — **owned by that reporter and its Engine**, not shared.
+/// One reporter's stop signal - **owned by that reporter and its Engine**, not shared.
 ///
 /// A flag in `SHARED` would be cleared by `reset_session` at the end of teardown, so a reporter
 /// still alive at that moment (inside a slow observer call) would come back to a cleared flag and

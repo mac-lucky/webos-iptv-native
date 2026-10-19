@@ -1,4 +1,4 @@
-//! `Measurements` against a native source that memoizes its own widths and fitted lines — the
+//! `Measurements` against a native source that memoizes its own widths and fitted lines - the
 //! shape `text::TtfMeasure` has. This test lived in `text.rs`'s `fitted_line_tests`; it grades the
 //! recorder's measurement capability, which `text` (the `gfx` layer) may not name, so it moved here
 //! with the type it tests (module-layers step L5). It builds its stand-in from `text`'s two memos.

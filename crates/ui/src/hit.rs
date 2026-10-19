@@ -1,8 +1,8 @@
 //! The hit map (restructure spec §7.5, §7.6), owned by `Input` and DOUBLE-BUFFERED: the draw
 //! fills the back map through `DrawFrame::stop` (rects already in screen space, the cascade's
-//! translate, pop and clip folded in — painter order IS z), the swap happens only on a PRESENTED
+//! translate, pop and clip folded in - painter order IS z), the swap happens only on a PRESENTED
 //! frame, and a non-drawn frame resolves against the previous map. Resolution is `top_at(x, y)`
-//! — the LAST stop whose visible part (`rect ∩ clip`) contains the point — and a miss is the
+//! - the LAST stop whose visible part (`rect ∩ clip`) contains the point - and a miss is the
 //! `ModalStack`'s to answer.
 //!
 //! The pointer policies live on the STOP (`hover`, `activate`); the gates live here. There are
@@ -10,16 +10,16 @@
 //!
 //! * `dpad_mode` suppresses hover until the pointer has travelled `DPAD_TRAVEL_PX` since the last
 //!   D-pad press. Live: `Dispatcher`'s ingest calls [`HitMap::note_dpad`] on every direction key.
-//! * `suppressed` is the fading-surface gate — below an alpha threshold a surface should answer
+//! * `suppressed` is the fading-surface gate - below an alpha threshold a surface should answer
 //!   no hover and no click at all. **The mechanism exists and nothing sets it**: outside this
 //!   module's own unit test, `suppressed` is written nowhere, because no container feeds a
 //!   surface's `Opening`/`Closing` phase or its appear-spring alpha into the map. This paragraph
-//!   used to state the gate as a fact, which is how it went unnoticed — the honest reading is
+//!   used to state the gate as a fact, which is how it went unnoticed - the honest reading is
 //!   that a click during a surface's ~0.5 s dismissal fade still resolves against the stops that
 //!   were registered on the last presented frame.
 //!
 //! Screens that must not be clickable through their own fade therefore have to say so themselves
-//! for now — `screens/consent.rs` gates its commit arms on `DecisionAlert::visible()` rather than
+//! for now - `screens/consent.rs` gates its commit arms on `DecisionAlert::visible()` rather than
 //! `is_open()` for exactly this reason, and says so at each guard. Wiring the container phase in
 //! here would let those screens drop that defence; it is a library change with a blast radius
 //! across every surface, so it belongs to the phase that owns the hit map's remaining work
@@ -54,7 +54,7 @@ pub struct Resolution<K> {
 /// Does this stop's VISIBLE part cover the point? `rect ∩ clip` is §7.6's expression, and the
 /// area test is the half `Rect::contains` cannot give: that predicate is inclusive on both edges,
 /// so a stop culled to nothing still answers at its own corner and a stop clipped entirely away
-/// — whose intersection collapses onto the clip's edge — answers along that line. Neither is on
+/// - whose intersection collapses onto the clip's edge - answers along that line. Neither is on
 /// screen, and a control the user cannot see must not be pressable.
 fn covers<K>(stop: &Stop<K>, x: f32, y: f32) -> bool {
     let visible = stop.rect.intersect(stop.clip);
@@ -69,7 +69,7 @@ pub struct HitMap<K> {
     dpad_at: (f32, f32),
     last: (f32, f32),
     /// A fading surface below the threshold: no hover, no click. **Nothing outside this module's
-    /// tests sets this yet** — see the module doc; it is honoured by [`Self::resolve`] but never
+    /// tests sets this yet** - see the module doc; it is honoured by [`Self::resolve`] but never
     /// raised, so it is a mechanism waiting for its caller rather than a live gate.
     pub suppressed: bool,
 }
@@ -172,11 +172,11 @@ impl<K: Copy + Eq> HitMap<K> {
 
 /// **The pointer census: every control the D-pad can activate, clicked all over** (issue #162).
 ///
-/// `controls` is what a screen's `Focusable` declares — each element's key and the rect `place`
+/// `controls` is what a screen's `Focusable` declares - each element's key and the rect `place`
 /// gives it, i.e. what D-pad focus lands on. Each is clicked on a 5×5 grid inset 1 px from its
 /// edges against the map the screen's draw filled, and every point must ACTIVATE that element.
 /// Returns one line per point that did not: a control with no stop, a stop smaller than its
-/// control, or — the #162 shape — another stop registered above it. Empty means clickable.
+/// control, or - the #162 shape - another stop registered above it. Empty means clickable.
 #[cfg(any(test, feature = "test-support"))]
 pub fn pointer_gaps<K: Copy + Eq + std::fmt::Debug>(
     map: &mut HitMap<K>,
@@ -250,7 +250,7 @@ mod tests {
     /// **A stop with no visible area is not a target**, which `Rect::contains` alone does not
     /// give: it is inclusive, so a zero-size rect answers at exactly its own corner, and a stop
     /// clipped entirely away collapses ONTO its clip's edge and answers along that line. Both are
-    /// stops the user cannot see — a card culled to nothing, and a tile scrolled fully under the
+    /// stops the user cannot see - a card culled to nothing, and a tile scrolled fully under the
     /// top chrome (legacy `ui/search`'s `a_zero_size_or_stale_region_rect_is_not_hittable` and
     /// `a_tile_scrolled_under_the_chrome_is_not_a_pointer_target`, carried HERE because the rule
     /// belongs to the map rather than to one page).
@@ -276,7 +276,7 @@ mod tests {
             None,
             "a fully clipped stop answers on no edge"
         );
-        // …while a stop straddling the floor is still a target on the part that is drawn.
+        // ...while a stop straddling the floor is still a target on the part that is drawn.
         m.fill(vec![stop(3, Rect::new(100.0, 100.0, 250.0, 130.0), floor)]);
         m.swap();
         assert_eq!(m.top_at(200.0, 200.0).map(|s| s.key.elem), Some(3));
@@ -300,7 +300,7 @@ mod tests {
         assert_eq!(m.top_at(50.0, 50.0).map(|s| s.key.elem), Some(2));
     }
 
-    /// §7.6: a focused tile drawn through `scaled(pop)` registers its POPPED rect — a click in
+    /// §7.6: a focused tile drawn through `scaled(pop)` registers its POPPED rect - a click in
     /// the margin the pop grew into hits it (`DrawFrame::stop` folds the cascade; this is the
     /// map's half).
     #[test]

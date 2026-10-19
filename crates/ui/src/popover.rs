@@ -1,4 +1,4 @@
-//! `Popover` — the ONE open/appear choreography every modal panel shares (track menu, Info card,
+//! `Popover` - the ONE open/appear choreography every modal panel shares (track menu, Info card,
 //! Chapters strip, profile menu): an OPEN flag + a critically-damped 0→1 appear spring driving a
 //! fade + slide-into-place, with an optional full-screen scrim. Each panel used to hand-wire its
 //! own `static OPEN + APPEAR` pair, so any motion change was a four-file edit.
@@ -7,10 +7,10 @@
 //!
 //! A modal stands on a page that is not moving, and on a tile-based GPU redrawing that page is the
 //! whole cost of having the modal up. Measured on the television at commit `c75d50ae`: the detail
-//! page under an open track panel presented every frame at `draw≈75 ms` — `loop=30` while paging —
+//! page under an open track panel presented every frame at `draw≈75 ms` - `loop=30` while paging -
 //! against 60 fps and `worstframe≈29 ms` for the same page with no panel. The class bisect
 //! (`/tmp/webosiptv-drawmask`) priced it as fill and nothing else: `all` 17 ms (the compositor
-//! floor), `glass` 50, `rect` 51, `grad` 50, `card` 73, `text` 75 — i.e. the page's own full-screen
+//! floor), `glass` 50, `rect` 51, `grad` 50, `card` 73, `text` 75 - i.e. the page's own full-screen
 //! ground, the modal scrim and the panel's glass each cost a vsync slot and they overlap.
 //!
 //! The profile menu had solved this for itself in 2026-08 with a private `gfx::FrameCache`, and no
@@ -25,17 +25,17 @@
 //! What the mechanism guarantees, in the order the code establishes it:
 //!
 //! - **The snapshot is the UNDIMMED host page.** [`host::live`] captures on its first call of a
-//!   frame, which is by construction the moment before the first popover draws anything — its
+//!   frame, which is by construction the moment before the first popover draws anything - its
 //!   scrim included. The scrim and the [`Opener`] lift stay LIVE above the quad, which they must:
 //!   the scrim ramps with the appear spring, and a lift baked into the snapshot would then be
 //!   dimmed by the live scrim drawn over it, which is the exact bug the lift exists to fix.
 //! - **A panel's ground reads no framebuffer at all.** It is the latched underlay field (the one
-//!   the modal dim draws, `ui::underlay`) sampled at the panel's own rect under the frost — see
-//!   [`crate::widgets::panel_ground`] — so nothing about the snapshot constrains it, and nothing
+//!   the modal dim draws, `ui::underlay`) sampled at the panel's own rect under the frost - see
+//!   [`crate::widgets::panel_ground`] - so nothing about the snapshot constrains it, and nothing
 //!   about it constrains the snapshot.
 //! - **HOST DAMAGE refreshes the snapshot; the popover's OWN activity does not.** That distinction
 //!   was the bio panel's private `OWN_DAMAGE` ledger and is now [`own_motion`] / [`host::live`] /
-//!   [`host::input_scope`] / [`host::page_pass`], shared — attributed at the source and counted
+//!   [`host::input_scope`] / [`host::page_pass`], shared - attributed at the source and counted
 //!   (`idle::take_page_damage`), with [`host_refresh`] as the decision.
 //! - **The opener's card is not in the snapshot at all.** A hold the app takes leaves the card
 //!   springing from its press dip up to its pop beneath the item menu. The card sections leave the
@@ -67,24 +67,24 @@ pub fn lift_owns() -> bool {
     LIFT_OWNS.with(|c| c.get())
 }
 
-/// Stiffness of the appear spring — the panels' shared open-motion constant, and the stiffness every
+/// Stiffness of the appear spring - the panels' shared open-motion constant, and the stiffness every
 /// other fade-into-place in the UI matches (the tab capsules' alpha, [`crate::widgets::TabStrip`]).
 /// `pub` for exactly that reason: a fade that is not a panel still belongs to the same family,
 /// and re-typing 300 somewhere else is how two "shared" motions drift apart.
 pub const K_APPEAR: f32 = 300.0;
 
-/// How many panels are open right now, across the whole app — see [`any_open`].
+/// How many panels are open right now, across the whole app - see [`any_open`].
 ///
 /// A safe atomic rather than the `static mut` + raw-pointer form this counter used until phase 12
 /// (`ci/allow/statics-migration.txt`'s "the modal phase's last legacy owner"): every writer here is
-/// already a narrow, audited door — [`surface_held`]/[`surface_closing`]/[`surface_released`] (fed
-/// by `app/bridge.rs`, which is itself reading every `ModalStack`'s own phase — there is no SINGLE
+/// already a narrow, audited door - [`surface_held`]/[`surface_closing`]/[`surface_released`] (fed
+/// by `app/bridge.rs`, which is itself reading every `ModalStack`'s own phase - there is no SINGLE
 /// `ModalStack` instance this could become a field of, since the container tree holds one per
 /// screen) and [`Popover`]'s own `open_inner`/`release`/`hold_host`/`release_host`/`enter_closing`/
 /// `leave_closing`, the last direct caller being `ui::decision_alert`'s embedded panel. `Relaxed` is
 /// exact: every access is from the main render thread (or, in a host test, serialized behind
 /// `testlock::serial()`), so this buys memory safety over the old unsafe pointer arithmetic with no
-/// behaviour change — same counter, same call sites, same values.
+/// behaviour change - same counter, same call sites, same values.
 static OPEN_COUNT: AtomicU32 = AtomicU32::new(0);
 
 /// Is ANY modal panel up? The one question a screen's CHROME has to ask, and the reason it is a
@@ -103,14 +103,14 @@ pub fn any_open() -> bool {
 }
 
 /// **A dispatcher-owned surface's share of the counters** (restructure phase 5b). A surface on
-/// the container tree has no `Popover` — its PHASE is the `ModalStack`'s — but the page under it
+/// the container tree has no `Popover` - its PHASE is the `ModalStack`'s - but the page under it
 /// is still the legacy frame's, and these three counters are what that frame reads to freeze,
 /// cache and un-glass it. The bridge (`app/bridge.rs`) drives them from the surface phases it
 /// observes after every dispatcher frame: `Opening|Open` → held, `Closing` → held and closing,
 /// gone → released. Exactly [`Popover::open`]/`dismiss`/`release_host`'s arithmetic, exposed
 /// for a caller that keeps its phase elsewhere.
 ///
-/// `cached` is **`modal::style_caches_host`** — the container's own policy table, asked rather
+/// `cached` is **`modal::style_caches_host`** - the container's own policy table, asked rather
 /// than restated. This line used to name the styles instead ("`Style::Sheet`/`Opaque { snapshot:
 /// true }`, a Compact surface holds no snapshot"), and the bridge's `matches!` agreed with it and
 /// disagreed with `surface_policy`, whose `(Style::Compact, _) => (U::Live, R::Cached)` had been
@@ -150,7 +150,7 @@ pub fn surface_released(cached: bool, was_closing: bool) {
     host::invalidate();
 }
 
-/// [`HOST_USERS`], for a test that has to grade the counter from another module — `app/bridge.rs`,
+/// [`HOST_USERS`], for a test that has to grade the counter from another module - `app/bridge.rs`,
 /// whose `sync_host` is the only other caller that takes and releases one. Read as a DELTA against
 /// a base taken at the top of the test: the counter is process-wide and `testlock::serial()` bounds
 /// interleaving, not what a previous test in the same process left behind.
@@ -159,20 +159,20 @@ pub fn host_users_for_test() -> u32 {
     HOST_USERS.load(Relaxed)
 }
 
-/// How many OPEN popovers have asked for a cached host — see [`Popover::caching_host`].
+/// How many OPEN popovers have asked for a cached host - see [`Popover::caching_host`].
 ///
 /// A separate counter from [`OPEN_COUNT`] and not a filter over it, for the same reason that one is
 /// a counter: the popovers live in seven modules and two of them are routes, so nothing can
 /// enumerate them. Reaching zero is what puts the page back on the live path.
 static HOST_USERS: AtomicU32 = AtomicU32::new(0);
-/// How many of [`HOST_USERS`] are panels on their way OUT — dismissed, fading, still holding the
+/// How many of [`HOST_USERS`] are panels on their way OUT - dismissed, fading, still holding the
 /// freeze (see `Popover::release_host`). When every user is one of these the page under the
 /// snapshot is live to input again, and its MOTION becomes a reason to redraw it
-/// ([`host_refresh`]) — under an open panel only its damage is.
+/// ([`host_refresh`]) - under an open panel only its damage is.
 static HOST_CLOSING: AtomicU32 = AtomicU32::new(0);
 
 /// Attribute the spring motion of a popover's own `update` to the POPOVER rather than to the page
-/// it stands on — one line at the top of that `update`, held for the body.
+/// it stands on - one line at the top of that `update`, held for the body.
 ///
 /// This is [`tv_machine::idle::MotionScope`], so the panel's springs never read as the PAGE's
 /// (`idle::PAGE_MOVING`, which [`host_refresh`] asks for a fading panel), plus an
@@ -181,7 +181,7 @@ static HOST_CLOSING: AtomicU32 = AtomicU32::new(0);
 /// every panel's `update` is one line rather than six, and so that a panel added tomorrow inherits
 /// it.
 ///
-/// **The scope merges back** on drop, so a popover's motion still keeps the present gate awake —
+/// **The scope merges back** on drop, so a popover's motion still keeps the present gate awake -
 /// this changes who the motion is ATTRIBUTED to, never whether it counts as motion.
 #[must_use = "the scope is only open for this guard's lifetime"]
 pub struct OwnMotion(
@@ -199,22 +199,22 @@ pub fn own_motion() -> OwnMotion {
 
 /// **Does the host snapshot survive this frame?** Two questions about the PAGE, and only the page.
 ///
-/// `page_dirty` — did it CHANGE: `idle::take_page_damage`, every invalidation this frame that no
+/// `page_dirty` - did it CHANGE: `idle::take_page_damage`, every invalidation this frame that no
 /// popover claimed as its own, by count, so a landing beside a key press or during the panel's
 /// own motion is still seen. That is a reason to redraw whether the panels are open or fading.
 ///
-/// `page_moving` — is it MOVING: `app.rs`'s `underlay_moving` (Home, the Library and Search step
+/// `page_moving` - is it MOVING: `app.rs`'s `underlay_moving` (Home, the Library and Search step
 /// their springs inside a `scoped_motion`) OR'd with the gate's unscoped-motion bit. **That is a
 /// reason to redraw only while every holder is FADING** (`fading_only`: dismissed, input back on
 /// the page, the page free to scroll under the fade). With a panel OPEN the page cannot be driven,
-/// and what still moves on it is decoration — a focused card's title marquee, the hero's slow
-/// drift — which the frozen picture is MEANT to pause (the module doc's "a decoration on a page
+/// and what still moves on it is decoration - a focused card's title marquee, the hero's slow
+/// drift - which the frozen picture is MEANT to pause (the module doc's "a decoration on a page
 /// the user cannot reach"). Read as a refresh reason, that decoration re-rendered Home under the
 /// account menu on every frame: 25M GPU cycles and 26 fps on the set, 2026-09-04, against the
 /// 11M and 50+ the freeze exists for. The one thing this leaves out is a page still SETTLING on
 /// the frame a panel opens (the item menu over a grid whose focus spring has not landed): the
 /// snapshot holds that frame and the page finishes its last few pixels when the panel lets go.
-/// Accepted — it is the account menu's behaviour since the cache existed.
+/// Accepted - it is the account menu's behaviour since the cache existed.
 ///
 /// The release spring of a cancelled long hold is NOT such a reason: its card is the opener lift's
 /// (drawn live above the snapshot at the press's own scale; the page pass leaves it out), so
@@ -228,21 +228,21 @@ pub fn host_refresh(fading_only: bool, page_dirty: bool, page_moving: bool) -> b
     page_dirty || (fading_only && page_moving)
 }
 
-/// The element a popover was opened FROM — where it is, and how to put it back on screen.
+/// The element a popover was opened FROM - where it is, and how to put it back on screen.
 ///
 /// A modal scrim is ONE full-screen quad, so it dims the whole page INCLUDING the card or chip the
 /// menu is about: the one thing on screen the panel is talking about recedes with everything else.
-/// Fixing that needs no new machinery — the renderer is immediate-mode and z-order IS call order,
+/// Fixing that needs no new machinery - the renderer is immediate-mode and z-order IS call order,
 /// so "above the scrim" literally means "drawn after the scrim call".
 ///
 /// **Both halves come from the HOST, which is why they travel together.** Only the screen that drew
 /// the element knows where it landed (a shelf's scroll spring and the cell's own focus pop are
 /// invisible from here) and only that screen can draw it again. A bare `fn()` rather than a closure,
-/// because this is stored beside the open panel in a `static mut` — the same shape `ui::nav` carries
+/// because this is stored beside the open panel in a `static mut` - the same shape `ui::nav` carries
 /// an outgoing page's teardown as.
 #[derive(Clone, Copy)]
 pub struct Opener {
-    /// The element's drawn rect in screen coords — what the panel is anchored beside. `None` when
+    /// The element's drawn rect in screen coords - what the panel is anchored beside. `None` when
     /// the host has no element to point at (the hero view has no card; a headless trigger opens the
     /// menu with nothing focused), which is a placement fallback and never an error.
     pub rect: Option<Rect>,
@@ -252,7 +252,7 @@ pub struct Opener {
     pub redraw: fn(),
 }
 
-/// The [`Opener::redraw`] of a popover with nothing to lift — a named fn rather than a closure, so
+/// The [`Opener::redraw`] of a popover with nothing to lift - a named fn rather than a closure, so
 /// [`Opener::NONE`] can be a `const`.
 fn draw_nothing() {}
 
@@ -264,7 +264,7 @@ impl Opener {
         redraw: draw_nothing,
     };
 
-    /// An opener that is only a DRAW — for a panel whose placement is its own. The Library's chip
+    /// An opener that is only a DRAW - for a panel whose placement is its own. The Library's chip
     /// menus are anchored on the toolbar rather than on the chip's measured rect, so they have a
     /// thing to lift and no rect to hand over.
     pub const fn drawn(redraw: fn()) -> Opener {
@@ -276,10 +276,10 @@ impl Opener {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HostPolicy {
     /// The page keeps drawing underneath. The right answer whenever the popover does not cover
-    /// enough of it to matter, or whenever the host is not a page at all — the player route, where
+    /// enough of it to matter, or whenever the host is not a page at all - the player route, where
     /// what is behind the panel is punch-through alpha to a hardware plane that GL cannot read.
     /// (The Settings family was listed here too, as "replaces its host with an opaque ground and so
-    /// has nothing to cache" — since 2026-09-03 it caches its host like every other page popover,
+    /// has nothing to cache" - since 2026-09-03 it caches its host like every other page popover,
     /// and once its ground is ready it skips the page pass altogether; see `settings.rs`.)
     Live,
     /// The page is drawn once into the shared snapshot and served from it, refreshed on host
@@ -297,7 +297,7 @@ pub struct Popover {
     /// freeze their page is a list a reviewer can read off the constructors.
     host: HostPolicy,
     /// Is this popover currently counted in [`HOST_USERS`]? Held from [`open`](Self::open) until
-    /// the panel has GONE — which for a [`dismiss`](Self::dismiss) is the end of its fade, not the
+    /// the panel has GONE - which for a [`dismiss`](Self::dismiss) is the end of its fade, not the
     /// press frame (see [`release_host`](Self::release_host)). A flag of its own rather than a
     /// reading of `open`, because the two disagree for exactly that stretch.
     host_held: bool,
@@ -316,7 +316,7 @@ impl Popover {
         }
     }
 
-    /// Freeze this popover's host page into the shared snapshot while it is open — see [`host`].
+    /// Freeze this popover's host page into the shared snapshot while it is open - see [`host`].
     ///
     /// Opt-IN rather than the default, and the default is the one that draws more, because the two
     /// failures are not comparable. A popover that could have frozen its page and does not costs
@@ -349,10 +349,10 @@ impl Popover {
         // what is behind me", which is what this call means.
         host::invalidate();
     }
-    /// Close is an INSTANT hide — for a panel whose subject just went away (the item it was about
+    /// Close is an INSTANT hide - for a panel whose subject just went away (the item it was about
     /// was replaced under it) or a boot-time reset. An interactive BACK/OK wants [`dismiss`]: the
     /// appear choreography run in reverse, which every modal in the app shares for the same reason
-    /// it shares the entry (`RISE`'s doc) — one panel leaving differently from its neighbour reads
+    /// it shares the entry (`RISE`'s doc) - one panel leaving differently from its neighbour reads
     /// as a different kind of object. Settings' exit was the report (2026-09-02); it is the
     /// mechanism, not that one screen, that got the fade.
     pub fn close(&mut self) {
@@ -362,7 +362,7 @@ impl Popover {
         self.appear = Spring::at(0.0);
     }
     /// The bookkeeping half of a close: input modality ends NOW, whether the
-    /// panel then vanishes or fades. The host freeze is NOT in here — see
+    /// panel then vanishes or fades. The host freeze is NOT in here - see
     /// [`release_host`](Self::release_host) for why it outlives a dismiss.
     fn release(&mut self) {
         if self.open {
@@ -371,7 +371,7 @@ impl Popover {
         self.open = false;
         host::invalidate();
     }
-    /// Register this popover's frozen-host user — once, however many times it is (re)opened, and
+    /// Register this popover's frozen-host user - once, however many times it is (re)opened, and
     /// not at all under a `Live` policy. A re-open DURING the fade-out finds the user still held
     /// and must not count it twice.
     fn hold_host(&mut self) {
@@ -381,9 +381,9 @@ impl Popover {
         }
     }
     /// The other half, and deliberately NOT part of [`release`](Self::release): **a dismissed panel
-    /// keeps its page frozen for the length of its fade-out.** The page has not changed — input
+    /// keeps its page frozen for the length of its fade-out.** The page has not changed - input
     /// went back to it on the press frame, but nothing it does in the next 300 ms is a reason to
-    /// redraw a hero and three shelves under a panel that is on its way out — and the fade is
+    /// redraw a hero and three shelves under a panel that is on its way out - and the fade is
     /// drawn over it up to sixty times. Releasing on the press frame put every one of those frames
     /// on the live path, which is the laggy DISMISSAL every cached panel had (2026-09-03: the About
     /// sheet, 60 fps while scrolling, fell to ~20 while fading; Settings' exit ramp showed its grey
@@ -398,7 +398,7 @@ impl Popover {
             host::invalidate();
         }
     }
-    /// Count this held user among the fading ones — see [`HOST_CLOSING`]. A no-op for a panel that
+    /// Count this held user among the fading ones - see [`HOST_CLOSING`]. A no-op for a panel that
     /// holds no user, or is already counted.
     fn enter_closing(&mut self) {
         if self.host_held && !self.host_closing {
@@ -413,7 +413,7 @@ impl Popover {
         }
     }
     /// Step the appear spring inside an `idle::MotionScope`, so the panel's own motion is never
-    /// read as the PAGE's — the distinction [`host_refresh`] rests on for a fading panel. Reports
+    /// read as the PAGE's - the distinction [`host_refresh`] rests on for a fading panel. Reports
     /// whether the spring moved.
     fn step_appear(&mut self, target: f32, dt: f32) -> bool {
         let scope = tv_machine::idle::MotionScope::open();
@@ -424,7 +424,7 @@ impl Popover {
     /// (keys go to the page again, its glass lifetime ends) and stays VISIBLE while `appear`
     /// springs back to 0 under [`update`](Self::update). A CACHING panel keeps its host frozen for
     /// the length of that fade and lets go at the end ([`Live`]'s doc,
-    /// `a_cached_popover_holds_its_frozen_host_through_the_fade_and_releases_at_the_end`) — the
+    /// `a_cached_popover_holds_its_frozen_host_through_the_fade_and_releases_at_the_end`) - the
     /// page under a fading panel has not changed. Draw sites gate on
     /// [`visible`](Self::visible) so the fade is actually drawn; input sites keep gating on
     /// [`is_open`](Self::is_open). A no-op on a panel that is not open.
@@ -465,7 +465,7 @@ impl Popover {
     }
 
     /// **Has the appear choreography finished ramping?** True once the fade+slide has visibly
-    /// arrived — `pos` need not have decayed to the exact analytic rest [`Spring::step`] reports
+    /// arrived - `pos` need not have decayed to the exact analytic rest [`Spring::step`] reports
     /// through `note_spring` (a fraction of a percent short of 1 is not a frame anybody can see),
     /// so this is a coarser, visual-arrival test rather than that motion-detector's own tolerance.
     ///
@@ -476,14 +476,14 @@ impl Popover {
     }
 
     /// The panel painter without a full-screen scrim. Pair with [`scrim`](Self::scrim), for a
-    /// caller that draws the dim as part of its host page — see that method for why one does.
+    /// caller that draws the dim as part of its host page - see that method for why one does.
     pub fn content_painter(&self, rise: f32) -> Painter {
         let a = self.appear();
         Painter::root()
             .alpha(a * crate::nav::page_alpha())
             .translate(0.0, rise * (1.0 - a))
     }
-    /// **The app's entry-slide distance** — how far a panel rises into place on open, in px, for
+    /// **The app's entry-slide distance** - how far a panel rises into place on open, in px, for
     /// [`painter`](Self::painter) and [`content_painter`](Self::content_painter).
     ///
     /// It is published here because this type owns the appear choreography and the value is a
@@ -493,7 +493,7 @@ impl Popover {
     /// panel anchored to the BOTTOM of the frame passes it negative to drop down instead.
     ///
     /// 20 is what *Also available* has always drawn. It is written down because the four alert panels
-    /// arrived with 24 / 20 / 20 / 18 — each documented in its own file as "the shared entry
+    /// arrived with 24 / 20 / 20 / 18 - each documented in its own file as "the shared entry
     /// distance", "matching every other popover in the app", "the shape every panel in the app
     /// appears with". Four files claiming to match each other, and no two of them agreeing, is the
     /// exact failure a token exists to prevent; it is the same disease as the four names the 32px
@@ -509,7 +509,7 @@ impl Popover {
     /// ON a page and a route change replaces the page: when the screen underneath dips to the app
     /// ground, a panel left sitting at full strength over it is the one thing on the panel that
     /// says the transition is not happening. It is one multiply into a cascade every primitive
-    /// already goes through, and it is 1.0 whenever no route change is in flight — which is every
+    /// already goes through, and it is 1.0 whenever no route change is in flight - which is every
     /// frame of the in-player panels, since playback has no page transition.
     pub fn painter(&self, scrim_a: f32, rise: f32) -> Painter {
         self.scrim(scrim_a);
@@ -519,7 +519,7 @@ impl Popover {
     /// Draw the modal scrim ALONE, for a caller that needs it earlier in the frame than the panel.
     ///
     /// **A dynamic backdrop needs this.** The scrim sits between the page and the panel, so it is
-    /// part of what the panel's glass looks through — and the capture path gets that for free, since
+    /// part of what the panel's glass looks through - and the capture path gets that for free, since
     /// it grabs framebuffer 0 after the scrim is already on it. The DIRECT path does not: it
     /// re-renders the page closure into a small target before any popover draws, so a panel served
     /// by it sampled an undimmed page and came out brighter than the dimmed surroundings it sat in.
@@ -527,7 +527,7 @@ impl Popover {
     /// the same point in draw order it always occupied.
     ///
     /// Pair with [`content_painter`](Self::content_painter), which is the same panel painter with
-    /// the scrim left out — calling [`painter`](Self::painter) as well would dim twice.
+    /// the scrim left out - calling [`painter`](Self::painter) as well would dim twice.
     pub fn scrim(&self, scrim_a: f32) {
         if scrim_a > 0.0 {
             let dim = theme::scrim_black(scrim_a * self.appear() * crate::nav::page_alpha());
@@ -542,17 +542,17 @@ impl Popover {
     /// **Both calls belong to the HOST PAGE**, for the reason [`scrim`](Self::scrim) already gives
     /// and one more. The direct blur source path re-renders the page closure into a small target
     /// before any popover draws, so a lift drawn WITH the panel would reach the visible frame and
-    /// never the snapshot — and a glass panel frosting a *dimmed* copy of the very card it is about
+    /// never the snapshot - and a glass panel frosting a *dimmed* copy of the very card it is about
     /// is exactly the class of artefact the scrim's own placement rule exists to prevent.
     ///
     /// **The lift is a SECOND DRAW, not a cut-out, and that is a visual decision rather than an
     /// implementation detail.** Everything the element paints OPAQUELY comes out at exactly its own
-    /// colour, which is the point. Everything it paints with ALPHA — its soft shadow, its focus
-    /// glow, the anti-aliased edges of its label — composites twice, once dimmed under the scrim
+    /// colour, which is the point. Everything it paints with ALPHA - its soft shadow, its focus
+    /// glow, the anti-aliased edges of its label - composites twice, once dimmed under the scrim
     /// and once over it, so those read heavier than the same element does anywhere else on the
     /// screen. The shadow reading twice is what a raised object would really cast; the label's AA
     /// edges thickening is the price, and it is paid from the first frame the panel is up, not
-    /// only once the scrim has ramped in. The alternative — scrim as four quads around the rect —
+    /// only once the scrim has ramped in. The alternative - scrim as four quads around the rect -
     /// has neither cost and cannot follow an element whose glow and caption run outside its own
     /// frame, which every card surface here has.
     pub fn scrim_lifting(&self, scrim_a: f32, opener: &Opener) {
@@ -563,14 +563,14 @@ impl Popover {
     }
 
     /// Draw the panel's GROUND at `r` with corner `rad` through [`widgets::panel_ground`](crate::widgets::panel_ground)
-    /// — the latched underlay field under the frost where `field` has one, the flat panel
-    /// material where it does not — then report the ground done to [`host`].
+    /// - the latched underlay field under the frost where `field` has one, the flat panel
+    /// material where it does not - then report the ground done to [`host`].
     ///
     /// Call it as the FIRST thing drawn through the content painter: everything after it is the
     /// popover's moving foreground, which is what [`ground_done`](Self::ground_done) marks.
     ///
     /// **Not for the player's panels.** Behind those is punch-through alpha to the hardware video
-    /// plane, which GL cannot read; they keep `p.rect(…, PANEL_TOP, PANEL_BOT, …)` on purpose.
+    /// plane, which GL cannot read; they keep `p.rect(..., PANEL_TOP, PANEL_BOT, ...)` on purpose.
     pub fn panel(
         &self,
         p: Painter,
@@ -588,7 +588,7 @@ impl Popover {
     /// because that method IS the boundary: everything after it is the moving part.
     ///
     /// Inert for a `Live` host: a popover that does not freeze its page has no ground stage, and
-    /// the player's overlays must never reach one — behind them is punch-through alpha to a
+    /// the player's overlays must never reach one - behind them is punch-through alpha to a
     /// hardware plane, which GL cannot read back at all.
     fn ground_done(&self) {
         if self.host == HostPolicy::Cached {
@@ -603,43 +603,43 @@ impl Popover {
 /// [`OPEN_COUNT`], [`HOST_USERS`] and [`HOST_CLOSING`] are process-globals that a `Popover`
 /// INCREMENTS on `open` and owes back on `close`. For most of this app's life nothing could
 /// default on that debt, because every popover was a `static mut` that lives as long as the
-/// process — which is why this impl did not exist and was not missed.
+/// process - which is why this impl did not exist and was not missed.
 ///
 /// **Restructure phase 5b made popovers droppable, and with them this leak reachable.** An owned
 /// screen (`screens::consent`'s `ConsentPage`, which holds a `DecisionAlert`, which holds one of
 /// these) lives inside a `ModalStack` entry and is DROPPED when its surface is torn down. So:
 /// open Privacy & data, press "Delete all local data?", then dismiss the whole Settings surface
-/// while that alert is up — BACK at the family's root, or the loop's `dismiss_surfaces_now` on an
-/// app-switch — and the page is dropped with `open == true`. `OPEN_COUNT` never returns to zero,
+/// while that alert is up - BACK at the family's root, or the loop's `dismiss_surfaces_now` on an
+/// app-switch - and the page is dropped with `open == true`. `OPEN_COUNT` never returns to zero,
 /// and since its one consumer is [`any_open`], the glass tab bar concludes a modal is up and stops
 /// drawing its backdrop **for the rest of the session**, with nothing in any log.
 ///
 /// `close` rather than `dismiss` is the right call here, and deliberately: a dismiss starts a FADE,
-/// and there is nothing left to fade — the object is going away this instant. `close` is already
+/// and there is nothing left to fade - the object is going away this instant. `close` is already
 /// the "release everything now" path and is a no-op on a panel that holds nothing, so this is
 /// exact for the common case of a closed popover being dropped.
 ///
 /// The host suite found it as cross-test pollution three modules away: `screens::consent`'s two
 /// alert tests end with the alert open, and `ui::popover`'s counter tests then failed on
-/// `!any_open()` — passing alone, failing in a full run.
+/// `!any_open()` - passing alone, failing in a full run.
 impl Drop for Popover {
     fn drop(&mut self) {
         self.close();
     }
 }
 
-/// **The shared host snapshot** — one page-sized texture, one lifetime, every popover that asked
+/// **The shared host snapshot** - one page-sized texture, one lifetime, every popover that asked
 /// for it. See this module's own doc for the measurement and the design; this is the protocol.
 ///
 /// Four calls, in this order, once per drawn frame:
 ///
-/// 1. [`begin_frame`] — before anything on the route draws. Takes the page's damage count and
+/// 1. [`begin_frame`] - before anything on the route draws. Takes the page's damage count and
 ///    decides whether the snapshot still describes what is under the popover.
-/// 2. [`page_pass`] — first thing inside the page-drawing closure, on BOTH passes (the visible one
+/// 2. [`page_pass`] - first thing inside the page-drawing closure, on BOTH passes (the visible one
 ///    and the direct blur source one). An RAII guard: it draws or arms as the snapshot allows, and
 ///    on drop takes the capture nobody else took.
-/// 3. [`live`] — an RAII guard at the top of each popover's `draw` and `draw_scrim`.
-/// 4. [`ground_drawn`] — `Popover::panel`, the moment the popover's own GROUND is down.
+/// 3. [`live`] - an RAII guard at the top of each popover's `draw` and `draw_scrim`.
+/// 4. [`ground_drawn`] - `Popover::panel`, the moment the popover's own GROUND is down.
 ///
 /// A popover drawn from inside its page (`decision_alert`; `about_panel` and `person_bio` were the
 /// other two until phase 10) and one drawn after it (the container's surfaces) both work, and
@@ -648,19 +648,19 @@ impl Drop for Popover {
 /// ## The snapshot has TWO stages, and the second one is where the frames are
 ///
 /// Freezing the page alone took the detail page under an open track panel from `draw≈75 ms` to
-/// `draw≈58 ms` — real, and nowhere near a vsync slot. The class bisect on THAT build said why:
+/// `draw≈58 ms` - real, and nowhere near a vsync slot. The class bisect on THAT build said why:
 /// `drawmask=glass` 33 ms, `drawmask=rect` 33 ms. Two things left, ~25 ms each, and neither of them
 /// is the page. They are the popover's own **full-screen modal scrim** (2 MP of SDF fill) and its
-/// own **glass composite + frost** — redrawn on every presented frame, although once the appear
+/// own **glass composite + frost** - redrawn on every presented frame, although once the appear
 /// spring has settled NEITHER CHANGES. Only the popover's foreground does: the rows, the paged
 /// body, the scroll rail.
 ///
 /// So the snapshot grows to the whole composite below that foreground, and [`Held`] is which of the
 /// two it holds:
 ///
-/// - **[`Held::Page`]** — the undimmed host page, taken at the first [`live`] of a frame. Serves
+/// - **[`Held::Page`]** - the undimmed host page, taken at the first [`live`] of a frame. Serves
 ///   the entry ramp (where the scrim really is changing, frame by frame) and the blur source pass.
-/// - **[`Held::Ground`]** — page + scrim + the lifted [`Opener`](super::Opener) + the popover's own
+/// - **[`Held::Ground`]** - page + scrim + the lifted [`Opener`](super::Opener) + the popover's own
 ///   ground, taken by [`ground_drawn`] on the first SETTLED frame. Serves every frame after that,
 ///   as one textured quad, with the freeze held right through the scrim and the panel ground and
 ///   lifted only for the foreground.
@@ -727,7 +727,7 @@ pub mod host {
     #[cfg(any(test, feature = "test-support"))]
     use mock::FrameCache;
 
-    /// What the one snapshot currently holds — see the module doc's two stages.
+    /// What the one snapshot currently holds - see the module doc's two stages.
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum Held {
         /// Nothing usable: the next page draw is a real one.
@@ -744,7 +744,7 @@ pub mod host {
     /// argument: a full-screen RGBA texture is 8.3 MB on this panel and six of them would be a
     /// meaningful bite out of the app's `requiredMemory` budget. The larger half is that only one
     /// modal is ever up over one page, so a second cache could only ever hold a stale copy of a
-    /// page some OTHER popover had already frozen — a second answer to a question with one answer.
+    /// page some OTHER popover had already frozen - a second answer to a question with one answer.
     /// The snapshot represents one explicit prefix of the layer stack; nested live surfaces sit
     /// above that prefix rather than each owning a competing frozen picture of the page.
     static mut CACHE: FrameCache = FrameCache::new();
@@ -779,10 +779,10 @@ pub mod host {
     /// pairs the copy with the stage, because the two were apart: [`PagePass`]'s drop captured
     /// without ever setting the stage, so a popover that draws its scrim without [`live`]
     /// (Settings, whose opaque ground needs no lift) re-rendered its host AND re-copied it on
-    /// every ramp frame — 67 ms a frame on the entry fade, 33 ms once the copy is held.
+    /// every ramp frame - 67 ms a frame on the entry fade, 33 ms once the copy is held.
     fn capture_now() -> bool {
         // The page went straight into the snapshot (`page_pass` redirected it): close that pass and
-        // put the page on the frame from the texture. No copy, and no pointless-capture question —
+        // put the page on the frame from the texture. No copy, and no pointless-capture question -
         // the redirect is only ever opened when the capture is wanted.
         if let Some(target) = unsafe { (*std::ptr::addr_of_mut!(TARGET)).take() } {
             unsafe { (*std::ptr::addr_of_mut!(CACHE)).rendered(target) };
@@ -802,7 +802,7 @@ pub mod host {
         }
     }
 
-    /// Bumped by every successful [`capture_now`] — i.e. every time the one snapshot starts to
+    /// Bumped by every successful [`capture_now`] - i.e. every time the one snapshot starts to
     /// describe a NEW undimmed host page. Only the `Held::Page` stage counts: the ground capture in
     /// [`ground_drawn`] contains the scrim, and nothing may ever key an undimmed reading off it.
     static PAGE_EPOCH: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
@@ -810,15 +810,15 @@ pub mod host {
     /// **Which host page the snapshot holds**, as a number that changes exactly when it is re-taken.
     ///
     /// `containers::modal::ModalUnderlay` keys its field's latch on it: the dim a surface asks its
-    /// host for inherits the host's own light, and that light has to be re-read when — and only
-    /// when — the page under the surface has been re-captured. It reads it at the head of
+    /// host for inherits the host's own light, and that light has to be re-read when - and only
+    /// when - the page under the surface has been re-captured. It reads it at the head of
     /// `ModalStack::draw_scrims`, which runs inside the frame's first [`live`], so a capture owed
     /// this frame has already been taken and counted by then.
     pub fn page_epoch() -> u32 {
         PAGE_EPOCH.load(Relaxed)
     }
 
-    /// **The page snapshot's texture, while the snapshot IS the undimmed page** (`Held::Page`) —
+    /// **The page snapshot's texture, while the snapshot IS the undimmed page** (`Held::Page`) -
     /// `None` in every other stage, the ground stage above all, whose quad has the scrim baked in.
     ///
     /// `containers::modal::ModalUnderlay` reduces its field from it: the field is asked for at the
@@ -850,11 +850,11 @@ pub mod host {
         HOST_USERS.load(Relaxed)
     }
     /// **Input while a panel holds the page frozen belongs to the panel.** Opened by `app.rs`
-    /// around every INPUT event (key, text, pointer, wheel — `app::is_input_event`) and every
+    /// around every INPUT event (key, text, pointer, wheel - `app::is_input_event`) and every
     /// remote token: the per-event `idle::invalidate` and whatever the handler raises are then the
     /// panel's own damage rather than the page's, so a key-up under the account menu does not
     /// re-render Home behind it. NOT around lifecycle or window events, which are the app's and
-    /// may change the page under the panel. `None` — no scope — once every holder is fading, when
+    /// may change the page under the panel. `None` - no scope - once every holder is fading, when
     /// input has gone back to the page and its damage is the page's.
     pub fn input_scope() -> Option<tv_machine::idle::OwnScope> {
         (users() > 0 && !fading_only()).then(tv_machine::idle::OwnScope::open)
@@ -911,14 +911,14 @@ pub mod host {
         }
     }
 
-    /// [`tv_gfx::gfx::blur_invalidate`] **plus** the popover's GROUND stage — what every caller outside
+    /// [`tv_gfx::gfx::blur_invalidate`] **plus** the popover's GROUND stage - what every caller outside
     /// `gfx` means by "retake the blur".
     ///
     /// A popover's ground snapshot contains that popover's frost, composited from the very snapshot
     /// `gfx::blur_invalidate` drops. Keeping it would serve the old frost as a picture, on a still
     /// page, with nothing to show that it had stopped following the blur. (The PAGE stage is
-    /// untouched — it is below all of this and cannot have changed.) `gfx` cannot reach the host's
-    /// cache — it sits below `ui` — so it drops its own snapshot and this drops the ground, in that
+    /// untouched - it is below all of this and cannot have changed.) `gfx` cannot reach the host's
+    /// cache - it sits below `ui` - so it drops its own snapshot and this drops the ground, in that
     /// order, which is the order `gfx::blur_invalidate` itself used to run them in.
     pub fn blur_invalidate() {
         tv_gfx::gfx::blur_invalidate();
@@ -962,9 +962,9 @@ pub mod host {
 
     /// Open the frame: take the page's damage count and decide whether the snapshot survives them.
     ///
-    /// **The host-damage test is route-agnostic on purpose.** It is `idle::take_page_damage` —
+    /// **The host-damage test is route-agnostic on purpose.** It is `idle::take_page_damage` -
     /// every invalidation this frame that was not raised inside a popover's own scope
-    /// (`own_motion`, [`live`], [`input_scope`]) — plus, once every holder is fading, the page's
+    /// (`own_motion`, [`live`], [`input_scope`]) - plus, once every holder is fading, the page's
     /// motion (`app.rs`'s `underlay_moving`, which is threaded in as the one term this module
     /// cannot derive). Derived here rather than per screen, it covers the detail and person pages
     /// too, and it cannot go stale when a seventh screen learns to host a popover.
@@ -973,7 +973,7 @@ pub mod host {
     /// darkening, but the scrim is drawn live above this snapshot rather than into it. The page
     /// itself is not moving.
     pub fn begin_frame(page_moving: bool) {
-        // §9: there is no host to snapshot on a video-plane frame — what is behind these panels is
+        // §9: there is no host to snapshot on a video-plane frame - what is behind these panels is
         // a hardware plane GL cannot read back, so a capture is a photograph of the punch-through
         // hole. The player path already did not call this (`app/run.rs`'s player branch says so);
         // this is the same rule stated where it can be BROKEN rather than where it happens to be
@@ -981,13 +981,13 @@ pub mod host {
         if tv_gfx::gfx::video_plane_refuses("popover::host::begin_frame") {
             return;
         }
-        // This frame's page verdict — the scoped one app.rs threads in (Home, the Library, Search,
+        // This frame's page verdict - the scoped one app.rs threads in (Home, the Library, Search,
         // the press dip) OR'd with the unscoped one (Detail updates outside `scoped_motion` and
-        // reports through `idle::page_moving`) — is the host cache's business and nothing else's;
+        // reports through `idle::page_moving`) - is the host cache's business and nothing else's;
         // `moving` below is where it is taken. It used to be PUBLISHED here as well, for
         // `gfx::page_wash_dither` to read, until 2026-09-19 proved a page-wide verdict is the wrong
         // question for a wash: the wash's own dissolve is in it. (That function is gone too: every
-        // wash dithers on every frame now — `gfx::draw_ambient`.)
+        // wash dithers on every frame now - `gfx::draw_ambient`.)
         // Taken every drawn frame, holder or not, so the count never carries over into the first
         // frame of the next panel to open.
         let page_dirty = tv_machine::idle::take_page_damage();
@@ -1016,7 +1016,7 @@ pub mod host {
         /// damage.** A spinner on the host reports through `idle::invalidate` from its own `draw`
         /// to keep itself animating; on a frame the page is drawn for real (the refresh frame,
         /// with the freeze off) that report would otherwise count as page damage and buy another
-        /// refresh, and the next, for as long as the spinner is on screen — the account menu over
+        /// refresh, and the next, for as long as the spinner is on screen - the account menu over
         /// a Home still waiting on a hub re-rendered Home on every frame (26 fps, 2026-09-04). The
         /// picture the spinner reported from IS the snapshot being taken, so the snapshot pauses
         /// it, which is what the freeze has always done to a decoration nobody can reach.
@@ -1064,7 +1064,7 @@ pub mod host {
     impl Drop for PagePass {
         /// **A `Drop` guard and not straight-line code**, for `gfx::DirectPass`'s reason: `home_draw`
         /// opens with `ui::guard`, which CATCHES a panic and returns normally. A page that panicked
-        /// with the freeze armed would otherwise leave every later frame refusing every quad — a
+        /// with the freeze armed would otherwise leave every later frame refusing every quad - a
         /// frozen picture with no crash, no log line and no way back.
         fn drop(&mut self) {
             tv_gfx::gfx::set_page_frozen(self.was_frozen);
@@ -1079,16 +1079,16 @@ pub mod host {
         }
     }
 
-    /// Everything drawn while this guard is alive is LIVE over the frozen host — one line at the
+    /// Everything drawn while this guard is alive is LIVE over the frozen host - one line at the
     /// top of every popover's `draw` and `draw_scrim`, held for the body.
     ///
     /// **Constructing it is also what defines the snapshot.** On the first one of a frame in which
     /// a capture is owed, it takes that capture before lifting anything, and that instant is exactly
-    /// "the host page is complete and no popover has put a pixel on the framebuffer yet" — so what
+    /// "the host page is complete and no popover has put a pixel on the framebuffer yet" - so what
     /// lands in the texture is the undimmed page and nothing else. The scrim the guard's owner is
     /// about to draw, and the [`Opener`](super::Opener) lift that rides with it, therefore stay LIVE
     /// above the quad on every later frame. They must: the scrim ramps with the appear spring, and a
-    /// lift baked into the snapshot would be dimmed by the live scrim drawn over it — which is the
+    /// lift baked into the snapshot would be dimmed by the live scrim drawn over it - which is the
     /// very bug the lift exists to fix.
     ///
     /// A guard rather than a `FnOnce` for two reasons: a panel's draw body is a hundred lines with
@@ -1123,7 +1123,7 @@ pub mod host {
         }
         if matches!(held(), Held::Ground(_)) {
             // STAGE TWO: the scrim, the lifted opener and the panel's own ground are all in this
-            // one quad. Stay FROZEN through them — `Popover::panel` lifts for the foreground.
+            // one quad. Stay FROZEN through them - `Popover::panel` lifts for the foreground.
             if !GROUND_DRAWN.swap(true, Relaxed) {
                 draw_held();
             }
@@ -1145,15 +1145,15 @@ pub mod host {
         }
     }
 
-    /// **The popover's own GROUND is now on the framebuffer** — called by `Popover::panel`, the one
+    /// **The popover's own GROUND is now on the framebuffer** - called by `Popover::panel`, the one
     /// line a `Popover` draws between its ground and its foreground.
     ///
     /// Two jobs, exactly one of which runs:
     ///
     /// - serving the ground stage, the freeze is still armed (the scrim and the ground it covered
-    ///   drew nothing) — LIFT it, because everything after this point is the popover's live
+    ///   drew nothing) - LIFT it, because everything after this point is the popover's live
     ///   foreground;
-    /// - not serving it yet, and this popover has SETTLED — take the ground snapshot. The
+    /// - not serving it yet, and this popover has SETTLED - take the ground snapshot. The
     ///   framebuffer at this instant is exactly page + scrim + lifted opener + this ground, which
     ///   is the composite every later frame can be served from.
     ///
@@ -1271,7 +1271,7 @@ mod tests {
     /// true would never let the ground be captured, and would redraw its scrim and frost forever.
     #[test]
     fn appear_settled_is_false_on_open_and_true_once_the_spring_arrives() {
-        // `open`/`close` touch the shared `OPEN_COUNT` static — the same reason the round-trip
+        // `open`/`close` touch the shared `OPEN_COUNT` static - the same reason the round-trip
         // test below takes this lock, and for the same reason this one must not skip it: two
         // popovers opening at once on different threads would otherwise race that counter.
         let _g = tv_base::testlock::serial();
@@ -1289,8 +1289,8 @@ mod tests {
     }
 
     /// **The exit is the entry played backwards, and it is drawn.** `dismiss` ends the panel's
-    /// OPEN state on the press frame — keys return to the page; a caching panel's host stays frozen
-    /// through the fade, see the test two below — but the panel stays
+    /// OPEN state on the press frame - keys return to the page; a caching panel's host stays frozen
+    /// through the fade, see the test two below - but the panel stays
     /// VISIBLE while the appear spring runs back to 0, reporting every frame of it as its own
     /// damage so the present gate keeps presenting. `close` stays the instant hide. Settings' exit
     /// was the report (2026-09-02); every popover took the mechanism.
@@ -1331,7 +1331,7 @@ mod tests {
         assert!(!pop.visible() && !any_open());
     }
 
-    /// **The host-cache registry, through the four sequences that leak it** — the same round trip
+    /// **The host-cache registry, through the four sequences that leak it** - the same round trip
     /// [`any_open`]'s counter is pinned through, and for a worse failure: an over-count leaves the
     /// page frozen after every popover has closed, i.e. a screen that stops repainting and answers
     /// no keys visibly, with nothing in any log.
@@ -1369,14 +1369,14 @@ mod tests {
     /// transition is unguarded: a re-open (the same chip pressed twice), a redundant close (an arm
     /// that closes whatever might be up), two panels overlapping, and the return to rest.
     ///
-    /// A leak in either direction is silent and lasts the session — over-count freezes the glass
-    /// tab bar's backdrop on a stale picture, under-count spends a blur chain a frame — so the
+    /// A leak in either direction is silent and lasts the session - over-count freezes the glass
+    /// tab bar's backdrop on a stale picture, under-count spends a blur chain a frame - so the
     /// property worth pinning is the whole round trip, not a single call.
     #[test]
     fn the_open_count_survives_re_opens_redundant_closes_and_overlap() {
         let _g = tv_base::testlock::serial();
         // Whatever the process arrived with (a static, and other tests may have moved it), the
-        // assertions below are all RELATIVE to it — the invariant is the round trip, not zero.
+        // assertions below are all RELATIVE to it - the invariant is the round trip, not zero.
         let base = OPEN_COUNT.load(Relaxed);
         let count = || OPEN_COUNT.load(Relaxed) - base;
 
@@ -1412,7 +1412,7 @@ mod tests {
     /// **A dismissed CACHED panel keeps its page frozen for the length of its fade and lets go when
     /// the fade lands; `close` lets go at once; neither path can leak the count.** The fade is drawn
     /// over a page that has not changed, so releasing on the press frame put every frame of it on
-    /// the live path — the laggy dismissal every cached panel had.
+    /// the live path - the laggy dismissal every cached panel had.
     #[test]
     fn a_cached_popover_holds_its_frozen_host_through_the_fade_and_releases_at_the_end() {
         let _g = tv_base::testlock::serial();
@@ -1437,7 +1437,7 @@ mod tests {
         }
         assert_eq!(users(), 0, "the fade landed: the page is live again");
 
-        // a re-open DURING its own fade must not count twice — settle first, because a dismiss
+        // a re-open DURING its own fade must not count twice - settle first, because a dismiss
         // straight after an open has a zero-length fade (the spring is still at 0)
         let settle = |pop: &mut Popover| {
             for _ in 0..240 {
@@ -1457,7 +1457,7 @@ mod tests {
             (1, 0),
             "re-opened mid-fade: still one user, and no longer a fading one"
         );
-        // …and the instant hide releases at once, from the open state and from mid-fade
+        // ...and the instant hide releases at once, from the open state and from mid-fade
         pop.close();
         assert_eq!((users(), closing()), (0, 0));
         pop.open();
@@ -1494,7 +1494,7 @@ mod tests {
     }
 
     /// [`host_refresh`]'s truth table: page DAMAGE redraws the host in either state; page MOTION
-    /// only once every holder is fading (under an open panel it is decoration, meant to pause —
+    /// only once every holder is fading (under an open panel it is decoration, meant to pause -
     /// read as a reason it cost the account menu 26 fps). The panel's own motion and damage never
     /// reach it: `idle::page_damage_is_what_no_popover_claimed` grades that attribution.
     #[test]
@@ -1513,8 +1513,8 @@ mod tests {
     // (`a_self_gated_popover_is_not_route_gated_on_update` stood here. Reported off a television
     // on 2026-09-03 as "popover menus do not hide and may stack up": `Popover::dismiss` ends the
     // OPEN state on the press frame and `Popover::update` is the only place `closing` is ever
-    // cleared, so a panel drawn on `visible()` but UPDATED behind `matches!(route, …)` never
-    // finished its fade once the dismissal flipped the route back to its host — it stayed visible
+    // cleared, so a panel drawn on `visible()` but UPDATED behind `matches!(route, ...)` never
+    // finished its fade once the dismissal flipped the route back to its host - it stayed visible
     // at full opacity for the rest of the session and every later panel piled on top of it. The
     // test read `app/run.rs` and refused any `ui::<m>::update(` whose preceding guard named a
     // route.
@@ -1523,7 +1523,7 @@ mod tests {
     // frame loop rather than the property weakening: 5b took `settings`, `legal` and `consent`,
     // phase 10's item 2 took `account_menu` and item 3 took `item_menu`, the last of them. There
     // is no `ui::<m>::update(` call in `app/run.rs` for the scan to find, and its own doc said
-    // what to do about that — "do not restore the retired names: with the legacy modules gone
+    // what to do about that - "do not restore the retired names: with the legacy modules gone
     // there is nothing behind them, and the scan would fail forever."
     //
     // The DEFECT cannot be spelled in the container world at all, which is why nothing replaces

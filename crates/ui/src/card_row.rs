@@ -1,4 +1,4 @@
-//! `CardRow` — the shared animated poster-shelf component.
+//! `CardRow` - the shared animated poster-shelf component.
 //!
 //! The spring-and-tile primitive under [`cards::Shelf`](crate::cards::Shelf), `pub(crate)` L0: a
 //! focus-scale [`Spring`] per cell and a horizontal scroll spring, with the tile rendering (poster,
@@ -34,13 +34,13 @@ pub struct RowStyle {
     /// Circular tiles (cast headshots, who's-watching avatars) vs rounded-rect posters. A circle is
     /// just a tile drawn at `radius = width/2`; the shared springs/scroll/ring are identical.
     pub circular: bool,
-    /// **How much of the panel's RIGHT edge is spoken for by something that is not this row** —
-    /// zero everywhere but the Library grid, whose A–Z rail stands in that band.
+    /// **How much of the panel's RIGHT edge is spoken for by something that is not this row** -
+    /// zero everywhere but the Library grid, whose A - Z rail stands in that band.
     ///
     /// It exists because a focused tile's label is deliberately WIDER than its tile
     /// ([`under_budget`] reserves two tiles and two gaps so a long title has somewhere to go) and
     /// was clamped against the PANEL. On every screen but one those two edges are the same line, so
-    /// the shared rule quietly assumed it — and on the Library the last column's caption ran
+    /// the shared rule quietly assumed it - and on the Library the last column's caption ran
     /// straight through the rail's letters and out to the panel edge. Photographed on the
     /// television 2026-09-05.
     ///
@@ -56,7 +56,7 @@ impl RowStyle {
         (n as f32 * (self.w + self.gap) - self.gap - viewport).max(0.0)
     }
 
-    /// This style with `r` px of the panel's right edge reserved — see [`RowStyle::right_reserve`].
+    /// This style with `r` px of the panel's right edge reserved - see [`RowStyle::right_reserve`].
     /// A `const fn` so a screen can name the result once, beside the constant it derives it from,
     /// rather than rebuilding it per frame.
     pub const fn with_right_reserve(self, r: f32) -> RowStyle {
@@ -81,8 +81,8 @@ impl RowStyle {
         circular: false,
         right_reserve: 0.0,
     };
-    /// **A shelf of EPISODES: landscape stills.** Same motion as HOME — the spring magnification,
-    /// the scroll, the glow ring and the heading lift are all one vocabulary — and a different
+    /// **A shelf of EPISODES: landscape stills.** Same motion as HOME - the spring magnification,
+    /// the scroll, the glow ring and the heading lift are all one vocabulary - and a different
     /// aspect, because an episode is not a poster.
     ///
     /// 420x236 is the detail page's own episode strip (`ui::detail`'s `EP_W`/`EP_H`), taken rather
@@ -91,7 +91,7 @@ impl RowStyle {
     /// for the same reason.
     ///
     /// The pop is HOME's 1.09 rather than a landscape-specific number: `slot - w * focus_scale` is
-    /// 448 - 457.8, which is NEGATIVE — a popped still overlaps its neighbour's slot by ~10px, and
+    /// 448 - 457.8, which is NEGATIVE - a popped still overlaps its neighbour's slot by ~10px, and
     /// that is correct here and not a bug. A card row draws the focused tile LAST, so it magnifies
     /// OVER its neighbours; the headroom rule quoted on `CAST` is a CIRCLE's rule, where the tile
     /// is drawn in place and an overlap would read as two objects colliding.
@@ -110,10 +110,10 @@ impl RowStyle {
     /// Detail "Cast & Crew": circular headshots, the tight strip ring. Same motion as HOME (spring
     /// magnification + scroll), so cast animates like the poster shelves.
     ///
-    /// **1.13, not the original 1.06** — reported as too weak to read as a focus change at all
+    /// **1.13, not the original 1.06** - reported as too weak to read as a focus change at all
     /// (owner punch list). At `w`/`gap` = 190/40 (slot 230) a popped circle's diameter is
     /// `190 × 1.13` = 214.7px, still 15.3px short of the neighbouring slot's centre-to-centre pitch
-    /// with air on both sides — raise this further only after re-checking that headroom (`slot −
+    /// with air on both sides - raise this further only after re-checking that headroom (`slot −
     /// w × focus_scale` must stay positive). `detail::cast_label` derives its focused-label drop
     /// from this same field, so the two can never drift apart.
     pub const CAST: RowStyle = RowStyle {
@@ -148,7 +148,7 @@ impl RowStyle {
         circular: true,
         right_reserve: 0.0,
     };
-    /// ring focus scalar denominator — `(s-1)/ring_denom` maps scale∈[1, focus_scale] to [0, 1].
+    /// ring focus scalar denominator - `(s-1)/ring_denom` maps scale∈[1, focus_scale] to [0, 1].
     #[inline]
     fn ring_denom(&self) -> f32 {
         self.focus_scale - 1.0
@@ -170,16 +170,16 @@ impl RowStyle {
 #[derive(Clone, Copy)]
 pub struct CardRow {
     scale: [Spring; MAX_ROW_ITEMS],
-    /// The ONE spring every cell PAST the array shares — see [`CardRow::scale`]. A cast row is
+    /// The ONE spring every cell PAST the array shares - see [`CardRow::scale`]. A cast row is
     /// routinely 60 names long, so "the tiles past the 24th simply don't animate" is not a corner
     /// case; it is most of the Cast & Crew shelf, and the crew now lives at its far end.
     overflow: Spring,
     /// Which cell holds focus (`-1` none), so an overflow cell can claim `overflow` while its
-    /// neighbours — which read the same spring — stay at rest.
+    /// neighbours - which read the same spring - stay at rest.
     focus: i32,
     scroll_x: Spring,
     lift: Spring,
-    /// 0 collapsed / 1 expanded — how much of the focused label block this shelf is currently
+    /// 0 collapsed / 1 expanded - how much of the focused label block this shelf is currently
     /// reserving. See [`label_band`]; the screens turn it into a row pitch.
     band: Spring,
     pub base_y: f32,
@@ -243,13 +243,13 @@ impl CardRow {
         self.band.jump(0.0);
         true
     }
-    /// Step every cell's scale spring (all `MAX_ROW_ITEMS` every call — invariant #10; Home skips the
+    /// Step every cell's scale spring (all `MAX_ROW_ITEMS` every call - invariant #10; Home skips the
     /// call for a row at [`at_exact_rest`](Self::at_exact_rest), a fixed point of this method) toward
     /// `focus_scale` for the focused cell else 1.0; then, ONLY when this row is focused, glide the
     /// scroll spring *minimally*: scroll just far enough that the focused cell (plus one gap of
-    /// breathing room) sits fully inside the viewport, and not at all when it already does — no
+    /// breathing room) sits fully inside the viewport, and not at all when it already does - no
     /// slot pinning, so entering a row never shuffles tiles that were already visible.
-    /// `focused == None` freezes the scroll (a non-focused row holds its position — exactly the
+    /// `focused == None` freezes the scroll (a non-focused row holds its position - exactly the
     /// home shelf's behavior).
     pub fn update(&mut self, n: usize, focused: Option<usize>, sty: &RowStyle, dt: f32) {
         self.focus = focused.map(|f| f as i32).unwrap_or(-1);
@@ -332,7 +332,7 @@ impl CardRow {
     pub(crate) fn shift_scroll(&mut self, dx: f32) {
         self.scroll_x.pos += dx;
     }
-    /// **How far the row still has to scroll for `focused` to be where it will rest** — live
+    /// **How far the row still has to scroll for `focused` to be where it will rest** - live
     /// scroll minus [`scroll_into_view`]'s target, so a tile's settled screen x is its live x plus
     /// this. `0` once the glide has landed, and `0` for a focus that needs no scroll at all.
     /// Derived from the spring and the focus, never stored, so it is not part of the row's
@@ -344,18 +344,18 @@ impl CardRow {
         }
         self.scroll_x.pos - self.scroll_target(focused, n, sty)
     }
-    /// The scroll offset [`scroll_into_view`] wants for `focused` — what `update` steers the
+    /// The scroll offset [`scroll_into_view`] wants for `focused` - what `update` steers the
     /// spring to and `settle_lag` measures the live offset against.
     fn scroll_target(&self, focused: usize, n: usize, sty: &RowStyle) -> f32 {
         let vw = SCR_W - 2.0 * sty.margin_x;
         scroll_into_view(self.scroll_x.pos, focused, n, sty.w, sty.gap, vw)
     }
     /// Cell `i`'s live focus-pop scale. Cells inside the spring array own a spring each; every cell
-    /// PAST it shares `overflow`, and only the focused one reads it — otherwise the whole tail of a
+    /// PAST it shares `overflow`, and only the focused one reads it - otherwise the whole tail of a
     /// long row would pop together. The cost of sharing is that stepping between two overflow cells
     /// swaps the pop instantly instead of crossfading; the alternative (this used to clamp the index,
     /// so an overflow cell read cell 23's spring) was a focused tile with NO pop, NO lifted shadow
-    /// and NO ring — the entire focus treatment is derived from this number.
+    /// and NO ring - the entire focus treatment is derived from this number.
     #[inline]
     pub fn scale(&self, i: usize) -> f32 {
         if i < MAX_ROW_ITEMS {
@@ -397,7 +397,7 @@ impl CardRow {
     pub fn focus(&self) -> i32 {
         self.focus
     }
-    /// How far this row's heading must rise, live — see [`heading_clearance`] for the rule and
+    /// How far this row's heading must rise, live - see [`heading_clearance`] for the rule and
     /// [`CardRow::update`] for the spring that holds it there.
     #[inline]
     pub fn lift(&self) -> f32 {
@@ -410,12 +410,12 @@ impl CardRow {
     pub fn band_expand(&self) -> f32 {
         self.band.pos
     }
-    /// The band this shelf is reserving right now — [`under_band`] of [`CardRow::band_expand`].
+    /// The band this shelf is reserving right now - [`under_band`] of [`CardRow::band_expand`].
     #[inline]
     pub fn under_band(&self) -> f32 {
         under_band(self.band.pos)
     }
-    /// How much of the focused label block this shelf may show right now — [`band_reveal`] of
+    /// How much of the focused label block this shelf may show right now - [`band_reveal`] of
     /// [`CardRow::band_expand`]. Chain it onto the `TileLabel` with [`TileLabel::revealed`].
     #[inline]
     pub fn band_reveal(&self) -> f32 {
@@ -423,20 +423,20 @@ impl CardRow {
     }
 }
 
-/// **The tile in a row whose drawn centre is nearest a screen x** — the shared rule for VERTICAL
+/// **The tile in a row whose drawn centre is nearest a screen x** - the shared rule for VERTICAL
 /// focus movement between two rows that scroll independently.
 ///
 /// Directional navigation follows where the user SEES a tile, not where it lives in the row's
 /// array. Two shelves hold different horizontal scrolls, so carrying the index across
 /// (`dst = src`) lands focus on a tile that can be most of a screen away from the one that was
-/// focused — and the destination row then scrolls hard to reveal it, which reads as the page
+/// focused - and the destination row then scrolls hard to reveal it, which reads as the page
 /// lurching sideways for no reason the user can see. Pressing DOWN with a tile at the right of the
 /// screen should land on the tile that is also at the right of the screen.
 ///
 /// `x` is the SOURCE tile's centre ([`tile_centre_x`]); the four row parameters are the
 /// DESTINATION's. Rounding to nearest is what makes UP↔DOWN↔UP spatially stable: both rows sit on
 /// a uniform lattice, so the return trip rounds by the same fraction the outward trip did and lands
-/// back where it started — unless the clamp moved it, which is the one case where the destination
+/// back where it started - unless the clamp moved it, which is the one case where the destination
 /// genuinely has no tile under the cursor.
 ///
 /// It is also what keeps the destination row STILL: [`scroll_into_view`] scrolls only for a tile
@@ -463,7 +463,7 @@ pub fn column_near_x(
     let (dlo, dhi) = (t - lo, lo + 1.0 - t);
     // **`from` is the tie-break, and it is what makes the round trip stable.** Two rows offset by
     // exactly half a tile put the cursor equidistant between two destination tiles, and ANY rule
-    // that decides a tie by direction alone — round half up, half down, half to even — ratchets:
+    // that decides a tie by direction alone - round half up, half down, half to even - ratchets:
     // going out picks the right-hand tile, coming back picks the right-hand tile again, and
     // bouncing UP/DOWN walks focus along the row one tile per press while the user presses nothing
     // horizontal. Measured by `bouncing_between_two_rows_is_stable`, which failed
@@ -496,7 +496,7 @@ pub fn tile_centre_x(i: usize, origin: f32, adv: f32, w: f32, scroll: f32) -> f3
     origin + i as f32 * adv - scroll + w * 0.5
 }
 
-/// The SETTLED rect of tile `i` — the one formula `cards::Shelf` draws by and `ui::geom::Shelf::place`
+/// The SETTLED rect of tile `i` - the one formula `cards::Shelf` draws by and `ui::geom::Shelf::place`
 /// answers with (spec §7.1: draw calls place). The focus pop is applied on top by the caller
 /// (`Rect::scaled` by the cell's spring), never here.
 #[inline]
@@ -504,7 +504,7 @@ pub fn tile_rect(i: usize, origin: f32, pitch: f32, scroll: f32, row_y: f32, siz
     Rect::new(origin + i as f32 * pitch - scroll, row_y, size.0, size.1)
 }
 
-/// THE clamp-into-view core every scroller shares — uniform slots ([`scroll_into_view`]),
+/// THE clamp-into-view core every scroller shares - uniform slots ([`scroll_into_view`]),
 /// variable-width season tabs, and the home grid's vertical spring: the nearest scroll in
 /// `[0, max]` at which the target band is fully revealed. `lo`/`hi` are the scrolls where the
 /// item's trailing/leading edge (plus breathing room) just fits; `cur` already inside ⇒ returned
@@ -514,8 +514,8 @@ pub fn reveal(cur: f32, lo: f32, hi: f32, max: f32) -> f32 {
 }
 
 /// The minimal scroll-into-view rule for uniform-slot strips (home shelves, detail
-/// Related/Cast/episodes, the profiles roster): scroll only when the focused item — padded by one
-/// `gap` of breathing room (which also covers the focus pop) — would clip the viewport `vw`,
+/// Related/Cast/episodes, the profiles roster): scroll only when the focused item - padded by one
+/// `gap` of breathing room (which also covers the focus pop) - would clip the viewport `vw`,
 /// clamped to the content range so short rows never over-scroll. (Season tabs and the vertical
 /// grid have non-uniform geometry and feed their own edges straight into [`reveal`].)
 pub fn scroll_into_view(cur: f32, fc: usize, n: usize, w: f32, gap: f32, vw: f32) -> f32 {
@@ -526,13 +526,13 @@ pub fn scroll_into_view(cur: f32, fc: usize, n: usize, w: f32, gap: f32, vw: f32
     reveal(cur, lo, hi, max_sx)
 }
 
-/// **The FULL height a `sty` heading ever rises by** — half the focus pop's growth, which is what a
+/// **The FULL height a `sty` heading ever rises by** - half the focus pop's growth, which is what a
 /// tile magnified about its own centre lifts its top edge by.
 ///
 /// [`heading_clearance`] is this number tapered by a proximity ramp, so it is the CEILING of that
 /// function and never a value it merely happens to reach. It is named and public because a screen
 /// has to RESERVE room for it: the home grid's vertical reveal bounds the scroll so a raised
-/// heading cannot SETTLE inside the shared top band (`crate::screens::home`'s `row_reveal_band` — a
+/// heading cannot SETTLE inside the shared top band (`crate::screens::home`'s `row_reveal_band` - a
 /// row travelling to that destination still crosses the band, under chrome drawn after it, exactly
 /// as its cards do), and it can only do that arithmetic if the lift is a fact it can ask for rather
 /// than one that lives inside a draw. Written out by hand at the call site it would be the same three terms in two
@@ -543,17 +543,17 @@ pub fn heading_lift_max(sty: &RowStyle) -> f32 {
     sty.h * (sty.focus_scale - 1.0) * 0.5
 }
 
-/// How far a row's heading must rise to stay clear of the focused tile — the ONE rule home hub
+/// How far a row's heading must rise to stay clear of the focused tile - the ONE rule home hub
 /// titles and the detail strip headings ("Related", "Cast & Crew") share. A popped tile's focus
 /// glow spills past its top edge and washes over the heading above it, but only while that tile is
 /// near the row's left edge (under the heading), so this is the FULL pop height tapered by a
-/// proximity ramp. The first TWO slots need the whole clearance — a heading plus the glow's spill
+/// proximity ramp. The first TWO slots need the whole clearance - a heading plus the glow's spill
 /// reaches past slot 1, and a partial lift there let the glow climb into the title's descender
 /// line; the ramp tapers from slot 2 out.
 ///
 /// It is a **destination, not a readout**: the height comes from the style's `focus_scale`, never
 /// from a live scale spring. Multiplying by the pop's current magnitude tied the heading to the
-/// magnification, so it rode every selection change down and back up — and worse, the frame focus
+/// magnification, so it rode every selection change down and back up - and worse, the frame focus
 /// moved the incoming cell's spring was still at rest, so the heading dropped its whole lift in
 /// one frame and sprang back. [`CardRow`] holds the result on its own spring, so the heading
 /// simply STAYS up for as long as something is under it and settles once when nothing is.
@@ -575,25 +575,25 @@ pub fn heading_clearance(focused: Option<usize>, sty: &RowStyle, scroll: f32) ->
 pub const HEADING_SOURCE_PAD: f32 = theme::space::XS;
 
 
-/// The shelf heading, flowed left→right from the heading origin: the hub's title, and — only when
-/// the row came from ANOTHER server — a quiet `· handle` naming that source ("Recently Added in
+/// The shelf heading, flowed left→right from the heading origin: the hub's title, and - only when
+/// the row came from ANOTHER server - a quiet `· handle` naming that source ("Recently Added in
 /// Film Club · friend").
 ///
 /// **With an empty source the annotation is ABSENT, not empty**: no gap, no dot, no second run, no
 /// draw call. That is the design's "with one source, none of this is drawn" implemented as absence
-/// rather than as a branch that draws nothing visible — so the ANNOTATION costs a single-server
+/// rather than as a branch that draws nothing visible - so the ANNOTATION costs a single-server
 /// library nothing at all, in geometry, in draw calls and in ink.
 ///
 /// The heading is NOT unchanged overall, and the difference is deliberate: its ink moved from
 /// `TEXT_PRIMARY` (`#f7fafc`) to `TEXT_HEADING` (`#ebf0f7`) in the same pass. Every shelf heading on
 /// Home is ~4% darker as a result, today, with no source string anywhere. That is a harmonization,
-/// not a side effect — `TEXT_HEADING` is the shared section-heading ink that `detail.rs` and
+/// not a side effect - `TEXT_HEADING` is the shared section-heading ink that `detail.rs` and
 /// `person.rs` already use, and Home was the one screen still inking its headings as body text.
 ///
 /// Two runs and not one string because they are two SIZES, two weights and three inks, and
 /// `Painter::text` can express exactly one of each per call (`theme::TEXT_SEPARATOR`'s doc: a dot
 /// baked into a joined string is one run at one colour by construction). They are BASELINE-aligned
-/// via `text::baseline_y` — a `BODY` run top-aligned against a `HEADLINE` one reads as a
+/// via `text::baseline_y` - a `BODY` run top-aligned against a `HEADLINE` one reads as a
 /// superscript.
 ///
 /// `run(text, dx, sz, bold, ink) -> advance` is the seam: the draw passes a closure that paints and
@@ -601,7 +601,7 @@ pub const HEADING_SOURCE_PAD: f32 = theme::space::XS;
 /// graded one are therefore ONE expression, not `dotted_run`/`dotted_run_w`'s two that have to be
 /// kept agreeing. Returns the total advance.
 ///
-/// The flow is PURE — it takes no font metric, which is also why the host suite can drive it: the
+/// The flow is PURE - it takes no font metric, which is also why the host suite can drive it: the
 /// per-run baseline drop is resolved in [`draw_heading`], from the very `sz`/`bold` handed out here.
 ///
 /// Not `ui::fit::two_runs`: the runs are a sequential server-text flow, each placed after the last,
@@ -623,13 +623,13 @@ pub fn heading_flow(
 }
 
 /// Draw [`heading_flow`] with its title's cap top at `(x, y)`. Every run rides the painter handed
-/// in, so the snap fade and the row's heading `lift` move the whole heading together — an
+/// in, so the snap fade and the row's heading `lift` move the whole heading together - an
 /// annotation that detached from its title mid-scroll would read as two objects.
 ///
 /// Each run drops onto the TITLE's baseline (`text::baseline_y`, a no-op for the title itself,
 /// which is measured against its own tokens): the annotation is a rung down, and top-aligning a
 /// `BODY` run against a `HEADLINE` one would read as a superscript. That one line is the only part
-/// of this heading the host suite cannot grade — it opens no SDL_ttf, so there are no cap bands to
+/// of this heading the host suite cannot grade - it opens no SDL_ttf, so there are no cap bands to
 /// measure (the same boundary `widgets`' anchor table works within); what the tests DO pin is the
 /// tokens it resolves from.
 pub fn draw_heading(
@@ -662,12 +662,12 @@ pub fn draw_heading(
 /// [`draw_heading`]'s and `ui::linked_heading`'s. `run` receives each run already elided and
 /// returns its advance, so the measured and the drawn flow stay one expression.
 ///
-/// **`max_w` is a RIGHT BOUNDARY, and a run that would cross it is elided rather than clipped** —
+/// **`max_w` is a RIGHT BOUNDARY, and a run that would cross it is elided rather than clipped** -
 /// through `text::elide`, the single truncation impl in the app, so a bounded heading reads like
-/// every other bounded string here. It exists because the Library's A–Z rail occupies the right
+/// every other bounded string here. It exists because the Library's A - Z rail occupies the right
 /// of the content region: a heading drawn to the panel edge runs UNDER the letters, which looks
 /// broken and is not something the rail can fix from its own side. Every other caller passes
-/// `INFINITY` and pays nothing — the elide is skipped outright, so the memoised binary search is
+/// `INFINITY` and pays nothing - the elide is skipped outright, so the memoised binary search is
 /// never entered for a heading nobody bounded.
 pub fn bounded_heading_flow(
     title: &str,
@@ -679,7 +679,7 @@ pub fn bounded_heading_flow(
     heading_flow(title, source, |s, dx, sz, bold, ink| {
         let room = max_w - dx;
         if max_w.is_finite() && room < MIN_HEADING_RUN {
-            return 0.0; // no room left for this run at all — drop it rather than draw a stub
+            return 0.0; // no room left for this run at all - drop it rather than draw a stub
         }
         if max_w.is_finite() {
             let owned =
@@ -692,7 +692,7 @@ pub fn bounded_heading_flow(
 }
 
 /// The narrowest run [`draw_heading`] will draw against a bound. Below it an elide has nothing left
-/// but its own ellipsis, and a heading ending in a bare `…` beside another bare `…` reads as
+/// but its own ellipsis, and a heading ending in a bare `...` beside another bare `...` reads as
 /// damage rather than as truncation.
 const MIN_HEADING_RUN: f32 = 48.0;
 
@@ -700,7 +700,7 @@ const MIN_HEADING_RUN: f32 = 48.0;
 /// Conservative paint bounds for a complete card, including its shadow and focused label.
 /// The label anchors to the unscaled bottom even during a press, just as `draw_focused` does.
 /// `pad` is inflated uniformly by both the shadow's blur AND its downward offset (rather than only
-/// the bottom edge) — the same conservative, symmetric inflation `Painter::tex_carded`'s own quad
+/// the bottom edge) - the same conservative, symmetric inflation `Painter::tex_carded`'s own quad
 /// uses, so a shared bound can stay one `inset` call.
 fn tile_paint_bounds(rect: Rect, scale: f32, labelled: bool) -> Rect {
     let pad = theme::CARD_SHADOW_BLUR + theme::CARD_SHADOW_DY + 1.0;
@@ -749,9 +749,9 @@ pub fn draw_tile(
     }
 }
 
-/// A shelf's trailing **See all** tile (`CardSource::see_all`): a card with nothing to load —
+/// A shelf's trailing **See all** tile (`CardSource::see_all`): a card with nothing to load -
 /// the absent ground, the resting-to-lifted shadow and sheen every card wears, scaled by the same
-/// pop — with *See all* centred on it in place of artwork. `rect` and `s` are [`draw_tile`]'s.
+/// pop - with *See all* centred on it in place of artwork. `rect` and `s` are [`draw_tile`]'s.
 pub fn draw_see_all(p: Painter, rect: Rect, s: f32, sty: &RowStyle, focused: bool) {
     use crate::label::{HAlign, Label, VAlign};
     let rad = sty.tile_radius(rect, s);
@@ -799,14 +799,14 @@ pub fn draw_retry_tile(p: Painter, rect: Rect, s: f32, sty: &RowStyle, focused: 
 /// It is a type rather than three parameters because the block's height is a fact the SCREEN needs:
 /// every shelf must reserve room for it in its own flow, and `reveal`/`scroll_into_view` only keep
 /// air under the block a screen *declares*. Before this, five call sites hand-authored that number
-/// from constants they could not see — [`TileLabel::height`] is the answer they were restating.
+/// from constants they could not see - [`TileLabel::height`] is the answer they were restating.
 pub struct TileLabel {
     pub title: Option<std::ffi::CString>,
     pub caption: Option<std::ffi::CString>,
     /// lead the title with the amber play triangle (Continue Watching's tile has no play disc);
-    /// set only while a press on the tile plays — see `widgets::still_line`'s `press_plays`
+    /// set only while a press on the tile plays - see `widgets::still_line`'s `press_plays`
     pub glyph: bool,
-    /// **How much of this block is on screen, 0..1** — [`band_reveal`] of the row's label band.
+    /// **How much of this block is on screen, 0..1** - [`band_reveal`] of the row's label band.
     /// 1 for every caller whose band does not animate (the Library grid, the profile picker, the
     /// detail Related shelf), which is why `Default` gives it that.
     pub reveal: f32,
@@ -846,7 +846,7 @@ impl TileLabel {
         self.settle_lag = lag;
         self
     }
-    /// Title only — the plain poster shelf.
+    /// Title only - the plain poster shelf.
     pub fn title(t: &str) -> Self {
         TileLabel {
             title: std::ffi::CString::new(t).ok(),
@@ -862,7 +862,7 @@ impl TileLabel {
             ..Self::title(t)
         }
     }
-    /// Title led by the amber play triangle — Continue Watching's focused primary line while a press there plays
+    /// Title led by the amber play triangle - Continue Watching's focused primary line while a press there plays
     /// (`DeckPress::Play`).
     pub fn played(t: &str) -> Self {
         TileLabel {
@@ -872,7 +872,7 @@ impl TileLabel {
     }
     /// THE height a screen must reserve under the poster row for this block. Derived from the same
     /// constants [`draw_focused`] lays it out with, so a screen's declared band and the block on
-    /// screen cannot drift. The title is always exactly one line now — a title too wide for its
+    /// screen cannot drift. The title is always exactly one line now - a title too wide for its
     /// budget marquees in place rather than growing the block, so this no longer varies with the
     /// row style at all.
     pub fn height(caption: bool) -> f32 {
@@ -891,14 +891,14 @@ impl TileLabel {
     }
 }
 
-/// The focused cell body — the caller draws this LAST for its z-order: the art tile, the big glow
+/// The focused cell body - the caller draws this LAST for its z-order: the art tile, the big glow
 /// ring, an optional resume bar, then its [`TileLabel`]. (The home grid's focused-last cell.)
 ///
-/// **`s` IS THE SCALE `rect` WAS BUILT FROM — pop AND press, not the pop alone.** It is not a
+/// **`s` IS THE SCALE `rect` WAS BUILT FROM - pop AND press, not the pop alone.** It is not a
 /// second, decorative knob: this function divides by it twice, and both readings are wrong the
 /// moment the two disagree. `f = (s - 1) / ring_denom` is the drop-shadow and perimeter sheen, so
 /// a press that reaches the rect but not `s` leaves the tile wearing a full focus shadow while it
-/// shrinks — the click reads as a jitter instead of the tile pressing INTO the page. And `ty`
+/// shrinks - the click reads as a jitter instead of the tile pressing INTO the page. And `ty`
 /// anchors the label block to the UNSCALED card bottom as `rect.h / s`, which is the resting
 /// height only while `s` is the whole scale, so the same mismatch slides the caption up and back
 /// on every click, against the design's "a pop/press never moves it". Every caller in the app
@@ -927,10 +927,10 @@ pub fn draw_focused(
     }
     // The label block anchors to the UNSCALED card bottom (rect is scaled about its center, so
     // base bottom = cy + (h/s)/2). In the mock the label is normal-flow BELOW the transformed
-    // poster — a pop/press never moves it; the pop eats the poster→label gap instead of shoving
+    // poster - a pop/press never moves it; the pop eats the poster→label gap instead of shoving
     // the label into the next shelf's title.
     let ty = rect.y + rect.h * 0.5 + (rect.h / s) * 0.5 + UNDER_DROP;
-    // …and the block itself rides the band's reveal. The card, its ring and its resume bar do NOT:
+    // ...and the block itself rides the band's reveal. The card, its ring and its resume bar do NOT:
     // they are the tile, which is on screen either way; this alpha is only about whether the room
     // under it has opened yet ([`CardRow::band_reveal`]).
     if label.reveal <= 0.0 {
@@ -940,14 +940,14 @@ pub fn draw_focused(
     draw_label_block(p, rect, sty, label, ty, measure);
 }
 
-/// **The one trailing FACT under a focused tile** — the caption rung, for every poster shelf in the
+/// **The one trailing FACT under a focused tile** - the caption rung, for every poster shelf in the
 /// app and for the Library grid.
 ///
 /// It was `home.rs`'s, private, in two halves (`focused_caption` and `cw_caption`), and the Library
 /// simply had neither: its shelves passed a bare title, so every focused poster there reserved a
 /// two-rung block and drew one rung into it. The owner reported that as ragged rows
 /// (2026-09-05, "some rows have only one text label without detail label"), and the fix is the one
-/// this system asks for — share the rule, not shrink the box: `ROW_PITCH` reserves
+/// this system asks for - share the rule, not shrink the box: `ROW_PITCH` reserves
 /// [`UNDER_LABEL_H`] for every shelf on both screens, so shrinking per shelf would make two rows of
 /// the same object different heights and leave the Library's grid disagreeing with the shelves
 /// above it.
@@ -956,8 +956,8 @@ pub fn draw_focused(
 /// is what you came for; everywhere else the item identifies itself.
 ///
 /// **The year is the fallback for ANY kind, which is the one behaviour change in the promotion.**
-/// Home's version restricted it to `kind == 0`, so a SHOW poster — the whole of a TV library's
-/// "Recently Added" — captioned nothing on either screen. The Library's own grid has always
+/// Home's version restricted it to `kind == 0`, so a SHOW poster - the whole of a TV library's
+/// "Recently Added" - captioned nothing on either screen. The Library's own grid has always
 /// captioned a show with its year, so this makes the two agree rather than inventing a rule: on
 /// one screen, one object, one answer.
 ///
@@ -999,12 +999,12 @@ pub fn focused_caption(m: &TileFacts<'_>, is_continue: bool) -> Option<std::ffi:
 /// "<show> · 8 min left" (episodes) or just the time-remaining (a resumed movie); a next-up episode
 /// (no resume point yet) reads "<show> · New episode". `title` above it carries the episode name.
 ///
-/// "In progress" is `PmsMovie::resume_frac` — THE resume rule, which the caller applies when it
+/// "In progress" is `PmsMovie::resume_frac` - THE resume rule, which the caller applies when it
 /// fills [`TileFacts::resume`], and the same call `Grid::draw` makes for the BAR in the pass that
 /// asks for this caption. A hand-written
 /// `resume_ms > 0 && dur_ns > 0` here dropped that rule's end-guard, so a finished item whose
 /// server never cleared `viewOffset` drew NO bar (`resume_frac`'s answer) under a caption still
-/// promising "1 min left" — `fmt::time_left` floors at a minute, so it could not even read zero.
+/// promising "1 min left" - `fmt::time_left` floors at a minute, so it could not even read zero.
 /// One item, described two ways in one draw. Whether that tile also wore the watched TICK is a
 /// separate question with a separate answer: `widgets::poster_mark` reads `PmsMovie::watched`, so
 /// a stale past-end `viewOffset` on an item the server has not marked watched drew no mark at all.
@@ -1018,7 +1018,7 @@ fn cw_caption(m: &TileFacts<'_>) -> Option<std::ffi::CString> {
             left // a resumed movie: time-remaining alone
         }
     } else if m.kind == TileKind::Episode {
-        // next-up episode: no resume point, so no bar and no time — just the "New episode" cue
+        // next-up episode: no resume point, so no bar and no time - just the "New episode" cue
         if show.is_empty() {
             tv_platform::i18n::msg::widgets_card_new_episode().to_string()
         } else {
@@ -1030,7 +1030,7 @@ fn cw_caption(m: &TileFacts<'_>) -> Option<std::ffi::CString> {
     std::ffi::CString::new(s).ok()
 }
 
-// The under-tile metadata block's four metrics — the ONLY authority on its geometry, which
+// The under-tile metadata block's four metrics - the ONLY authority on its geometry, which
 // [`TileLabel::height`] hands back to the screens that must reserve room for it.
 /// poster bottom → the title block's first line.
 const UNDER_DROP: f32 = 30.0;
@@ -1039,21 +1039,21 @@ const UNDER_LINE_H: f32 = 30.0;
 /// title block → caption (the mock's `margin-top: 4px`).
 const UNDER_LINE_GAP: f32 = 4.0;
 /// the caption's own line box. `UNDER_DROP + UNDER_LINE_H + UNDER_LINE_GAP + this` = 92, which is
-/// exactly the band `detail.rs` hand-authored for its one-line-title-plus-role cast tiles — the
+/// exactly the band `detail.rs` hand-authored for its one-line-title-plus-role cast tiles - the
 /// coincidence that confirms the decomposition.
 const UNDER_CAPTION_H: f32 = 28.0;
-/// The focused label block's total height with a caption line (item 11) — the same 92 the doc
+/// The focused label block's total height with a caption line (item 11) - the same 92 the doc
 /// comment above derives, exposed so a SCREEN's row pitch can be built from the one number that
 /// also drives [`TileLabel::height`], instead of a screen re-deriving or (worse) hand-copying it.
 /// `consts::UNDER_LABEL_AIR` is this constant's other half: the two together are what unifies
 /// Home's and Library's row spacing.
 pub const UNDER_LABEL_H: f32 = UNDER_DROP + UNDER_LINE_H + UNDER_LINE_GAP + UNDER_CAPTION_H;
 
-/// **What an UNFOCUSED shelf reserves where the focused one reserves [`UNDER_LABEL_H`]** — the
+/// **What an UNFOCUSED shelf reserves where the focused one reserves [`UNDER_LABEL_H`]** - the
 /// collapsed half of the band, and the reason it is a subtraction rather than a taste number.
 ///
 /// A shelf's label block only exists while that shelf holds focus. Reserving all 92px of it on
-/// every shelf all the time — which is what `consts::ROW_PITCH` did until 2026-09-05 — spends most
+/// every shelf all the time - which is what `consts::ROW_PITCH` did until 2026-09-05 - spends most
 /// of a 1080 panel's vertical budget on emptiness: on a three-shelf screen it is 184px of nothing,
 /// two thirds of a poster. The owner reported it as "the gap from the previous shelf feels a bit
 /// too large".
@@ -1061,14 +1061,14 @@ pub const UNDER_LABEL_H: f32 = UNDER_DROP + UNDER_LINE_H + UNDER_LINE_GAP + UNDE
 /// So the band OPENS on focus and closes again behind it ([`CardRow::under_band`]), and what stays
 /// behind is the only thing an unfocused shelf actually owes its neighbour: the air between a
 /// poster's bottom edge and the next section's heading. That distance is a REGION gap in the design
-/// system's own vocabulary — one titled block of content to the next — so it is `space::LG`, and
+/// system's own vocabulary - one titled block of content to the next - so it is `space::LG`, and
 /// this constant is whatever is left of it once `consts::UNDER_LABEL_AIR` (already inside the pitch,
 /// below the block) is taken out. Authoring the 18 directly would be a number nobody could check;
 /// authoring the rung makes the claim falsifiable, and the test beside it does.
 pub const LABEL_BAND_COLLAPSED: f32 =
     crate::theme::space::LG - crate::consts::UNDER_LABEL_AIR;
 
-/// The label band a shelf reserves at expansion `e` (0 collapsed → 1 focused) — **the ONE
+/// The label band a shelf reserves at expansion `e` (0 collapsed → 1 focused) - **the ONE
 /// expression every screen's row pitch is built from**, so Home, the Library, Search and the person
 /// page cannot collapse by three different amounts.
 ///
@@ -1079,23 +1079,23 @@ pub fn under_band(e: f32) -> f32 {
     LABEL_BAND_COLLAPSED + (UNDER_LABEL_H - LABEL_BAND_COLLAPSED) * e.clamp(0.0, 1.0)
 }
 
-/// **How much of the focused label block may be on screen at expansion `e`** — and this is solved
+/// **How much of the focused label block may be on screen at expansion `e`** - and this is solved
 /// from the collision it exists to prevent rather than picked by eye.
 ///
 /// The block is drawn at a FIXED offset under its card the instant its shelf takes focus, while the
 /// room for it opens over the band's whole travel. So for the first part of every focus move the
-/// caption sits on top of the NEXT shelf's heading — which is exactly what the first simulator pass
+/// caption sits on top of the NEXT shelf's heading - which is exactly what the first simulator pass
 /// showed, "Recently Added Movies" printed through "WeCrashed · 35 min left".
 ///
 /// The two distances, both measured down from this shelf's card bottom: the next heading's cap top
 /// is at `UNDER_LABEL_AIR + under_band(e)`, and the block's own caption ends at [`UNDER_LABEL_H`].
 /// So the room HOLDS the block from `under_band(e) >= UNDER_LABEL_H - UNDER_LABEL_AIR` onward, and
 /// the reveal is 0 until then and smoothsteps over what is left of the travel. There is therefore
-/// no expansion at which any part of the block is drawn over the heading below it — which a bare
+/// no expansion at which any part of the block is drawn over the heading below it - which a bare
 /// "fade it in" would not have given, only made fainter.
 ///
 /// The shape it produces is the reference product's own: a beat while the room opens, then the
-/// title fading up. On the way out it is the reverse and it is FAST — the block is gone inside the
+/// title fading up. On the way out it is the reverse and it is FAST - the block is gone inside the
 /// first third of the collapse, well before the shelf below arrives where it was.
 pub fn band_reveal(e: f32) -> f32 {
     let room = crate::consts::UNDER_LABEL_AIR + under_band(e);
@@ -1105,11 +1105,11 @@ pub fn band_reveal(e: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// The fixed half of a poster shelf's pitch — everything `consts::ROW_PITCH` is made of EXCEPT the
+/// The fixed half of a poster shelf's pitch - everything `consts::ROW_PITCH` is made of EXCEPT the
 /// label band. Add [`under_band`] to it.
 pub const ROW_PITCH_FIXED: f32 = crate::consts::ROW_PITCH - UNDER_LABEL_H;
 
-/// How much a shelf GROWS when it takes focus — the travel of [`under_band`], and what one focus
+/// How much a shelf GROWS when it takes focus - the travel of [`under_band`], and what one focus
 /// move costs (or reclaims) in document height.
 pub const BAND_OPEN: f32 = UNDER_LABEL_H - LABEL_BAND_COLLAPSED;
 
@@ -1120,7 +1120,7 @@ pub const BAND_OPEN: f32 = UNDER_LABEL_H - LABEL_BAND_COLLAPSED;
 /// from the live [`CardRow::under_band`], and that is the whole correctness argument of the
 /// collapsing band: the reveal target and the band are two springs travelling at one rate to two
 /// destinations. Derive the reveal target from the band's CURRENT value and the target moves every
-/// frame while the band chases it — the row arrives, then drifts. Derive it from where the band is
+/// frame while the band chases it - the row arrives, then drifts. Derive it from where the band is
 /// GOING and both springs run one fixed distance, so their difference (which is what the eye sees:
 /// the row's screen y) is itself a single critically-damped move.
 pub fn settled_top(r: usize, focus: Option<usize>, pitch_fixed: f32) -> f32 {
@@ -1136,7 +1136,7 @@ pub fn settled_top(r: usize, focus: Option<usize>, pitch_fixed: f32) -> f32 {
 //
 // Widening the budget ([`under_budget`]) is enough for most real titles; a handful still overflow
 // it ("Everything Everywhere All at Once" under a 250px card at LABEL-bold), and eliding those to
-// "Everything Ev…" is exactly the defect item 10 reports. So the single-line title falls through
+// "Everything Ev..." is exactly the defect item 10 reports. So the single-line title falls through
 // to a looping marquee whenever it still does not fit: a beat of rest so the couch can start
 // reading, a slow glide left, a gap, then the same run re-entering from the right, forever while
 // this tile holds focus.
@@ -1144,7 +1144,7 @@ pub fn settled_top(r: usize, focus: Option<usize>, pitch_fixed: f32) -> f32 {
 // The CAPTION under the title is the same story one size down (a year, a character, an episode's
 // "Show · S1 · E4", a server handle): elided it hid the part that tells two credits apart, so it
 // marquees in the same block when it still does not fit. Title and caption are ONE block with ONE
-// clock and ONE cycle ([`marquee::Marquee::glide_in`]) — they leave their rest beat together and
+// clock and ONE cycle ([`marquee::Marquee::glide_in`]) - they leave their rest beat together and
 // loop together; a line that fits stays plain and still.
 //
 // The timing (rest beat, glide, loop) is `crate::marquee`'s, shared with the menu rows; this
@@ -1166,7 +1166,7 @@ const MARQUEE_AIR: f32 = 6.0;
 /// Air between Continue-Watching's play glyph and the name that follows it.
 const PLAY_ICON_GAP: f32 = 10.0;
 
-/// The Continue-Watching glyph's pixel size at `sz` — 72% of the title's own size, rounded (Home
+/// The Continue-Watching glyph's pixel size at `sz` - 72% of the title's own size, rounded (Home
 /// Screen.dc's play-triangle proportion). Pure so both branches of [`title_marquee`] read the
 /// same number rather than each rounding it themselves.
 #[inline]
@@ -1174,7 +1174,7 @@ fn play_icon_size(sz: std::os::raw::c_int) -> f32 {
     (sz as f32 * 0.72).round()
 }
 
-/// How much of the marquee's window a glyph-led title gives up to the icon + its gap — `0.0` for a
+/// How much of the marquee's window a glyph-led title gives up to the icon + its gap - `0.0` for a
 /// plain title. Pulled out to its own pure function so a host test can pin the arithmetic
 /// [`title_marquee`]'s overflow and fitting branches both depend on,
 /// without a `Painter` to draw through.
@@ -1187,7 +1187,7 @@ fn glyph_lead(sz: std::os::raw::c_int, glyph: bool) -> f32 {
     }
 }
 
-/// How the lines of a label block sit in its window — the one alignment every line shares.
+/// How the lines of a label block sit in its window - the one alignment every line shares.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LabelAlign {
     /// Every line is centred on the card (`x + w / 2`). The only alignment: titles under cards
@@ -1195,7 +1195,7 @@ pub enum LabelAlign {
     Centre,
 }
 
-/// Where a focused tile's label block lands and how it aligns — the ONE placement every line
+/// Where a focused tile's label block lands and how it aligns - the ONE placement every line
 /// under the tile (title, Continue-Watching glyph + name, caption) is drawn through, so the lines
 /// always read as one unit: all centred on the card, all sharing its leading edge, or all sharing
 /// its trailing edge.
@@ -1224,7 +1224,7 @@ impl LabelPlace {
 /// A label belongs to its card, not to the safe area: it is never moved toward the safe frame.
 const EDGE_PAD: f32 = 16.0;
 
-/// The horizontal room a label block may use, in the painter's space — see [`anchor_label`].
+/// The horizontal room a label block may use, in the painter's space - see [`anchor_label`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LabelRoom {
     /// The panel's left edge less [`EDGE_PAD`]: a CENTRED block must sit inside `lo..hi`.
@@ -1255,7 +1255,7 @@ pub fn anchor_label(lead: f32, trail: f32, w: f32, _want: f32, room: LabelRoom) 
     LabelPlace { x: cx - half, w: half * 2.0, align: LabelAlign::Centre }
 }
 
-/// **Place a `w`-wide label block under the tile `rect`** — [`place_label_wide`] for a block with
+/// **Place a `w`-wide label block under the tile `rect`** - [`place_label_wide`] for a block with
 /// no wider wish. A block is centred on its card, starts at the card's leading edge, or (at the
 /// end of a row, where the room on the right is not enough) ends at its trailing edge; it is
 /// never shifted by some other amount toward a screen edge.
@@ -1275,10 +1275,10 @@ pub fn place_label(p: Painter, rect: Rect, sty: &RowStyle, w: f32, lag: f32) -> 
 /// alignment and the block's width are decided at the tile's SETTLED screen position, while `x`
 /// still follows the live card. A tile that glides in from the right used to cross the panel-edge
 /// threshold part-way through, so the block flipped alignment and re-sized (re-deciding which
-/// lines overflow, flipping the title into its marquee) on the way — the label visibly jumped.
+/// lines overflow, flipping the title into its marquee) on the way - the label visibly jumped.
 ///
 /// The right bound is the panel's edge less whatever the SCREEN has reserved there
-/// (`RowStyle::right_reserve` — the Library's A–Z rail); the left one the row's content margin
+/// (`RowStyle::right_reserve` - the Library's A - Z rail); the left one the row's content margin
 /// ([`RowStyle::margin_x`]). The card's edges are the UNSCALED card's, so a focus pop never moves
 /// the block or re-keys the width-keyed wrap/elide caches.
 pub fn place_label_wide(p: Painter, rect: Rect, sty: &RowStyle, w: f32, want: f32, lag: f32) -> LabelPlace {
@@ -1294,12 +1294,12 @@ pub fn place_label_wide(p: Painter, rect: Rect, sty: &RowStyle, w: f32, want: f3
 
 /// The focused tile's single-line title, drawn in the block `at`: plain whenever the run fits the
 /// block, else a looping [`crate::marquee`] glide inside it (in step with the caption's, through
-/// `block`) — see the section doc above for why. It never touches the clock when it fits: the
+/// `block`) - see the section doc above for why. It never touches the clock when it fits: the
 /// caller releases it once, when NO line of the block overflows. Reports to
 /// [`tv_machine::idle`] only on a frame the marquee is actually gliding, so a screen full of short
 /// (or resting) titles costs the present gate nothing.
 ///
-/// `glyph` leads the line with Continue-Watching's amber play triangle — the SAME clock and the
+/// `glyph` leads the line with Continue-Watching's amber play triangle - the SAME clock and the
 /// SAME budget arithmetic as the plain title, just with the icon's width plus its gap subtracted
 /// from the window before anything is measured against it, so a played title that overflows
 /// marquees exactly like any other. This is ONE implementation with a glyph parameter rather than a
@@ -1341,7 +1341,7 @@ fn title_marquee(
     let Some(block) = block else { return };
     // An overflowing run fills the whole block, so the window IS the block; the glyph, when
     // present, sits fixed at its left edge and only the text window after it scrolls. An
-    // overflowing focused title never lets the screen rest (`Marquee::report`) — which is what
+    // overflowing focused title never lets the screen rest (`Marquee::report`) - which is what
     // "marquee while focused" means, and why a fitting title must never reach this branch.
     if glyph {
         draw_glyph(at.x);
@@ -1372,16 +1372,16 @@ fn title_w(text: *const c_char, measure: &dyn tv_machine::machine::Measure) -> f
 }
 
 /// The under-tile text budget: the tile, a gap either side, PLUS half of each neighbouring tile's
-/// width (item 10) — a focused label may bleed into the gap and up to the midpoint of the next
+/// width (item 10) - a focused label may bleed into the gap and up to the midpoint of the next
 /// tile without visually colliding with it, which is what makes a real Plex title ("Wallace &
-/// Gromit: The Curse of the Were-Rabbit") legible instead of "Wallace & Gr…". Two neighbours
+/// Gromit: The Curse of the Were-Rabbit") legible instead of "Wallace & Gr...". Two neighbours
 /// contributing half their width each is one extra tile-width overall, hence `+ sty.w` once more
 /// on top of the plain tile-plus-gaps budget. [`place_label`] only ever narrows it where the panel
-/// ends — widening the budget never lets a block run off the panel, it only lets it reach further
+/// ends - widening the budget never lets a block run off the panel, it only lets it reach further
 /// into open space before [`title_marquee`] takes over for whatever still does not fit.
 ///
 /// **Unscaled is load-bearing, not tidiness.** `rect` is the focus-popped tile, so a budget taken
-/// from it sweeps ~310→332px across a pop — which re-keys `TextView`'s and `elide`'s width-keyed
+/// from it sweeps ~310→332px across a pop - which re-keys `TextView`'s and `elide`'s width-keyed
 /// caches on *every frame of the animation*, and both clear wholesale at 512 entries, so one walk
 /// of a 24-tile shelf evicts every other screen's wrapped text. It also reflowed the title's line
 /// breaks mid-pop. The block's y anchor is already unscaled two lines up, for the same reason.
@@ -1390,8 +1390,8 @@ fn under_budget(sty: &RowStyle) -> f32 {
     2.0 * sty.w + 2.0 * sty.gap
 }
 
-/// **Where a focused tile's label block actually lands on the panel** — its left edge and its
-/// width, in `p`'s own space. The WIDEST case on purpose — the block an overflowing title fills —
+/// **Where a focused tile's label block actually lands on the panel** - its left edge and its
+/// width, in `p`'s own space. The WIDEST case on purpose - the block an overflowing title fills -
 /// so a screen with a constraint on it can grade the block that is DRAWN; every line under the
 /// tile occupies a sub-rect of this.
 pub fn label_band(p: Painter, rect: Rect, sty: &RowStyle) -> (f32, f32) {
@@ -1399,8 +1399,8 @@ pub fn label_band(p: Painter, rect: Rect, sty: &RowStyle) -> (f32, f32) {
     (at.x, at.w)
 }
 
-/// The focused tile's whole label block — title (with its optional Continue-Watching glyph) and
-/// caption — placed ONCE by [`place_label_wide`] from the wider of its two runs (plus the uncapped
+/// The focused tile's whole label block - title (with its optional Continue-Watching glyph) and
+/// caption - placed ONCE by [`place_label_wide`] from the wider of its two runs (plus the uncapped
 /// `want`), so both lines share one alignment: centred together, starting together at the card's
 /// leading edge, or ending together at its trailing edge when the room to the right is too small.
 fn draw_label_block(
@@ -1420,7 +1420,7 @@ fn draw_label_block(
     let title_run = title_w_val.map_or(0.0, |w| (lead + w).min(full));
     let caption_str = label.caption.as_ref().map(|c| c.to_string_lossy());
     let caption_w = caption_str.as_ref().map_or(0.0, |s| measure.width_str(s, csz, false));
-    // …and the UNCAPPED widest run, which only a block that reaches left of its card may use
+    // ...and the UNCAPPED widest run, which only a block that reaches left of its card may use
     // ([`anchor_label`]).
     let want = title_w_val.map_or(0.0, |w| lead + w).max(caption_w);
     let at = place_label_wide(p, rect, sty, title_run.max(caption_w.min(full)), want, label.settle_lag);
@@ -1470,23 +1470,23 @@ fn draw_label_block(
 /// The line box of a credit label's role line: the caption size plus a hair of air.
 pub const CREDIT_ROLE_LEADING: f32 = theme::size::CAPTION as f32 + theme::space::XS;
 
-/// Where a credit label's role line starts below its name line's cap top — the name's cap height
+/// Where a credit label's role line starts below its name line's cap top - the name's cap height
 /// and a gap. One number for the label in every state, so the two baselines never move.
 fn credit_role_dy(measure: &dyn tv_machine::machine::Measure) -> f32 {
     measure.cap_h(theme::size::LABEL) + theme::space::XS
 }
 
-/// **A persistent two-line label under a headshot** — the name, then the role / job, drawn for
+/// **A persistent two-line label under a headshot** - the name, then the role / job, drawn for
 /// EVERY tile of a shelf, focused or not (a poster shelf draws only the focused tile's block, see
 /// [`draw_label_block`]; a cast shelf names everyone). `at` is the label's box: its left edge and
 /// width (the text budget) and the cap top of the name line.
 ///
 /// **One shape in every state.** The name is ONE line and the role is ONE line, always, on the same
-/// two baselines — a block that wraps the role to two lines unfocused and shows one clipped, gliding
+/// two baselines - a block that wraps the role to two lines unfocused and shows one clipped, gliding
 /// line focused changes height and jumps when focus moves. What differs is only what a line that
 /// does not fit does:
-/// - unfocused: it ends in an ellipsis (`…`), still;
-/// - focused: it is never elided — it glides through its budget ([`marquee`]'s title timing, drawn
+/// - unfocused: it ends in an ellipsis (`...`), still;
+/// - focused: it is never elided - it glides through its budget ([`marquee`]'s title timing, drawn
 ///   as a run and its follower inside a clip window the budget wide), the name and the role on ONE
 ///   [`marquee::Block`] (one clock, one cycle) so they leave their rest beat and loop together,
 ///   exactly like a poster's title and caption. A focused line that fits stays centred and still.
@@ -1554,13 +1554,13 @@ pub fn draw_credit_label(
 }
 
 /// Full-bleed resume bar: the bottom band of the card itself (Continue Watching). Delegates to
-/// [`crate::widgets::progress_bar`], which is the ONE bar the whole app draws — a poster shelf and
+/// [`crate::widgets::progress_bar`], which is the ONE bar the whole app draws - a poster shelf and
 /// the detail page's episode filmstrip now make the identical call, and its doc carries the two
 /// pixel-level rules (snapped band, disjoint track/fill) that a hand-rolled copy here kept getting
 /// subtly wrong. Only the HEIGHT is local, because it is poster-relative.
 pub fn resume_bar(p: Painter, r: Rect, frac: f32, rad: f32) {
     // 5px on a resting poster (and it rides the focus pop): the band's bottom ~1.5px are the card
-    // edge's own SDF AA ramp, so a 4px band reads ~2.5px — 5px leaves the mock's ~4px of solid color.
+    // edge's own SDF AA ramp, so a 4px band reads ~2.5px - 5px leaves the mock's ~4px of solid color.
     let bh = (r.h * 5.0 / 375.0).max(4.0);
     crate::widgets::progress_bar(p, r, rad, bh, frac);
 }
@@ -1577,7 +1577,7 @@ mod tests {
         assert_eq!(moving.dip(), 0.92);
     }
 
-    /// A collection's caption is its size — "1 item", "3 items" — never a year it does not have.
+    /// A collection's caption is its size - "1 item", "3 items" - never a year it does not have.
     #[test]
     fn a_collection_caption_counts_its_items() {
         use crate::tile::{TileFacts, TileKind};
@@ -1734,7 +1734,7 @@ mod tests {
 
     /// Every placement is card-anchored: a block is centred on its card, starts at the card's own
     /// leading edge, or ends at its trailing edge, whatever the scroll, the rail reserve or the
-    /// block's width — and never runs past the panel (or the rail) on the right, nor left of the
+    /// block's width - and never runs past the panel (or the rail) on the right, nor left of the
     /// row's content margin when it reaches left.
     #[test]
     fn focused_label_blocks_are_centred_on_or_anchored_to_their_card() {
@@ -1901,7 +1901,7 @@ mod tests {
         assert_eq!(last, Verdict::Settled);
     }
 
-    /// The full clearance a HOME shelf's heading needs over a popped tile — asked of
+    /// The full clearance a HOME shelf's heading needs over a popped tile - asked of
     /// [`heading_lift_max`] rather than restating its three terms, because a screen now RESERVES
     /// this same number in its layout (the home grid's `row_reveal_band`) and a test that re-derived it
     /// would keep passing while the two drifted.
@@ -1914,7 +1914,7 @@ mod tests {
 
     /// **Vertical focus follows the SCREEN, not the array index.** Two shelves hold independent
     /// horizontal scrolls, so carrying the index across lands focus on a tile that can be most of a
-    /// screen away — and the destination row then scrolls hard to reveal it.
+    /// screen away - and the destination row then scrolls hard to reveal it.
     #[test]
     fn a_vertical_step_lands_under_the_tile_you_were_looking_at() {
         // the source row is scrolled four tiles along and focus is on its tile 6, which is
@@ -1924,7 +1924,7 @@ mod tests {
 
         // an UNSCROLLED destination row: the tile under the cursor is its tile 2, not its tile 6
         assert_eq!(column_near_x(src_x, MARGIN_X, ADV, CARD_W, 0.0, 20, 6), 2);
-        // …and a destination scrolled the SAME amount keeps the index, which is the case the old
+        // ...and a destination scrolled the SAME amount keeps the index, which is the case the old
         // index-carrying rule got right and is why it survived so long
         assert_eq!(column_near_x(src_x, MARGIN_X, ADV, CARD_W, 4.0 * ADV, 20, 6), 6);
 
@@ -1955,7 +1955,7 @@ mod tests {
         assert!(seen[1..].iter().step_by(2).all(|v| *v == seen[1]), "drifted: {seen:?}");
     }
 
-    /// A SHORTER destination row clamps to its last tile — the one case where the destination
+    /// A SHORTER destination row clamps to its last tile - the one case where the destination
     /// genuinely has nothing under the cursor and must scroll.
     #[test]
     fn a_shorter_row_clamps_to_its_last_tile() {
@@ -1998,7 +1998,7 @@ mod tests {
             full()
         );
 
-        // slot 1 is also under the heading, so nothing should move — not by a pixel, not for a frame
+        // slot 1 is also under the heading, so nothing should move - not by a pixel, not for a frame
         for f in 0..180 {
             row.update(8, Some(1), &sty, DT);
             assert!(
@@ -2009,7 +2009,7 @@ mod tests {
         }
     }
 
-    /// And when the popped tile really does leave, the heading settles back — once, smoothly, with
+    /// And when the popped tile really does leave, the heading settles back - once, smoothly, with
     /// no frame moving it more than a spring step (the defect moved ~16px in a single frame).
     #[test]
     fn the_heading_settles_back_smoothly_once_nothing_is_under_it() {
@@ -2018,7 +2018,7 @@ mod tests {
         run(&mut row, 180, Some(0), &sty);
         let mut prev = row.lift();
         for _ in 0..240 {
-            row.update(8, Some(5), &sty, DT); // far down the row — no clearance needed
+            row.update(8, Some(5), &sty, DT); // far down the row - no clearance needed
             let l = row.lift();
             assert!(
                 (l - prev).abs() < 3.0,
@@ -2033,7 +2033,7 @@ mod tests {
         );
     }
 
-    /// A row that owns no focus rests flat — including a row that just LOST focus, which used to
+    /// A row that owns no focus rests flat - including a row that just LOST focus, which used to
     /// snap its heading back the same way.
     #[test]
     fn an_unfocused_row_lifts_its_heading_by_nothing() {
@@ -2062,8 +2062,8 @@ mod tests {
         assert_eq!(heading_clearance(None, &sty, 0.0), 0.0);
     }
 
-    /// A row LONGER than the spring array. Every focus treatment a tile gets — the pop, the lifted
-    /// shadow, the ring — is derived from `scale(i)`, and the index used to be clamped into the
+    /// A row LONGER than the spring array. Every focus treatment a tile gets - the pop, the lifted
+    /// shadow, the ring - is derived from `scale(i)`, and the index used to be clamped into the
     /// array, so focusing tile 30 of a 60-name cast row popped nothing at all (it read cell 23's
     /// resting spring). The shared overflow spring must pop for the focused tile, and for it alone:
     /// its neighbours read the same spring.
@@ -2108,7 +2108,7 @@ mod tests {
 
     // ---- item 10: the focused title marquee -------------------------------------------------
 
-    /// A run that already fits the budget never moves and never reports — the case that must cost
+    /// A run that already fits the budget never moves and never reports - the case that must cost
     /// the idle present gate nothing.
     #[test]
     fn a_title_that_fits_the_budget_never_moves() {
@@ -2130,7 +2130,7 @@ mod tests {
         assert!(!MARQUEE.moving(MARQUEE.hold_ms - 1.0, w, budget));
     }
 
-    /// Past the hold beat it glides at the documented speed and reports motion — and the offset is
+    /// Past the hold beat it glides at the documented speed and reports motion - and the offset is
     /// monotone through the glide (no snap-back mid-cycle).
     #[test]
     fn an_overflowing_title_glides_at_the_documented_speed_and_reports_motion() {
@@ -2144,7 +2144,7 @@ mod tests {
     }
 
     /// The cycle LOOPS: a full period (hold + the whole glide) must land back at the rest offset,
-    /// exactly like the first cycle did — a marquee that drifted cycle to cycle would slowly
+    /// exactly like the first cycle did - a marquee that drifted cycle to cycle would slowly
     /// desync its two drawn copies from the clip window.
     #[test]
     fn the_marquee_loops_cleanly() {
@@ -2168,7 +2168,7 @@ mod tests {
     /// The title's [`marquee::Clock`] restarts at zero the instant the focused text changes, and keeps
     /// advancing by real elapsed time (read off [`tv_machine::idle::now_ms`]) while it stays the
     /// same. `frame_begin` stands in for the real frame loop's own per-frame call, advancing the
-    /// same clock `title_marquee` reads in production — nothing about `marquee_clock` itself is
+    /// same clock `title_marquee` reads in production - nothing about `marquee_clock` itself is
     /// untestable now that it reads an absolute snapshot instead of summing a `dt` of its own.
     #[test]
     fn the_marquee_clock_restarts_when_the_focused_text_changes() {
@@ -2196,7 +2196,7 @@ mod tests {
         assert_eq!(glyph_lead(theme::size::LABEL, false), 0.0);
     }
 
-    /// A glyph-led title's window is narrower by exactly the icon's size plus its gap — the same
+    /// A glyph-led title's window is narrower by exactly the icon's size plus its gap - the same
     /// number [`title_marquee`]'s fitting and overflow branches both
     /// read, pinned once here instead of through a draw.
     #[test]
@@ -2209,7 +2209,7 @@ mod tests {
 
     /// The whole point of item 10 §b: a title that fits the PLAIN budget can still overflow the
     /// GLYPH-reduced one, so a Continue-Watching name that is merely long enough to have needed
-    /// eliding before now marquees instead — the defect the owner reported ("the text does not
+    /// eliding before now marquees instead - the defect the owner reported ("the text does not
     /// animate" on a long Continue Watching title).
     #[test]
     fn a_title_that_fits_the_plain_budget_can_overflow_the_glyph_budget() {
@@ -2232,7 +2232,7 @@ mod tests {
 
     // ---- word-wrap is gone: the focused title is always exactly one line ---------------------
 
-    /// [`TileLabel::height`] no longer varies with the row style at all — a shelf of long titles
+    /// [`TileLabel::height`] no longer varies with the row style at all - a shelf of long titles
     /// marquees in place rather than growing its label band, so every row in the app reserves the
     /// same fixed height for the same `caption` choice.
     #[test]
@@ -2262,7 +2262,7 @@ mod tests {
     fn a_collapsed_shelf_still_leaves_the_region_gap_before_the_next_heading() {
         assert_eq!(under_band(1.0), UNDER_LABEL_H);
         assert_eq!(under_band(0.0), LABEL_BAND_COLLAPSED);
-        // clamped, so a spring's overshoot (there is none here — it is critically damped — or a
+        // clamped, so a spring's overshoot (there is none here - it is critically damped - or a
         // caller's stray value) can never make a shelf taller than its focused self
         assert_eq!(under_band(1.4), UNDER_LABEL_H);
         assert_eq!(under_band(-0.2), LABEL_BAND_COLLAPSED);
@@ -2277,7 +2277,7 @@ mod tests {
             crate::theme::space::LG,
             "an unfocused shelf owes its neighbour one region gap and nothing more"
         );
-        // …and that gap is exactly what the block's own trailing air grew into
+        // ...and that gap is exactly what the block's own trailing air grew into
         assert_eq!(
             LABEL_BAND_COLLAPSED + UNDER_LABEL_AIR,
             crate::theme::space::LG
@@ -2285,7 +2285,7 @@ mod tests {
     }
 
     /// The document is 74px shorter per unfocused shelf, and [`settled_top`] is the closed form of
-    /// the running sum `Grid::layout` and `library::Layout` accumulate. One shelf open, always —
+    /// the running sum `Grid::layout` and `library::Layout` accumulate. One shelf open, always -
     /// so the whole column shifts by exactly [`BAND_OPEN`] at the shelves BELOW the focus and by
     /// nothing at all at the ones above it.
     #[test]
@@ -2334,7 +2334,7 @@ mod tests {
         assert!(moved, "an opening band must wake the present gate");
         assert!(row.band_expand() > 0.0);
 
-        // …and it arrives
+        // ...and it arrives
         for _ in 0..240 {
             row.update(6, Some(0), &sty, 1.0 / 60.0);
         }
@@ -2417,7 +2417,7 @@ mod tests {
         xs.iter().copied().fold(f32::MAX, f32::min)
     }
 
-    /// A focused tile's caption — a year, a character, an episode address — is read like its
+    /// A focused tile's caption - a year, a character, an episode address - is read like its
     /// title: one that does not fit the block rests, glides through, and reports damage while it
     /// moves, instead of ending in an ellipsis that hides the part that tells two credits apart.
     #[test]
@@ -2437,7 +2437,7 @@ mod tests {
     }
 
     /// And nothing else moves: a caption that fits is one still run, centred like it always was,
-    /// and a title that fits leaves the shared clock alone — a settled shelf stays quiet.
+    /// and a title that fits leaves the shared clock alone - a settled shelf stays quiet.
     #[test]
     fn a_fitting_caption_stays_one_still_run_and_reports_nothing() {
         let _serial = tv_base::testlock::serial();
@@ -2457,7 +2457,7 @@ mod tests {
     }
 
     /// **The title and its caption are one block, so they start, glide and loop together.** Each
-    /// looping on its OWN period, one would restart mid-way through the other's glide — a block
+    /// looping on its OWN period, one would restart mid-way through the other's glide - a block
     /// that never rests at once. The block's cycle is its longest run's: the shorter run finishes
     /// its glide early (seamlessly back at its rest position) and waits for the longer to finish.
     #[test]
@@ -2547,7 +2547,7 @@ mod tests {
         }
     }
 
-    /// Unfocused, a name or role that does not fit is ONE elided run — it neither wraps nor
+    /// Unfocused, a name or role that does not fit is ONE elided run - it neither wraps nor
     /// glides, so a resting shelf of credits is still and every label is a single line.
     #[test]
     fn an_unfocused_credit_label_that_overflows_is_one_elided_run_per_line() {

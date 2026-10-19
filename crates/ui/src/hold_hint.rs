@@ -1,4 +1,4 @@
-//! `HoldHint` — the standing **"Hold [OK] for options"** capsule (`Home Screen.dc.html`, the design
+//! `HoldHint` - the standing **"Hold [OK] for options"** capsule (`Home Screen.dc.html`, the design
 //! project's `ds-additions/` HoldHint): the one place the app TEACHES that a held OK on a card opens
 //! its context menu. The hold has no other visible sign, and the menu behind it is where Mark as
 //! Watched, Go to Show and Play from Start live.
@@ -11,7 +11,7 @@
 //!    [`HoldHint::wants_input`] says it can matter) with a [`HintInput::new`], the tick's `ms` and
 //!    its `dt`: `focus` is the
 //!    stable element id of the CARD focus rests on (`None` for anything that is not a card, and for
-//!    a covered page — a menu or modal is open); `settled` is "nothing under that card is still
+//!    a covered page - a menu or modal is open); `settled` is "nothing under that card is still
 //!    moving" (scroll, snap, focus glide); `held_ms` is `cx.press.held_ms`, passed straight
 //!    through. The screen never divides by the hold time or names `press::LONG_MS`: the
 //!    constructor does that.
@@ -40,14 +40,14 @@
 //! lookup and a placement every `Tick`); when it says no, `HintInput::default()` steps the hint to
 //! the identical state.
 //!
-//! Host-testing an adopter needs no screen: see this module's `a_screenless_owner_…` test, which
+//! Host-testing an adopter needs no screen: see this module's `a_screenless_owner_...` test, which
 //! drives the widget through exactly those calls.
 //!
 //! # What it is
 //!
 //! A dark standing capsule, bottom-centre ([`BOTTOM`] above the frame, [`HEIGHT`] tall), in the tab
 //! track's own material, carrying three runs: the word "Hold", a [`key_cap_with`] saying OK, and
-//! "for options" — one catalog sentence with the cap as its `{key}` placeholder, so a translation
+//! "for options" - one catalog sentence with the cap as its `{key}` placeholder, so a translation
 //! may move it ([`crate::widgets::key_hint_parts`]). It is never pressable.
 //!
 //! **The cap is also the hold's progress bar.** While OK is held the cap FILLS left to right over the
@@ -56,40 +56,40 @@
 //! "hold" is also what shows the hold working.
 //!
 //! **When it shows is a schedule, and the schedule lives here**, advanced by the owner's `Tick`
-//! `Tick` (`ms` readings, and a silence over [`GAP_MS`] between two steps is not rest, so the time a covered page is not stepped never counts) — no wall clock, so replay and host tests are deterministic: focus must have RESTED on one
+//! `Tick` (`ms` readings, and a silence over [`GAP_MS`] between two steps is not rest, so the time a covered page is not stepped never counts) - no wall clock, so replay and host tests are deterministic: focus must have RESTED on one
 //! card for [`DWELL_MS`] (any move of `focus`, or any frame that is not `settled`, re-arms the dwell
 //! from zero and hides it), and the hint then stands for [`LIFE_MS`] and leaves on its own, once per
-//! resting place. A held OK shows it regardless of the dwell — that is the fill's moment.
+//! resting place. A held OK shows it regardless of the dwell - that is the fill's moment.
 //! `focus == None` shows nothing, and once the viewer has opened a context menu it RETIRES for good
-//! ([`learned`]; the design's "until first use" mode — "always" and "off" were design-time toggles
+//! ([`learned`]; the design's "until first use" mode - "always" and "off" were design-time toggles
 //! and have no setting here).
 //!
 //! **Motion.** It fades in over ~.36 s and rises [`RISE_PX`] on a slower spring, both critically
 //! damped [`Spring`]s, so the present gate ([`tv_machine::idle`]) hears them move and hears them
 //! stop: a resting hint (shown or hidden) asks for no frame. The dwell and life counters are TIMERS,
-//! not animators — like `Home`'s hero countdown they report nothing while they count (the loop
+//! not animators - like `Home`'s hero countdown they report nothing while they count (the loop
 //! delivers `Tick` to the page whether or not a frame presents) and the fade's first step is what
 //! wakes the gate. The fill is the one thing that is neither: it advances every frame it is held or
 //! draining, and says so through the `note` callback [`HoldHint::step`] takes.
 //!
 //! **Material: live glass, with the flat capsule as its fallback.** The capsule is a second
-//! standing glass surface beside the top tab track and the profile chip — the same material
-//! (`GlassRim::Standing`, `Material::UltraThin`, the track's rim and lit top edge) — and it enters
+//! standing glass surface beside the top tab track and the profile chip - the same material
+//! (`GlassRim::Standing`, `Material::UltraThin`, the track's rim and lit top edge) - and it enters
 //! the live-backdrop walk the only legal way: one `Glass::DYNAMIC_BACKDROP.backdrop` call from the
 //! normal painter draw. It orchestrates nothing; the frame's layer walk (`ui::frame::backdrop`) owns
 //! the source, the occlusion and the damage. Because Home's page layer is not a SHARED band (the
 //! chrome layer is), the walk gives it its OWN source entry rather than merging it into the top
 //! band's: a surface at the bottom of the screen never drags the top band's single grab out toward
 //! full screen. Its region is the
-//! capsule grown `BLUR_MARGIN` and clamped to the panel — about 880 x 204 = 180k px² at the widest
+//! capsule grown `BLUR_MARGIN` and clamped to the panel - about 880 x 204 = 180k px² at the widest
 //! shipped language, inside the 300k a MOVING host holds 60 fps under
 //! (`the_capsules_own_blur_region_fits_the_budget_and_never_meets_the_top_band` holds it, and
 //! holds the two regions apart). When the walk refuses glass this frame (blur latched off, a
 //! frozen host, no render target, a source pass) `backdrop` answers `false` and the capsule draws
 //! the tab track's flat fallback (`TAB_TRACK_TOP`/`BOT` through `rect_rimmed`), the same fallback the
-//! chip takes. The glass fades and rises WITH the capsule — its scrim and rim are faded by the
+//! chip takes. The glass fades and rises WITH the capsule - its scrim and rim are faded by the
 //! opacity (a `GlassFace` is not cascaded by the painter's alpha, so [`widgets::chip_face`] scales it,
-//! as the chip's unfurl does) — and a hidden hint draws nothing, so it declares no surface and costs
+//! as the chip's unfurl does) - and a hidden hint draws nothing, so it declares no surface and costs
 //! no capture or composite at rest. The weight is the FIXED [`theme::HINT_GLASS_TOP`]/`BOT`: the
 //! track solves its density per frame from a framebuffer readback, and a standing hint does not
 //! take one.
@@ -143,7 +143,7 @@ pub const READ_MS: u32 = 1000;
 
 // ---- "has the viewer learned it" -----------------------------------------------------------------
 //
-// The hint retires for good once a context menu has been opened — from ANY card screen, since the
+// The hint retires for good once a context menu has been opened - from ANY card screen, since the
 // lesson is the gesture. It is held for the life of the process on the FRAME THREAD (a
 // `thread_local`, the same shape as `idle`'s and `press`'s published snapshots): every writer (the
 // item-menu surface mounting) and every reader (a card screen's tick) runs there, and a host test gets a
@@ -164,7 +164,7 @@ pub fn mark_learned() {
     LEARNED.with(|l| l.set(true));
 }
 
-/// Forget it — a test's start state, and nothing else.
+/// Forget it - a test's start state, and nothing else.
 #[cfg(any(test, feature = "test-support"))]
 pub fn reset_learned_for_test() {
     LEARNED.with(|l| l.set(false));
@@ -195,7 +195,7 @@ fn mark_shown(kind: Kind) {
     SHOWN.with(|s| s.set(s.get() | (1 << kind as u8)));
 }
 
-/// Forget every kind's latch — a test's start state, and nothing else.
+/// Forget every kind's latch - a test's start state, and nothing else.
 #[cfg(any(test, feature = "test-support"))]
 pub fn reset_shown_for_test() {
     SHOWN.with(|s| s.set(0));
@@ -219,7 +219,7 @@ pub struct HintInput {
     /// The card focus is resting on, by the owner's own stable element id; `None` whenever the hint
     /// has no business on screen (focus is not on a card, or a menu or modal covers the page).
     pub focus: Option<u32>,
-    /// Nothing under that card is still moving — no scroll, snap or focus glide in flight. The
+    /// Nothing under that card is still moving - no scroll, snap or focus glide in flight. The
     /// dwell only runs while this holds.
     pub settled: bool,
     /// How far through the hold a held OK is, 0..=1: `held_ms / press::LONG_MS`, clamped. `None`
@@ -315,8 +315,8 @@ impl HoldHint {
         Self { key: None, rest_at: None, last_ms: None, spent: false, once: None, claimed: false, full_at: None, fade: Spring::at(0.0), rise: Spring::at(0.0), fill: 0.0 }
     }
 
-    /// Advance one frame — the owner's whole per-`Tick` job. `note` receives [`PresentEvent::Motion`]
-    /// on every frame the fill is moving — the fill is steered by a clock the springs cannot see, and an idle gate that never
+    /// Advance one frame - the owner's whole per-`Tick` job. `note` receives [`PresentEvent::Motion`]
+    /// on every frame the fill is moving - the fill is steered by a clock the springs cannot see, and an idle gate that never
     /// heard it would freeze the progress mid-hold.
     pub fn step(&mut self, input: HintInput, now_ms: u32, dt: f32, note: &mut dyn FnMut(PresentEvent)) {
         // A step after a long silence (the page was covered and got no `Tick`) finds the clock far
@@ -391,7 +391,7 @@ impl HoldHint {
         }
     }
 
-    /// Whether this frame's [`HintInput`] could change anything — the one question every adopter
+    /// Whether this frame's [`HintInput`] could change anything - the one question every adopter
     /// asks before it pays to build the input (a card lookup and a placement). `false` means the
     /// owner may pass `HintInput::default()` to [`step`](Self::step) instead, with the identical
     /// result: the hint is retired ([`learned`]), or its kind has had its one showing and this
@@ -483,7 +483,7 @@ impl HoldHint {
         }
     }
 
-    /// The capsule's width under `measure` in the current language — for a fit test and for a
+    /// The capsule's width under `measure` in the current language - for a fit test and for a
     /// caller that must keep clear of it.
     pub fn width(measure: &dyn Measure) -> f32 {
         Layout::cached(measure).width
@@ -510,7 +510,7 @@ fn sentence() -> String {
     tv_platform::i18n::msg::widgets_hint_hold_options("\u{fffc}")
 }
 
-/// One measured arrangement of the three runs — the single place width is summed, so the capsule
+/// One measured arrangement of the three runs - the single place width is summed, so the capsule
 /// the draw paints is the capsule the caller measured.
 struct Layout {
     pre: CString,
@@ -1048,7 +1048,7 @@ mod tests {
         }
     }
 
-    /// ...and goes quiet at rest, shown or hidden — the failure that costs the whole saving.
+    /// ...and goes quiet at rest, shown or hidden - the failure that costs the whole saving.
     #[test]
     fn a_hint_at_rest_asks_for_nothing() {
         let (_g, mut h) = fresh();
@@ -1189,7 +1189,7 @@ mod tests {
 
     /// **The glass is bounded by the same budget as the rest of the band's glass, and kept apart
     /// from it.** The capsule's own blurred region (itself grown `BLUR_MARGIN`, clamped to the
-    /// panel — `gfx::blur_region`, the expression the planner's capture uses) must fit what a
+    /// panel - `gfx::blur_region`, the expression the planner's capture uses) must fit what a
     /// MOVING host holds 60 fps under, at the widest shipped language and at the bottom of its rise
     /// (the rest rect and the drawn rect both lie inside it). And it must not meet the top band's
     /// region: Home's page layer is not a shared band, so they are separate sources, and the
@@ -1275,7 +1275,7 @@ mod tests {
     /// **The capsule is a fit rule like any other app-owned text.** It hugs its content, so "fits"
     /// means: one catalog placeholder in each shipped language, both runs present or deliberately
     /// absent, and the whole capsule inside the safe frame at the shipped size with the device's
-    /// whole-pixel advances. It never elides — there is nothing to ellipsize into.
+    /// whole-pixel advances. It never elides - there is nothing to ellipsize into.
     #[test]
     fn the_capsule_fits_the_safe_frame_in_every_shipped_language() {
         use tv_base::fontcov::advances::ShippedMeasure;

@@ -121,7 +121,7 @@ fn a_field_keeps_its_dither_through_every_motion() {
     assert_eq!(tv_gfx::gfx::dither_for_field(700.0, 700.0), tv_gfx::gfx::DITHER_LSB, "at rest, the field pays");
 
     // A POPOVER's spring: 100 units from its target, stepped inside its own scope, the way
-    // `Popover::update` steps every appear spring. The frame is in motion — and the page is not.
+    // `Popover::update` steps every appear spring. The frame is in motion - and the page is not.
     frame_begin(1.0 / 60.0);
     let scope = MotionScope::open();
     note_spring(0.0, 100.0, 0.0);

@@ -1,20 +1,20 @@
-//! **HTTP redirects on the plaintext MEDIA path** — where a `3xx` answer to a plaintext media
+//! **HTTP redirects on the plaintext MEDIA path** - where a `3xx` answer to a plaintext media
 //! open is turned into the next request. `is_redirect`, `resolve_location` and `MAX_HOPS` are
 //! public so a client that follows https hops itself applies the same rules.
 //!
 //! A media server commonly answers a stream URL with a `302` to a presigned CDN URL on another
-//! origin — typically https, sometimes a relative `Location`. The socket client in [`super`] is one
+//! origin - typically https, sometimes a relative `Location`. The socket client in [`super`] is one
 //! request per open and cannot speak TLS, so following is a loop ABOVE it: [`open_following`]
 //! re-opens the same [`HttpStream`] for each plaintext hop and stops at the first https hop, handing
 //! that target back for the caller to open over TLS.
 //!
 //! Credentials: the ORIGINAL request's credential header block rides a hop only when the hop's
 //! scheme+host+port equal the ORIGINAL origin's. A cross-origin hop is requested exactly as its
-//! `Location` spells it — a presigned URL carries its own authority, and a credential must never
+//! `Location` spells it - a presigned URL carries its own authority, and a credential must never
 //! reach a third party. A `Range` is not a credential and rides every hop. Log lines carry an
 //! origin and the path's extension ([`super::log_endpoint`]), never a path segment or a query.
 //!
-//! **Every plaintext hop that would carry a credential asks the credential authority first** — the
+//! **Every plaintext hop that would carry a credential asks the credential authority first** - the
 //! first request, every followed hop, and every reopen a seek makes. The authority is the caller's:
 //! this transport names no layer above it, so each [`Request`] carries it as a [`CredentialGate`].
 //! A plaintext media stream whose permission is withdrawn therefore stops at its next request:
@@ -58,7 +58,7 @@ pub struct Target {
 }
 
 impl Target {
-    /// The full URL, for the curl source. Carries whatever query the target has — never log it.
+    /// The full URL, for the curl source. Carries whatever query the target has - never log it.
     pub fn url(&self) -> String {
         format!("{}{}", self.origin.base(), self.path)
     }
@@ -67,7 +67,7 @@ impl Target {
 /// Where a followed open ended.
 #[derive(Debug)]
 pub enum Opened {
-    /// The stream holds a 2xx response for this target — the EFFECTIVE URL, which every later
+    /// The stream holds a 2xx response for this target - the EFFECTIVE URL, which every later
     /// reopen (a Range seek) must use.
     Socket(Target),
     /// The chain reached an https target. Nothing was dialled for it: the socket client cannot
@@ -103,7 +103,7 @@ pub struct Request<'a> {
     pub origin: &'a Origin,
     /// Absolute path plus optional query.
     pub path: &'a str,
-    /// A credential header block (`Name: value\r\n`…), sent to the original origin only.
+    /// A credential header block (`Name: value\r\n`...), sent to the original origin only.
     pub credentials: Option<&'a str>,
     /// `Range: bytes=N-` on every hop when set.
     pub range_from: Option<i64>,

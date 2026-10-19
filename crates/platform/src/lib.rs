@@ -19,7 +19,7 @@
 //! tests build it. The application crate enables it in `[dev-dependencies]` only, so no shipped
 //! build sees it.
 
-pub mod devcaps; // what this SoC decodes — the TV's own codec table, read once at boot (the capability profile + direct-play gate derive from it)
+pub mod devcaps; // what this SoC decodes - the TV's own codec table, read once at boot (the capability profile + direct-play gate derive from it)
 pub mod i18n;
 pub mod imgcache; // bounded persistent artwork cache shared by every image source
 pub mod keymanager; // public LS2 key stores: keymanager3, legacy Palm service, or unavailable
@@ -28,4 +28,4 @@ pub mod labcfg; // `lab.json` (the Cloud Lab session config) and the two answers
 #[allow(dead_code)]
 pub mod storage;
 pub mod tv; // the television as everything outside the port sees it: the interfaces the webOS port fills at boot (step L15)
-pub mod webos; // which webOS this set is — nyx's os_info.json, read once at boot (release + codename)
+pub mod webos; // which webOS this set is - nyx's os_info.json, read once at boot (release + codename)

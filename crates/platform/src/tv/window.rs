@@ -3,7 +3,7 @@
 //! through the installed port; with no port installed every one is a no-op.
 use std::os::raw::c_void;
 
-/// Hand the port the SDL window, once, at boot — `textinput::bind`'s shape and for its reason: the
+/// Hand the port the SDL window, once, at boot - `textinput::bind`'s shape and for its reason: the
 /// window is created deep inside `plex_run` and the platform needs it a long way from there.
 pub fn bind_window(win: *mut c_void) {
     (super::port().bind_window)(win)

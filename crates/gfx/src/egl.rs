@@ -1,12 +1,12 @@
-//! What EGL this television actually has — a boot-time capability probe, and nothing else.
+//! What EGL this television actually has - a boot-time capability probe, and nothing else.
 //!
 //! # Why this exists
 //!
 //! The app has never asked. `docs/perf-damage-tracking-verdict.md` §6 names this as the one cheap
 //! device experiment that settles a whole architectural direction: every buffer-preservation
-//! scheme, "present with empty damage during playback", and `EGL_KHR_partial_update` — the
+//! scheme, "present with empty damage during playback", and `EGL_KHR_partial_update` - the
 //! extension that would make partial redraw cost less than a full one on a tiler rather than more
-//! — die if the driver does not advertise them. That question cannot be answered off-device and
+//! - die if the driver does not advertise them. That question cannot be answered off-device and
 //! it cannot be answered from the NDK sysroot, which ships a **link stub**: 44 `egl*` symbols all
 //! aliased to one empty body, so the presence of `eglSetDamageRegionKHR` *there* proves only that
 //! whoever generated the stub saw the name, not that this firmware implements it.
@@ -14,50 +14,50 @@
 //! # Why it does not link libEGL, and must not
 //!
 //! `-lEGL` would put `DT_NEEDED: libEGL.so.1` (the stub's SONAME) in the binary, and the loader
-//! treats a missing `DT_NEEDED` as fatal at `exec()` — before `main`, before the event log opens.
+//! treats a missing `DT_NEEDED` as fatal at `exec()` - before `main`, before the event log opens.
 //! `tools/fwcompat.py --inventory libEGL libEGLfk` says that is exactly what would happen on the
 //! releases this app runs on: webOS 2.2.3 through 5.3.1 (**including this dev set at 4.10.0**)
-//! carry `libEGLfk.so.2`, and their `libEGL.so.1.5` exports **no symbols at all** — it is a
+//! carry `libEGLfk.so.2`, and their `libEGL.so.1.5` exports **no symbols at all** - it is a
 //! forwarder onto `libmali.so`. The SONAME moves, which is the textbook case for
 //! `dynlib.rs`'s treatment.
 //!
 //! But we do not even need a `dlopen`: SDL created the GLES2 context **through EGL**, so whichever
 //! EGL the firmware has is already mapped into the process with its symbols in the global scope.
 //! `dynlib::Handle::self_handle()` (`RTLD_DEFAULT`) therefore resolves them with no new library,
-//! no new `DT_NEEDED`, and no change to the `fwcompat` matrix — the same mechanism
+//! no new `DT_NEEDED`, and no change to the `fwcompat` matrix - the same mechanism
 //! `surface::panel_resolution` uses for the SDL entry points that exist only on some firmwares.
 //! A SONAME candidate list is kept as a fallback for the case where EGL is loaded privately
-//! (`RTLD_LOCAL`) and so is invisible to `RTLD_DEFAULT` — opened `RTLD_NOLOAD`, so it only ever
+//! (`RTLD_LOCAL`) and so is invisible to `RTLD_DEFAULT` - opened `RTLD_NOLOAD`, so it only ever
 //! reaches an EGL that is already mapped. And nothing is asked of EGL at all until
 //! `eglGetCurrentContext` says a context is current on this thread (`current_with`): a desktop
 //! simulator on GLX has no EGL context, and its display handle would mean nothing.
 //!
 //! # What it reports, and why each field is here
 //!
-//! - `EGL_VENDOR` / `EGL_VERSION` / `EGL_CLIENT_APIS` / **`EGL_EXTENSIONS`** — the answer.
+//! - `EGL_VENDOR` / `EGL_VERSION` / `EGL_CLIENT_APIS` / **`EGL_EXTENSIONS`** - the answer.
 //! - `eglGetProcAddress` for the three damage entry points. An extension string without a
 //!   resolvable entry point is a driver bug we would otherwise discover by jumping through null.
 //! - **`EGL_SWAP_BEHAVIOR`**. `EGL_KHR_partial_update` makes it an *error* to call
 //!   `eglSetDamageRegionKHR` on an `EGL_BUFFER_PRESERVED` surface, so what SDL configured decides
 //!   whether the extension is usable at all here.
 //! - **`EGL_BUFFER_AGE_KHR`**. The same spec makes it an error to set a damage region without
-//!   having queried the buffer age (unless the damage is the whole buffer) — and the age is what
+//!   having queried the buffer age (unless the damage is the whole buffer) - and the age is what
 //!   says *how many frames back* the inherited content is, which is the number a damage ring has
 //!   to union over. A driver that does not answer this closes the partial-update direction
 //!   outright, whatever the extension string says.
 //! - `GL_EXTENSIONS`, which nothing in the app logged either.
 //!
-//! The probe is diagnostic only: it runs exactly once at boot, and no other module reads it — it
+//! The probe is diagnostic only: it runs exactly once at boot, and no other module reads it - it
 //! exists to put a fact in the event log. The one exception to "boot only" is [`fence`], which
-//! the draw path DOES call — `gfx::field_kick` fences the underlay-field reduction so its
-//! read-back is taken only once the GPU has finished it — and which resolves its entry points the
+//! the draw path DOES call - `gfx::field_kick` fences the underlay-field reduction so its
+//! read-back is taken only once the GPU has finished it - and which resolves its entry points the
 //! same way, for the same `DT_NEEDED` reason.
 use tv_base::dynlib::Handle;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 
 // EGL 1.4 tokens. Spelled out rather than pulled from a header because nothing in this build
-// includes one — the app has no EGL headers on any include path and does not want any.
+// includes one - the app has no EGL headers on any include path and does not want any.
 const EGL_HEIGHT: c_int = 0x3056;
 const EGL_WIDTH: c_int = 0x3057;
 const EGL_DRAW: c_int = 0x3059;
@@ -76,7 +76,7 @@ const EGL_SURFACE_TYPE: c_int = 0x3033;
 const EGL_NONE: c_int = 0x3038;
 /// `EGL_SWAP_BEHAVIOR_PRESERVED_BIT` in a config's `EGL_SURFACE_TYPE` mask. Without it,
 /// `eglSurfaceAttrib(EGL_SWAP_BEHAVIOR, EGL_BUFFER_PRESERVED)` cannot succeed on any surface of
-/// that config — which is the whole "keep the previous frame and repair it" family in one bit.
+/// that config - which is the whole "keep the previous frame and repair it" family in one bit.
 const EGL_SWAP_BEHAVIOR_PRESERVED_BIT: c_int = 0x0400;
 const GL_EXTENSIONS: c_uint = 0x1F03;
 
@@ -101,19 +101,19 @@ type FnSurfaceAttrib = unsafe extern "C" fn(*mut c_void, *mut c_void, c_int, c_i
 /// The SONAMEs an EGL might carry on a webOS television, in the order worth trying. Only used when
 /// `RTLD_DEFAULT` cannot see EGL, which would mean SDL loaded it privately.
 ///
-/// `libEGLfk.so.2` FIRST: it is the one on webOS 2.2.3–5.3.1, which is every release this app has
+/// `libEGLfk.so.2` FIRST: it is the one on webOS 2.2.3-5.3.1, which is every release this app has
 /// actually run on. `libEGL.so.1` is webOS 6+ (and 1.x). Neither is linked.
 const EGL_SONAMES: &[&str] = &["libEGLfk.so.2", "libEGL.so.1", "libEGL.so"];
 
 /// A resolved EGL entry point, or `None`. **`dlsym`**: the process's own scope first, then an
-/// EGL somebody already mapped (`RTLD_NOLOAD` — SDL `dlopen`s EGL `RTLD_LOCAL`, which
+/// EGL somebody already mapped (`RTLD_NOLOAD` - SDL `dlopen`s EGL `RTLD_LOCAL`, which
 /// `RTLD_DEFAULT` cannot see); an unexported extension entry point is asked of that same EGL's
 /// own `eglGetProcAddress` ([`resolve_with`]). Never a fresh load, and never
 /// `SDL_GL_GetProcAddress`.
 ///
 /// Why never SDL's lookup: it is a lookup for the *client API* SDL is on, not for EGL. On a GLX
 /// backend it is `glXGetProcAddressARB`, and GLX 1.4 §3.3.12 is explicit that a non-NULL answer
-/// "does not guarantee that an extension function is actually supported" — libglvnd hands back a
+/// "does not guarantee that an extension function is actually supported" - libglvnd hands back a
 /// generated GL dispatch stub for ANY name it does not know. The Linux simulator asks SDL for a
 /// desktop GL 4.1 core context, which SDL's X11 driver creates through GLX, so `eglGetCurrentDisplay`
 /// and `eglQueryString` resolved to two such stubs: calling them runs Mesa's no-op dispatch entry,
@@ -142,13 +142,13 @@ fn resolve(name: &str, lib: &mut Option<Handle>) -> Option<*mut c_void> {
 /// [`resolve`] over injectable scopes, so a host test can hold the boundary.
 ///
 /// Core entry points come from `dlsym` and nowhere else. An **extension** entry point
-/// (`…KHR`/`…EXT`) that the provider does not export is asked of that provider's OWN
-/// `eglGetProcAddress` — itself found by `dlsym` in the same scopes, so it is the real EGL's
+/// (`...KHR`/`...EXT`) that the provider does not export is asked of that provider's OWN
+/// `eglGetProcAddress` - itself found by `dlsym` in the same scopes, so it is the real EGL's
 /// lookup, never a client-API one. That is how webOS 10.2.0 reaches the fence: its Mesa-style
 /// `libEGL.so.1` exports `eglGetProcAddress` and the core API but no `eglCreateSyncKHR` family
 /// (`tools/fwcompat.py --lib libEGL.so.1`), where every Mali release exports them directly.
 /// Restricted to extension names because `eglGetProcAddress`, like `glXGetProcAddress`, may
-/// answer non-NULL for a name it does not implement — acceptable only for an entry point whose
+/// answer non-NULL for a name it does not implement - acceptable only for an entry point whose
 /// extension the caller then checks in `EGL_EXTENSIONS`, as [`fence`] does.
 fn resolve_with(
     name: &str,
@@ -168,7 +168,7 @@ fn resolve_with(
     (!p.is_null()).then_some(p)
 }
 
-/// The EGL context current on this thread and its display — the precondition for asking EGL
+/// The EGL context current on this thread and its display - the precondition for asking EGL
 /// ANYTHING about "our" display or surface.
 #[derive(Clone, Copy)]
 struct Current {
@@ -181,7 +181,7 @@ struct Current {
 ///
 /// The context is the gate, not the display: `eglGetCurrentDisplay` alone cannot tell "SDL is on
 /// EGL" from "SDL is on GLX and some other EGL happens to be mapped" (EGL 1.4 §3.7.4 returns
-/// `EGL_NO_DISPLAY` only when no context is current — and only for the library that would own
+/// `EGL_NO_DISPLAY` only when no context is current - and only for the library that would own
 /// one). A current context in the library we resolved is the one fact that makes every later
 /// `eglQuery*` on its display meaningful. Nothing else in this module calls EGL until it holds a
 /// `Current`, so this is the single check for the probe, the damage experiment and the fence.
@@ -311,7 +311,7 @@ pub fn probe() {
         }
         damage_init(dpy, surface, &mut lib);
         // Remember the handles so `late_probe` can ask again once frames have actually been
-        // presented — an age queried before the first swap is 0 by definition and says nothing.
+        // presented - an age queried before the first swap is 0 by definition and says nothing.
         unsafe {
             LATE_DPY = dpy;
             LATE_SURFACE = surface;
@@ -356,7 +356,7 @@ fn probe_config(dpy: *mut c_void, ctx: *mut c_void, lib: &mut Option<Handle>) {
 
 /// Ask the live surface for `EGL_BUFFER_PRESERVED`, report what it says, and put it back.
 ///
-/// Mutating, so it is trigger-gated. The restore is unconditional — leaving a surface preserved
+/// Mutating, so it is trigger-gated. The restore is unconditional - leaving a surface preserved
 /// would silently change every later frame's tile handling, which is precisely the confound this
 /// probe exists to avoid introducing.
 fn try_preserve(dpy: *mut c_void, surface: *mut c_void, lib: &mut Option<Handle>) {
@@ -410,7 +410,7 @@ fn egl_error_name(code: c_int) -> &'static str {
 
 /// Call the two damage entry points and report what the driver says.
 ///
-/// They are **not in this display's extension string** — but `eglGetProcAddress` returns a
+/// They are **not in this display's extension string** - but `eglGetProcAddress` returns a
 /// non-NULL pointer for both, and `EGL_KHR_get_all_proc_addresses` IS advertised, which is exactly
 /// the condition under which a resolvable address proves nothing. The EGL 1.4 spec is explicit
 /// that `eglGetProcAddress` may answer for entry points the implementation does not support, so
@@ -433,7 +433,7 @@ fn try_damage(dpy: *mut c_void, surface: *mut c_void, lib: &mut Option<Handle>) 
         }
     };
     // Bottom-left origin, per both damage specs. One small rect, deliberately NOT the whole
-    // buffer — the whole buffer is the one case partial_update allows without a buffer age.
+    // buffer - the whole buffer is the one case partial_update allows without a buffer age.
     let rects: [c_int; 4] = [0, 0, 64, 64];
 
     let p = unsafe { gpa(c"eglSetDamageRegionKHR".as_ptr()) };
@@ -467,7 +467,7 @@ fn try_damage(dpy: *mut c_void, surface: *mut c_void, lib: &mut Option<Handle>) 
 // ---------------------------------------------------------------------------------------------
 //
 // `eglSetDamageRegionKHR` resolves and returns `EGL_TRUE`/`EGL_SUCCESS` on this driver, but
-// `EGL_KHR_partial_update` is NOT in `EGL_EXTENSIONS` — and a stub that accepts everything and
+// `EGL_KHR_partial_update` is NOT in `EGL_EXTENSIONS` - and a stub that accepts everything and
 // does nothing is indistinguishable from a working implementation by return code alone. So do not
 // ask it; measure it. Each frame this declares a small damage rect and then draws the WHOLE
 // screen as usual. If the driver honours the rect, the tiles outside it are never rasterized:
@@ -486,7 +486,7 @@ static mut DMG_RECT: [c_int; 4] = [0, 0, 0, 0];
 static mut DMG_FULL: [c_int; 4] = [0, 0, 0, 0];
 static mut DMG_WARMUP: u32 = 0;
 /// Frames of FULL damage before the sub-rect starts. Not a nicety: declaring a sub-rect from the
-/// very first frame left the panel showing the boot splash forever — the app's own picture never
+/// very first frame left the panel showing the boot splash forever - the app's own picture never
 /// appeared at all, because no frame ever declared the whole surface valid. That is the "default
 /// must be full damage" rule of any shippable version, arrived at from the wrong end.
 const DMG_WARMUP_FRAMES: u32 = 180;
@@ -564,8 +564,8 @@ static mut LATE_FRAMES: u32 = 0;
 
 /// Re-ask for `EGL_BUFFER_AGE` once frames have really been presented.
 ///
-/// The boot reading is 0 by construction — before the first `eglSwapBuffers` the back buffer has
-/// no history — so it cannot distinguish "this driver does not track age" from "there is no age
+/// The boot reading is 0 by construction - before the first `eglSwapBuffers` the back buffer has
+/// no history - so it cannot distinguish "this driver does not track age" from "there is no age
 /// yet". After a hundred presents the two are distinguishable, and the answer decides whether a
 /// damage region could ever be legal here: `EGL_KHR_partial_update` makes it an error to set one
 /// smaller than the whole buffer without a queried age. Costs one increment per presented frame
@@ -607,20 +607,20 @@ fn log_gl_extensions() {
     tv_base::eventlog::log(&format!("gl extensions: {}", cstr(p)));
 }
 
-/// **"Has the GPU finished this yet?" — asked without waiting for the answer** (`EGL_KHR_fence_sync`).
+/// **"Has the GPU finished this yet?" - asked without waiting for the answer** (`EGL_KHR_fence_sync`).
 ///
 /// The one draw-path use of this module, and the reason it is one: GLES2 has no way to ask whether
 /// queued work is done, only `glReadPixels`/`glFinish`, which WAIT for it. The underlay field's
-/// read-back (`gfx::field_collect`) used to guess instead — "one drawn frame later" — and on the
+/// read-back (`gfx::field_collect`) used to guess instead - "one drawn frame later" - and on the
 /// television the GPU runs more than a frame behind a modal's open, so the guess still stalled
-/// the frame that collected it by 11–25 ms. A fence inserted after the reduction and polled with a
+/// the frame that collected it by 11-25 ms. A fence inserted after the reduction and polled with a
 /// zero timeout turns the guess into a fact: the read happens on the first frame the work is
 /// actually finished, and never waits.
 ///
-/// Resolved the way everything else here is — through the EGL SDL already mapped, so no new
-/// `DT_NEEDED` — and only when the display advertises the extension; the dev set does (webOS 4.5,
-/// Mali r12p0: `EGL_KHR_fence_sync` in the boot `egl extensions:` line). Absent — or no EGL
-/// context current at all, as on a simulator (none on macOS, GLX on Linux/X11) —
+/// Resolved the way everything else here is - through the EGL SDL already mapped, so no new
+/// `DT_NEEDED` - and only when the display advertises the extension; the dev set does (webOS 4.5,
+/// Mali r12p0: `EGL_KHR_fence_sync` in the boot `egl extensions:` line). Absent - or no EGL
+/// context current at all, as on a simulator (none on macOS, GLX on Linux/X11) -
 /// [`Fence::insert`] answers `None` and the caller falls back to its frame count.
 ///
 /// Polled with `flags = 0`, never `EGL_SYNC_FLUSH_COMMANDS_BIT_KHR`: a flush in the middle of a frame
@@ -727,7 +727,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     // The process state CI crashed in: SDL on GLX, so no EGL context is current on this thread,
-    // and the "display" the lookup hands back is register garbage — the exact si_addr of
+    // and the "display" the lookup hands back is register garbage - the exact si_addr of
     // run 35870896540.
     const GARBAGE: usize = 0xffff_ffff_ffff_f658_u64 as usize;
     static QUERIES: AtomicUsize = AtomicUsize::new(0);
@@ -766,7 +766,7 @@ mod tests {
     }
 
     /// The CI crash: no current EGL context, a non-null display. The fence must be off AND
-    /// `eglQueryString` must never be asked — its answer about a display nobody made current is
+    /// `eglQueryString` must never be asked - its answer about a display nobody made current is
     /// the invalid pointer `CStr::from_ptr` walked into.
     #[test]
     fn no_current_context_disables_the_fence_without_a_query() {
@@ -781,7 +781,7 @@ mod tests {
         );
     }
 
-    // A proc-address lookup that answers for ANY name — what `glXGetProcAddress` does, and what
+    // A proc-address lookup that answers for ANY name - what `glXGetProcAddress` does, and what
     // `eglGetProcAddress` is allowed to do. The resolver must never use it for a core entry point.
     extern "C" fn any_name_gpa(_name: *const c_char) -> *mut c_void {
         0xdead_0000_usize as *mut c_void
@@ -791,8 +791,8 @@ mod tests {
     }
 
     /// The resolver boundary. A core entry point nobody exports stays unresolved even when an
-    /// `eglGetProcAddress` that answers for anything is reachable — the shape of the CI crash,
-    /// where two "egl" functions were really GL dispatch stubs — while an extension entry point
+    /// `eglGetProcAddress` that answers for anything is reachable - the shape of the CI crash,
+    /// where two "egl" functions were really GL dispatch stubs - while an extension entry point
     /// the provider does not export (webOS 10.2.0's `eglCreateSyncKHR`) is found through that
     /// provider's own `eglGetProcAddress`.
     #[test]

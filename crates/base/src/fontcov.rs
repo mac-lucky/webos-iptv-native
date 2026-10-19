@@ -1,4 +1,4 @@
-//! Which codepoints a font file can actually draw — read straight out of its `cmap`.
+//! Which codepoints a font file can actually draw - read straight out of its `cmap`.
 //!
 //! Two callers, for the same reason. `text.rs` asks it per character to decide which emoji the
 //! app face can draw and which it drops; the test module at the bottom of THIS file asks it of the
@@ -14,7 +14,7 @@
 //! of a file on disk), so it belongs in the cheapest tier, and this is it.
 //!
 //! The same defect class already shipped once, visibly: subtitle convention wraps a sung line in
-//! U+2669–U+266C, Inter carries none of them, and a panel capture of the Family Guy theme read
+//! U+2669 - U+266C, Inter carries none of them, and a panel capture of the Family Guy theme read
 //! `▯NO GLYPH▯ It seems today`. `tools/cut-inter.py` synthesizes those four; nothing asserted it
 //! until now.
 //!
@@ -23,13 +23,13 @@
 //! SDL2_ttf does expose a coverage query, and it is the wrong tool twice over. `TTF_GlyphIsProvided`
 //! takes a **`Uint16`**, so it cannot be asked about anything above U+FFFF; and the 32-bit
 //! `TTF_GlyphIsProvided32` is declared in the NDK's header, exported by the NDK's
-//! `libSDL2_ttf-2.0.so.0.18.0`, and present on **none of the 14 firmware inventories** — the NDK is
+//! `libSDL2_ttf-2.0.so.0.18.0`, and present on **none of the 14 firmware inventories** - the NDK is
 //! 2.0.18 and every television ships 2.0.10 or 2.0.14
 //! (`tools/fwcompat.py --lib libSDL2_ttf-2.0.so.0 --grep '32$'` returns zero matches on all 14).
 //! It would therefore have compiled, linked and passed `make check`, then failed at the first
 //! coverage query on every set. `text.rs`'s `extern` block carries the general form of that trap.
 //!
-//! Either one also needs an open `TTF_Font` — a size, a GL-adjacent init and a device — which is
+//! Either one also needs an open `TTF_Font` - a size, a GL-adjacent init and a device - which is
 //! precisely what a host gate must not need. Parsing the cmap answers the same question from the
 //! file alone.
 //!
@@ -46,7 +46,7 @@ use std::path::Path;
 
 /// A font's codepoint coverage: a flat bitset for the BMP, sorted ranges above it.
 ///
-/// The BMP half is the hot one — `text.rs` asks per character on every cache-missing string — and
+/// The BMP half is the hot one - `text.rs` asks per character on every cache-missing string - and
 /// 8 KB of bitset makes that a shift and a mask instead of a binary search. Astral codepoints
 /// (emoji) are rare enough in playlist text to be worth a `partition_point`.
 pub struct Coverage {
@@ -218,8 +218,8 @@ fn cmap_bytes<R: Read + Seek>(r: &mut R) -> Result<Vec<u8>, CovErr> {
 
 /// Is this (platform, encoding) pair a **Unicode** cmap? Platform 0 is Unicode by definition;
 /// platform 3 (Windows) is Unicode only at encoding 1 (BMP) and 10 (full repertoire). Encoding
-/// 3/0 is "symbol" — a private-use remapping that would report coverage the font cannot really
-/// draw at the codepoints claimed — and platform 1 is Mac Roman. Both are skipped.
+/// 3/0 is "symbol" - a private-use remapping that would report coverage the font cannot really
+/// draw at the codepoints claimed - and platform 1 is Mac Roman. Both are skipped.
 fn is_unicode(platform: u32, encoding: u32) -> bool {
     platform == 0 || (platform == 3 && (encoding == 1 || encoding == 10))
 }
@@ -275,8 +275,8 @@ fn parse_format12_13(t: &[u8], many_to_one: bool, cov: &mut Coverage) -> Option<
     let n = be32(t, 12)? as usize;
     // The bounds check is done in u64, and that is load-bearing rather than tidy: **`usize` is
     // 32 BITS on `arm-unknown-linux-gnueabi`**, the only target that ships. A `numGroups` of
-    // 357_913_941 makes `n * 12` exactly 0xFFFF_FFFC, so `16 + n * 12` WRAPS to 12 — which is
-    // ≤ `t.len()` — and the indexing below then panics out of the SDL main thread on the second
+    // 357_913_941 makes `n * 12` exactly 0xFFFF_FFFC, so `16 + n * 12` WRAPS to 12 - which is
+    // ≤ `t.len()` - and the indexing below then panics out of the SDL main thread on the second
     // group. Release builds have overflow checks off, so it wraps silently rather than aborting.
     // No host test can catch this: `cargo test` runs on a 64-bit Mac where the same expression is
     // simply true. In u64 the product cannot overflow for any u32 count, on either width.
@@ -304,7 +304,7 @@ fn parse_format12_13(t: &[u8], many_to_one: bool, cov: &mut Coverage) -> Option<
 
 /// Coverage of the font in `r`, unioned across every Unicode cmap subtable it carries. The test
 /// seam: it takes any `Read + Seek`, which is what lets the decoder be driven from a `Cursor` over
-/// a synthetic sfnt — shapes no shipped font has, like a cmap entry pointing at glyph 0.
+/// a synthetic sfnt - shapes no shipped font has, like a cmap entry pointing at glyph 0.
 /// Production reads a path and goes through [`of_file`], which closes the file sooner.
 #[cfg(any(test, feature = "test-support"))]
 pub fn of_reader<R: Read + Seek>(r: &mut R) -> Result<Coverage, CovErr> {
@@ -360,12 +360,12 @@ fn decode(t: &[u8]) -> Result<Coverage, CovErr> {
     Ok(cov)
 }
 
-/// The errors do NOT name `path` — every caller has it and prefixes its own message with it, and
+/// The errors do NOT name `path` - every caller has it and prefixes its own message with it, and
 /// a doubled path reads as a bug in the error plumbing rather than as the missing file it is.
 pub fn of_file(path: &Path) -> Result<Coverage, CovErr> {
     let cmap = {
         let mut f = File::open(path).map_err(|e| CovErr::Io(e.to_string()))?;
-        cmap_bytes(&mut f)? // `f` is dropped HERE, before `decode` — see `decode`'s doc
+        cmap_bytes(&mut f)? // `f` is dropped HERE, before `decode` - see `decode`'s doc
     };
     decode(&cmap)
 }
@@ -375,7 +375,7 @@ pub fn of_file(path: &Path) -> Result<Coverage, CovErr> {
 /// Two reasons, both measured on the way in. A format-4 walk is the most expensive thing this
 /// module does; and every `of_file` holds a descriptor, so tests reading the fonts in parallel
 /// moved the PROCESS-wide descriptor count enough
-/// to trip `stream.rs`'s fd-leak assertion — whose slack is +8 over whatever the rest of the suite
+/// to trip `stream.rs`'s fd-leak assertion - whose slack is +8 over whatever the rest of the suite
 /// happens to be holding, and which then fails naming a leak that does not exist. Parsing once
 /// turns the concurrent opens into one per face.
 #[cfg(any(test, feature = "test-support"))]
@@ -389,14 +389,14 @@ pub fn shipped(name: &str) -> &'static Result<Coverage, String> {
         other => panic!("no shipped-font slot for {other:?} — add one beside the others"),
     };
     slot.get_or_init(|| {
-        // The fonts are repository payload, not crate data — `pkg/` sits beside `rust-modules/`.
+        // The fonts are repository payload, not crate data - `pkg/` sits beside `rust-modules/`.
         let p = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../pkg")).join(name);
         of_file(&p).map_err(|e| format!("{}: {e}", p.display()))
     })
 }
 
 /// **The shipped faces' horizontal advances, as a host-test text measure.** Unit tests have no
-/// SDL_ttf, so every other test `Measure` is a per-character guess — and a guess cannot say whether
+/// SDL_ttf, so every other test `Measure` is a per-character guess - and a guess cannot say whether
 /// a translated line fits its row. This one reads `cmap`, `head`, `hhea` and `hmtx` out of
 /// `pkg/appfont*.ttf` and sums one advance per character, each rounded to a WHOLE pixel at the
 /// requested size: the faces are opened with hinting on (`TTF_HINTING_LIGHT`), so FreeType hands
@@ -666,7 +666,7 @@ mod tests {
         ("Latin-1 letters", 0x00C0, 0x00FF),
         // Split around U+0149 (ŉ), which Inter does not carry and should not: Unicode DEPRECATED
         // it, no locale produces it, and it decomposes to U+02BC U+006E. Excluding it here is the
-        // difference between a declared set and a wish list — every other position is asserted.
+        // difference between a declared set and a wish list - every other position is asserted.
         ("Latin Extended-A (before U+0149)", 0x0100, 0x0148),
         ("Latin Extended-A (after U+0149)", 0x014A, 0x017E),
         // U+03A2 is a permanent hole in Unicode itself (reserved between Ρ and Σ), so the block
@@ -745,7 +745,7 @@ mod tests {
     }
 
     /// The bold face is a separate cut and can rot on its own. A bold-only hole is invisible in
-    /// every other tier — the same string renders fine as body text and tofus as a heading.
+    /// every other tier - the same string renders fine as body text and tofus as a heading.
     #[test]
     fn bold_face_covers_exactly_what_the_regular_one_does() {
         let (r, b) = (cov("appfont.ttf"), cov("appfont-bold.ttf"));
@@ -831,7 +831,7 @@ mod tests {
     ///
     /// Coverage would not be enough even if it existed. "The font contains the codepoint" is not
     /// "the renderer supports the script": Arabic needs joining and contextual shaping, Hebrew
-    /// needs bidi reordering, and `text.rs` has neither — it hands byte runs to
+    /// needs bidi reordering, and `text.rs` has neither - it hands byte runs to
     /// `TTF_RenderUTF8_Blended`, which in SDL2_ttf 2.0.x is a left-to-right advance loop with no
     /// shaper behind it. Adding a face here would turn tofu into *fluent-looking wrong text*,
     /// which is worse.
@@ -1029,7 +1029,7 @@ mod tests {
     }
 
     /// A symbol cmap (3,0) remaps into the private-use area; treating it as Unicode would claim
-    /// coverage of U+F020.. that no caller can ever ask for, and — worse — could make a garbage
+    /// coverage of U+F020.. that no caller can ever ask for, and - worse - could make a garbage
     /// font look like it covers the declared set.
     #[test]
     fn non_unicode_subtables_are_ignored() {
@@ -1041,7 +1041,7 @@ mod tests {
     }
 
     /// Truncation must be an error, never a panic. `text.rs` calls this on a file the installer
-    /// wrote, which is exactly where a short read comes from — and it runs on the SDL thread.
+    /// wrote, which is exactly where a short read comes from - and it runs on the SDL thread.
     #[test]
     fn a_truncated_font_is_an_error_not_a_panic() {
         let full = sfnt(&cmap1(3, 10, &format12(&[(0x41, 0x5A, 1)])));
@@ -1056,7 +1056,7 @@ mod tests {
         // the values that WRAP a 32-bit `usize`, which is the width the shipped ARM binary uses:
         // 12 × 357_913_941 is 0xFFFF_FFFC, so `16 + n * 12` becomes 12 in 32-bit arithmetic and
         // sails through a naive bounds check. This assertion cannot fail on the 64-bit dev Mac
-        // whichever way `parse_format12_13` is written — it is here to pin the intent and to fail
+        // whichever way `parse_format12_13` is written - it is here to pin the intent and to fail
         // for anyone who runs the suite on a 32-bit host. The guarantee itself comes from doing
         // the arithmetic in u64; see the comment at the check.
         for groups in [9999u32, 357_913_941, 357_913_942, u32::MAX] {
@@ -1078,7 +1078,7 @@ mod tests {
     #[test]
     fn a_font_with_only_unsupported_subtables_is_an_error_not_empty_coverage() {
         // format 0: a 256-byte byte-encoding table. Unicode platform, so it is not skipped as
-        // non-Unicode — it is skipped because the decoder does not read format 0.
+        // non-Unicode - it is skipped because the decoder does not read format 0.
         let mut sub = vec![0u8; 262];
         sub[0..2].copy_from_slice(&0u16.to_be_bytes()); // format 0
         sub[2..4].copy_from_slice(&262u16.to_be_bytes());

@@ -784,8 +784,8 @@ fn shelf_landing_mid_row_keeps_the_tile_exactly() {
     assert!((r.sect.scroll() - sx - (RowStyle::HOME.w + RowStyle::HOME.gap)).abs() < 0.01);
 }
 
-/// A restore or reconcile arrival is adopted whole and the tile it leaves goes straight to rest —
-/// it was not "let go" by anyone — with ONE lifted tile even on the frame before the tick.
+/// A restore or reconcile arrival is adopted whole and the tile it leaves goes straight to rest -
+/// it was not "let go" by anyone - with ONE lifted tile even on the frame before the tick.
 fn a_non_deliberate_arrival_rests_the_old_tile<S: Section>() {
     let mut r = settled::<S>(8);
     r.land_focus(101, By::Restore);
@@ -951,7 +951,7 @@ fn the_opener_redraw_paints_only_a_known_element() {
     run::<Grid>();
 }
 
-/// **The element a surface lifts is OUT of the page pass and in the lift, in both sections** — the
+/// **The element a surface lifts is OUT of the page pass and in the lift, in both sections** - the
 /// doubled-title guard. The page pass (a frame carrying `lifted`) paints every card but the lifted
 /// one and says so (`popover::lift_owns`, which silences the press spring's page damage); the opener
 /// lift's own frame (no `lifted`) paints exactly that card. Between them the card is drawn ONCE.

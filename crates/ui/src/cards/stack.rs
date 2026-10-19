@@ -1,4 +1,4 @@
-//! [`Stack`] — the vertical page of card sections (layer L2: pages built from the L1 sections).
+//! [`Stack`] - the vertical page of card sections (layer L2: pages built from the L1 sections).
 //!
 //! A page is a header of some kind, then [`Shelf`]s and [`Grid`]s, then a status read-out. The page
 //! implements [`StackPage`] (what its sections are, in order, and what each shows) and feeds
@@ -829,7 +829,7 @@ impl<K: Copy + Eq> Stack<K> {
 
     /// The hold hint's two screen-specific answers for a `Stack` page (`hold_hint`, "Adopting it"):
     /// the CARD focus rests on (a `Plain` section's control, another page's focus, a menu or modal
-    /// over the page — then focus is not this entry's — all answer `None`), and whether nothing
+    /// over the page - then focus is not this entry's - all answer `None`), and whether nothing
     /// under it is still moving: the page scroll at its target, and the card drawn where it comes
     /// to rest (the shelf's glide and the focus pop). ([`HintInput::for_placed`](crate::hold_hint::HintInput::for_placed)
     /// owns the rule, pinned clocks included.) The press clock is passed straight through.

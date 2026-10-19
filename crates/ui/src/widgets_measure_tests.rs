@@ -53,9 +53,9 @@ fn measured_status_action_uses_shared_button_width_height_and_reason_spacing() {
     assert_eq!(action.y, frame.cy() + 26.0 + theme::space::LG);
     let explained = plain.reason(c"Shared source");
     let shifted = explained.action_frame_measured(&StatusMetrics).unwrap();
-    // …and its reason is the design system's two-line BODY slot: one pitch plus one line box.
+    // ...and its reason is the design system's two-line BODY slot: one pitch plus one line box.
     let slot = theme::size::BODY as f32 * 1.32 + 40.0;
-    // …with the row's drop ([`REASON_ROW_DROP`]) under it.
+    // ...with the row's drop ([`REASON_ROW_DROP`]) under it.
     assert!((shifted.y - action.y - (theme::space::SM + slot + explained.row_drop())).abs() < 1e-3);
     let bands = explained.bands_measured(&StatusMetrics);
     let drawn = explained.action_rect(
@@ -68,7 +68,7 @@ fn measured_status_action_uses_shared_button_width_height_and_reason_spacing() {
     assert_eq!(w1.y - w0.y, theme::space::SM + 28.0);
 }
 
-/// **A failed read-out never scolds** — the design system's `StatusOverlay` contract ("the app
+/// **A failed read-out never scolds** - the design system's `StatusOverlay` contract ("the app
 /// does not scold"): its verdict is bold `size::TITLE` in `TEXT_SECONDARY` and its reason regular
 /// `size::BODY` in `TEXT_SECONDARY`. No kind's verdict or reason is ever the danger/red token.
 #[test]
@@ -92,8 +92,8 @@ fn a_failed_status_verdict_is_never_the_danger_token() {
 
 /// A PAGE-placed Failed read-out hangs its verdict from `FULL_ANCHOR_TOP` (540, the player's
 /// glyph line) in screen space whatever frame the caller held, and stacks the reason and the row
-/// under it — the row `space::LG` plus the fixed drop under the reason's two-line slot, or
-/// `space::LG` under the verdict when there is no reason — centred on the panel. A bounded one and a Working one still centre in their
+/// under it - the row `space::LG` plus the fixed drop under the reason's two-line slot, or
+/// `space::LG` under the verdict when there is no reason - centred on the panel. A bounded one and a Working one still centre in their
 /// frame, and `.page()` leaves a Working or Empty read-out alone.
 #[test]
 fn a_full_frame_failed_readout_hangs_from_the_top_anchor() {
@@ -134,7 +134,7 @@ fn a_full_frame_failed_readout_hangs_from_the_top_anchor() {
 
 /// The 112px glyph a page-placed `Failed` read-out draws above its verdict (spec "1A") sits
 /// exactly [`StatusOverlay::GLYPH_GAP`] above [`StatusOverlay::FULL_ANCHOR_TOP`], centred on the
-/// PANEL (`Rect::FULL`), never the caller's frame — same rule as the verdict/row centring above.
+/// PANEL (`Rect::FULL`), never the caller's frame - same rule as the verdict/row centring above.
 /// On the shared 1920×1080 screen space that is `x=1920/2-56=904, y=540-44-112=384, w=h=112`.
 /// A non-`Failed` kind, and a `Failed` one that never called `.page()`, draw no glyph at all.
 #[test]
@@ -164,7 +164,7 @@ fn the_page_glyph_hangs_above_the_anchor_and_only_a_page_placed_failure_draws_on
 /// `GLYPH_GAP+GLYPH_SIZE` span is a no-op; a tighter one shrinks `gap` and `size` by the SAME
 /// factor, quantizing `size` DOWN to a whole pixel (so `icons.rs` rasterizes it 1:1 rather than
 /// rescaling a fractional-sized texture) so the box's top edge lands `GLYPH_CEILING_MARGIN`
-/// below the ceiling OR UP TO ONE PIXEL FARTHER (the quantization's own slack; never nearer —
+/// below the ceiling OR UP TO ONE PIXEL FARTHER (the quantization's own slack; never nearer -
 /// flooring `size` alone only ever gives the ceiling more clearance) and `FULL_ANCHOR_TOP` never
 /// moves; below `GLYPH_MIN_SIZE` the glyph is omitted rather than drawn as a shrunk thumbnail.
 #[test]
@@ -177,7 +177,7 @@ fn glyph_ceiling_scales_the_glyph_down_and_omits_it_below_the_minimum_size() {
     let rect = far.glyph_frame().expect("a distant ceiling must not omit the glyph");
     assert_eq!((rect.y, rect.h), (natural_top, StatusOverlay::GLYPH_SIZE), "no shrink when there is room");
 
-    // A tight-but-survivable ceiling (38px into the natural box — the depth the Library's tab strip
+    // A tight-but-survivable ceiling (38px into the natural box - the depth the Library's tab strip
     // reached back when the anchor was 372) shrinks the box just enough to clear it, keeping the
     // gap/size proportion and never moving the verdict.
     let ceiling = natural_top + 38.0;
@@ -186,7 +186,7 @@ fn glyph_ceiling_scales_the_glyph_down_and_omits_it_below_the_minimum_size() {
     assert!(rect.h < StatusOverlay::GLYPH_SIZE, "a tight ceiling must actually shrink the box");
     assert!(rect.h >= StatusOverlay::GLYPH_MIN_SIZE, "must not shrink below the omit floor and still draw");
     // `size` is quantized down to a whole pixel, so the top edge lands the margin below the
-    // ceiling OR UP TO ONE PIXEL FARTHER — never nearer, since a smaller `size` alone only
+    // ceiling OR UP TO ONE PIXEL FARTHER - never nearer, since a smaller `size` alone only
     // widens the gap to the ceiling.
     let want_top = ceiling + StatusOverlay::GLYPH_CEILING_MARGIN;
     assert!(rect.y >= want_top - 0.01 && rect.y < want_top + 1.0,
@@ -197,7 +197,7 @@ fn glyph_ceiling_scales_the_glyph_down_and_omits_it_below_the_minimum_size() {
     let shrunk_gap = StatusOverlay::FULL_ANCHOR_TOP - StatusOverlay::GLYPH_CEILING_MARGIN - ceiling - rect.h;
     // A slightly looser bound than the other checks: quantizing `size` down to a whole pixel
     // (here, 76 rather than the exact 76.10) perturbs the size/gap ratio by up to size's own
-    // rounding error relative to gap, a few percent at this scale — still "kept together", not
+    // rounding error relative to gap, a few percent at this scale - still "kept together", not
     // independently shrunk.
     assert!((rect.h / shrunk_gap - natural_ratio).abs() < 0.02, "size and gap must shrink together, keeping proportion");
     assert!(rect.y + rect.h <= StatusOverlay::FULL_ANCHOR_TOP - StatusOverlay::GLYPH_CEILING_MARGIN.min(StatusOverlay::GLYPH_GAP),
@@ -212,10 +212,10 @@ fn glyph_ceiling_scales_the_glyph_down_and_omits_it_below_the_minimum_size() {
 
 /// **At a ceiling 38px into the natural box (the depth the Library's 254 tab-strip bottom reached
 /// while the anchor was 372), the shrunk glyph's size must rasterize 1:1, not get upscaled from a
-/// rounded texture.** The unquantized factor at this ceiling is `112 * 106/156 ≈ 76.10` — `icons.rs::tex_for` rounds `Rect`'s `w.max(h)` to a
+/// rounded texture.** The unquantized factor at this ceiling is `112 * 106/156 ≈ 76.10` - `icons.rs::tex_for` rounds `Rect`'s `w.max(h)` to a
 /// whole pixel before rasterizing (`draw`'s `r.w.max(r.h).round()`) but, before this test, drew
 /// the fractional 76.10-wide RECT itself, forcing GL to rescale a 76px texture onto a 76.10px
-/// quad — soft, at exactly the shrink this task exists to keep crisp. `glyph_rect` must hand back
+/// quad - soft, at exactly the shrink this task exists to keep crisp. `glyph_rect` must hand back
 /// a size that is already a whole pixel, equal to what `icon_raster_px` would clamp it to (i.e.
 /// unclamped, since 76 < `MAX_ICON_PX`), so the rasterized texture and the draw rect agree
 /// exactly.
@@ -236,7 +236,7 @@ fn the_librarys_real_ceiling_shrinks_the_glyph_to_a_size_that_rasterizes_1to1() 
 }
 
 /// A read-out that offers two things to press lays them out as ONE centred run, `CONTROL_GAP`
-/// apart, on the lone action's own row — and the primary is still slot 0.
+/// apart, on the lone action's own row - and the primary is still slot 0.
 #[test]
 fn measured_status_row_centres_every_pill_on_the_primarys_row() {
     let frame = Rect::new(100.0, 200.0, 600.0, 500.0);

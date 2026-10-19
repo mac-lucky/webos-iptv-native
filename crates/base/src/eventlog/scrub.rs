@@ -1,22 +1,22 @@
-//! **The redaction pass** — the one place a diagnostic line is made safe to leave the device.
+//! **The redaction pass** - the one place a diagnostic line is made safe to leave the device.
 //!
 //! Lifted out of `lab/snapshot.rs` unchanged on 2026-08-29, for two reasons that are worth keeping
 //! written down.
 //!
 //! **It is no longer lab-only.** `crate::eventlog::log` applies [`scrub_local`] to every line before the file
 //! write, and the telemetry client applies the full [`scrub`] to everything that leaves. Both live
-//! in a build that has no `lab-diagnostics` feature, so this module is UNGATED — which also means
+//! in a build that has no `lab-diagnostics` feature, so this module is UNGATED - which also means
 //! its tests finally run in `make check`. They did not before: everything under `lab/` is
 //! `#[cfg(feature = "lab-diagnostics")]`, so the 31 assertions guarding the one function the whole
 //! privacy argument rests on were skipped by the default gate entirely.
 //!
 //! **There are two exits, and the difference is the whole design.**
 //!
-//! * [`scrub`] may return [`Scrubbed::Refuse`] — drop the line and count it. Correct for anything
+//! * [`scrub`] may return [`Scrubbed::Refuse`] - drop the line and count it. Correct for anything
 //!   crossing the network, where a line that cannot be made safe must not be sent.
 //! * [`scrub_local`] **rewrites only and never drops.** It is what the on-disk event log gets. A
 //!   line silently vanishing from `webosiptv-events.log` is strictly worse for debugging than a
-//!   leaky one — that file is what `make run`, `tests/run.py`'s assertions and `crash-triage` all
+//!   leaky one - that file is what `make run`, `tests/run.py`'s assertions and `crash-triage` all
 //!   read, and `docs/agent-reference.md` calls it "the primary debugging surface".
 //!
 //! So: rewrite locally, rewrite-or-refuse remotely, and never a second scrubber anywhere.
@@ -26,7 +26,7 @@
 pub enum Scrubbed {
     /// keep it, in this (possibly rewritten) form
     Keep(String),
-    /// drop it entirely and count it — used where a line cannot be made safe by rewriting
+    /// drop it entirely and count it - used where a line cannot be made safe by rewriting
     Refuse,
 }
 
@@ -42,7 +42,7 @@ const CREDENTIAL_HEADERS: [&str; 5] = [
 ];
 
 /// Query parameters whose value is a secret. `authKey` is here too even though
-/// [`crate::eventlog::redact_tokens`] already caught it on the way in — this pass must be correct on its own,
+/// [`crate::eventlog::redact_tokens`] already caught it on the way in - this pass must be correct on its own,
 /// because it is also what protects a record written by a future call site that bypasses the log.
 const CREDENTIAL_PARAMS: [&str; 6] = [
     "authkey=",
@@ -58,20 +58,20 @@ const CREDENTIAL_PARAMS: [&str; 6] = [
 /// The rewrites, in order, each narrower than dropping the line: header values, query-parameter
 /// values, JSON secret fields, addon configuration and opaque keys in URL paths, and any remaining
 /// `scheme://host` authority. A record that still contains a credential
-/// header name after rewriting is refused outright rather than shipped — that can only happen if
+/// header name after rewriting is refused outright rather than shipped - that can only happen if
 /// the rewrite failed to find the value it was sure was there.
 #[cfg(feature = "lab-diagnostics")]
 pub fn scrub(line: &str) -> Scrubbed {
     scrub_with(line, &identities())
 }
 
-/// **The LOCAL exit — what `crate::eventlog::log` applies to every line before the file write.**
+/// **The LOCAL exit - what `crate::eventlog::log` applies to every line before the file write.**
 ///
 /// Same rewrites as [`scrub`], with one difference that is the entire reason it exists: it
 /// **never drops a line**. [`scrub`]'s `Refuse` arm is correct for the network, where a record
 /// that cannot be made safe must not be sent; it is wrong for `webosiptv-events.log`, which is
 /// what `make run`, `tests/run.py`'s assertions and `crash-triage` read. A line that silently
-/// vanishes from that file is worse for debugging than a leaky one — you cannot grep for the
+/// vanishes from that file is worse for debugging than a leaky one - you cannot grep for the
 /// absence of something you never knew was written.
 ///
 /// Cost: this runs on `crate::eventlog::log`'s path, which its own doc records as "a few times a second at
@@ -80,7 +80,7 @@ pub fn scrub_local(line: &str) -> String {
     scrub_local_with(line, &identities())
 }
 
-/// [`scrub_local`], against a caller-supplied identity list — the testable half.
+/// [`scrub_local`], against a caller-supplied identity list - the testable half.
 pub fn scrub_local_with(line: &str, ids: &[String]) -> String {
     let s = crate::eventlog::redact_tokens(line).into_owned();
     let s = scrub_headers(&s);
@@ -95,7 +95,7 @@ pub fn scrub_local_with(line: &str, ids: &[String]) -> String {
     scrub_identities(&s, ids)
 }
 
-/// [`scrub`], against a caller-supplied identity list — the testable half. The list is what the
+/// [`scrub`], against a caller-supplied identity list - the testable half. The list is what the
 /// APP knows about this household (see [`identities`]); everything else here is a pure rewrite.
 #[cfg(feature = "lab-diagnostics")]
 pub fn scrub_with(line: &str, ids: &[String]) -> Scrubbed {
@@ -116,7 +116,7 @@ pub fn scrub_with(line: &str, ids: &[String]) -> Scrubbed {
     Scrubbed::Keep(s)
 }
 
-/// **A BARE IPv4 ADDRESS, outside any URL** — `203.0.113.7:32400`, `10.0.0.2`.
+/// **A BARE IPv4 ADDRESS, outside any URL** - `203.0.113.7:32400`, `10.0.0.2`.
 /// [`scrub_ipv6`] handles IPv6 first, including the unbracketed `address:port` spelling emitted by
 /// the probe diagnostics.
 ///
@@ -127,7 +127,7 @@ pub fn scrub_with(line: &str, ids: &[String]) -> Scrubbed {
 ///
 /// **Loopback and the unspecified address survive**, and that is deliberate: `127.0.0.1` and
 /// `0.0.0.0` identify nobody, and blanking them would destroy the lines that say what the app
-/// bound locally — which is exactly what a networking bug report is about. Same list
+/// bound locally - which is exactly what a networking bug report is about. Same list
 /// `outbound-guard.py` treats as generic.
 fn scrub_addresses(s: &str) -> String {
     let keep = |a: &str| a.starts_with("127.") || a == "0.0.0.0";
@@ -136,7 +136,7 @@ fn scrub_addresses(s: &str) -> String {
     let mut i = 0;
     while i < b.len() {
         // an address starts at a digit that is not preceded by one (or by a dot, or a colon we
-        // already consumed) — so `v1.2` and a version string are not addresses
+        // already consumed) - so `v1.2` and a version string are not addresses
         let boundary = i == 0 || !matches!(b[i - 1], b'0'..=b'9' | b'.' | b':' | b'-');
         if boundary && b[i].is_ascii_digit() {
             let mut j = i;
@@ -153,7 +153,7 @@ fn scrub_addresses(s: &str) -> String {
                     !o.is_empty() && o.len() <= 3 && o.parse::<u16>().is_ok_and(|n| n <= 255)
                 })
             {
-                // …and its port, if it has one
+                // ...and its port, if it has one
                 let mut k = j;
                 if k < b.len() && b[k] == b':' {
                     let mut m = k + 1;
@@ -293,17 +293,17 @@ const MIN_IDENTITY: usize = 4;
 /// **The names and ids of THIS household**, replaced wherever they appear.
 ///
 /// The one clause of §6 that no generic rewrite can enforce: a server's friendly name defaults to
-/// the owner's hostname — the device test's first upload carried `auth: reached "Ada's Mac mini"`
-/// — and a `machineIdentifier` is a permanent household fingerprint. Neither has a recognisable
+/// the owner's hostname - the device test's first upload carried `auth: reached "Ada's Mac mini"`
+/// - and a `machineIdentifier` is a permanent household fingerprint. Neither has a recognisable
 /// SHAPE, so the only way to redact them is to know them, which this process does.
 ///
 /// Short values are skipped: a two-character profile title would match inside ordinary words and
-/// turn the whole document into `<name>`. That is a real limit and it is the honest trade — the
+/// turn the whole document into `<name>`. That is a real limit and it is the honest trade - the
 /// alternative is a scrubber that destroys the log it is protecting.
 fn scrub_identities(s: &str, ids: &[String]) -> String {
     let mut out = s.to_string();
     for id in ids {
-        // The length floor lives HERE and not only in `identities`, so it holds for any caller —
+        // The length floor lives HERE and not only in `identities`, so it holds for any caller -
         // it is a correctness rule about substring replacement, not a property of one list.
         if id.chars().count() >= MIN_IDENTITY && out.contains(id.as_str()) {
             out = out.replace(id.as_str(), "<name>");
@@ -313,9 +313,9 @@ fn scrub_identities(s: &str, ids: &[String]) -> String {
 }
 
 /// What this install knows about its own household, longest first so a name that contains another
-/// is replaced whole. Read once per upload from the persisted session — `peek`, never `load`, so
+/// is replaced whole. Read once per upload from the persisted session - `peek`, never `load`, so
 /// producing a snapshot can never WRITE the session file.
-/// **Viewing identity** — what the household is watching or searching for.
+/// **Viewing identity** - what the household is watching or searching for.
 ///
 /// This is LG's own Data Safety category, *"Content Viewing Information: Real-time TV viewing
 /// information including VOD and movies"*, and the app's declaration has to be able to answer
@@ -324,7 +324,7 @@ fn scrub_identities(s: &str, ids: &[String]) -> String {
 ///
 /// # This is a BACKSTOP, not the mechanism
 ///
-/// The mechanism is that the call sites do not log it — `app.rs`'s Up Next line logs the
+/// The mechanism is that the call sites do not log it - `app.rs`'s Up Next line logs the
 /// ratingKey and not the episode title, `search.rs` logs the query's LENGTH and not the query,
 /// `player/mod.rs` logs a subtitle cue's duration and not its dialogue. That is safe by
 /// construction and it is what makes the consent screen's "titles are not included" a fact about
@@ -333,21 +333,21 @@ fn scrub_identities(s: &str, ids: &[String]) -> String {
 /// What is left here is the generic shape a future call site can still leak through, which is
 /// worth catching centrally because it is cheap and mechanical:
 ///
-/// * **`q='…'`** — the search-field convention. Kept as a shape rather than trusting `search.rs`
+/// * **`q='...'`** - the search-field convention. Kept as a shape rather than trusting `search.rs`
 ///   to stay disciplined forever.
 ///
 /// **`rk=` is deliberately NOT touched here, and that is the local/remote split doing its job.**
-/// A ratingKey is server-local, this file is 0640 (the owner and the app's group, never world —
+/// A ratingKey is server-local, this file is 0640 (the owner and the app's group, never world -
 /// so a co-resident app in that group CAN read these keys), and it is the primary handle for
-/// triaging a playback bug — `docs/distribution.md`'s own remediation for the title leak was
+/// triaging a playback bug - `docs/distribution.md`'s own remediation for the title leak was
 /// *"logging ratingKeys instead of titles"*. It is stripped on the way OUT instead, by
 /// [`scrub_remote_ids`], because a ratingKey plus a server identity is viewing history.
 fn scrub_viewing(s: &str) -> String {
     replace_quoted_value(s, "q='", '\'', "<query>")
 }
 
-/// `key…value<close>` → `key<placeholder><close>`, for a value delimited by a known closer.
-/// Used for `q='…'`; written generically because the next such shape should reuse it rather than
+/// `key...value<close>` → `key<placeholder><close>`, for a value delimited by a known closer.
+/// Used for `q='...'`; written generically because the next such shape should reuse it rather than
 /// grow a fifth hand-rolled scanner in this file.
 fn replace_quoted_value(s: &str, key: &str, close: char, placeholder: &str) -> String {
     if !s.contains(key) {
@@ -381,7 +381,7 @@ fn replace_quoted_value(s: &str, key: &str, close: char, placeholder: &str) -> S
 /// two separate disasters at once, both found by the host suite hanging rather than failing:
 ///
 /// * **Deadlock.** `peek()` takes the session I/O mutex. Any code that holds that mutex and then
-///   logs — which is most of the session and sign-in code — waits on itself.
+///   logs - which is most of the session and sign-in code - waits on itself.
 /// * **Disk I/O per log line.** `peek()` walks up to five candidate paths and `read`s each. The
 ///   log is written a few times a second, so that is a syscall storm for a string rewrite.
 ///
@@ -390,13 +390,13 @@ fn replace_quoted_value(s: &str, key: &str, close: char, placeholder: &str) -> S
 /// there is no cycle to re-create.
 ///
 /// **Cost of being a snapshot:** lines logged before the first `set_identities` are scrubbed
-/// without household names. That is the correct trade — the names are not KNOWN before the session
-/// loads, so there was nothing to redact — and every other pass (credentials, hosts, addresses,
+/// without household names. That is the correct trade - the names are not KNOWN before the session
+/// loads, so there was nothing to redact - and every other pass (credentials, hosts, addresses,
 /// viewing identity) is independent of this list and runs from the first line.
 static IDENTITIES: std::sync::RwLock<Vec<String>> = std::sync::RwLock::new(Vec::new());
 
 /// Publish the household names the scrubber should redact. Called by the session layer on load,
-/// save, user switch and sign-out. **Must not log while holding anything** — see [`identities`].
+/// save, user switch and sign-out. **Must not log while holding anything** - see [`identities`].
 pub fn set_identities(mut v: Vec<String>) {
     v.retain(|s| s.chars().count() >= MIN_IDENTITY);
     // Longest first: "Ada Family Media" must be replaced before a shorter substring of it is, or
@@ -415,7 +415,7 @@ fn identities() -> Vec<String> {
 /// The last gate: a line that STILL looks like it carries a credential after all four rewrites is
 /// dropped rather than shipped.
 ///
-/// It exists because the rewrites are string surgery on a format nobody validates — a credential
+/// It exists because the rewrites are string surgery on a format nobody validates - a credential
 /// spelled some way none of them anticipated (`Bearer` with no header name in front of it, a
 /// parameter separated by `;`) would sail through every one of them. Dropping a record costs one
 /// line of a several-hundred-line document and is counted in the envelope; shipping it costs a
@@ -450,7 +450,7 @@ fn scrub_headers(s: &str) -> String {
 }
 
 /// `?token=abc&x=1` → `?token=<redacted>&x=1`. The value ends at the next `&` or whitespace, so
-/// the diagnostic half of the line survives — the reasoning `redact_tokens` gives for the same
+/// the diagnostic half of the line survives - the reasoning `redact_tokens` gives for the same
 /// choice: truncating from the parameter onward hides the fields that made the line worth logging.
 fn scrub_params(s: &str) -> String {
     let mut out = s.to_string();
@@ -490,7 +490,7 @@ const ADDON_RESOURCES: [&str; 6] = ["manifest.json", "catalog", "meta", "stream"
 
 /// URL paths, made safe: addon configuration becomes `<config>`, and any remaining path segment
 /// that looks like a key (20+ characters of letters, digits, `-` or `_`, with both letters and
-/// digits) becomes `<redacted>` — resolver links carry an API key mid-path. Ids such as
+/// digits) becomes `<redacted>` - resolver links carry an API key mid-path. Ids such as
 /// `tt0111161` are too short to be mistaken for one, and the rest of the path stays.
 fn scrub_paths(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -528,7 +528,7 @@ fn scrub_paths(s: &str) -> String {
 
 /// One path (`/a/b/c`), made safe: addon configuration before the resource name becomes
 /// `<config>`, key-shaped segments `<redacted>`, and everything from a base64-JSON token
-/// (`eyJ…`, which may itself contain `/`) onward one `<redacted>`.
+/// (`eyJ...`, which may itself contain `/`) onward one `<redacted>`.
 fn scrub_path(path: &str) -> String {
     let segments: Vec<&str> = path[1..].split('/').collect();
     let config = segments.iter().position(|seg| ADDON_RESOURCES.contains(seg)).filter(|&i| i > 0);
@@ -561,8 +561,8 @@ fn looks_like_key(seg: &str) -> bool {
 /// Any `scheme://authority` becomes `scheme://<host>`, keeping the path.
 ///
 /// This is the clause that covers what no parameter list can: a LAN address, a self-hosted addon's
-/// name, a port that identifies a deployment. The PATH is what makes a line diagnostic —
-/// `/catalog/movie/top.json` — and it stays ([`scrub_paths`] has already made it safe).
+/// name, a port that identifies a deployment. The PATH is what makes a line diagnostic -
+/// `/catalog/movie/top.json` - and it stays ([`scrub_paths`] has already made it safe).
 fn scrub_authority(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
@@ -584,21 +584,21 @@ fn scrub_authority(s: &str) -> String {
     out
 }
 
-/// **`host=<value>` → `host=<host>`** — the shape [`scrub_authority`] cannot see, because there is
+/// **`host=<value>` → `host=<host>`** - the shape [`scrub_authority`] cannot see, because there is
 /// no `scheme://` here for it to anchor on.
 ///
 /// This is the gap the device found: `stream.rs`'s DNS-failure line spells the unresolved name as
 /// bare `host=<fqdn>`, and re-point lines do the same for an
 /// address, and none of those go through a URL. Rather than teach every such call site its own
-/// redaction, this is keyed the same way [`scrub_params`] is keyed on its credential parameters —
+/// redaction, this is keyed the same way [`scrub_params`] is keyed on its credential parameters -
 /// the literal `host=` is the signal, not a guess at what a hostname looks like, so it cannot
 /// mistake a soname (`libavformat-wi.so.63`), a version (`1.43.4.10903`) or a GL extension name
 /// for one, the way a generic "any dotted token" scan would.
 ///
-/// **One value is deliberately spared: a `0x…` hex dump.** `dev.rs`'s softfloat probe reuses this
+/// **One value is deliberately spared: a `0x...` hex dump.** `dev.rs`'s softfloat probe reuses this
 /// exact key for a diagnostic hash (`host={hash:#018x}`), which is not a hostname or an address at
-/// all — blanking it would destroy the one thing that line exists to compare. Everything else after
-/// `host=` — a bare IPv4/IPv6 literal or an alphabetic name, with or without a trailing `:port` — is
+/// all - blanking it would destroy the one thing that line exists to compare. Everything else after
+/// `host=` - a bare IPv4/IPv6 literal or an alphabetic name, with or without a trailing `:port` - is
 /// replaced whole; a numeric address here would already have been caught by [`scrub_addresses`] or
 /// [`scrub_ipv6`] on its own, this pass runs first only so an alphabetic FQDN (which neither of
 /// those recognises) does not fall through to them and survive.
@@ -618,7 +618,7 @@ fn scrub_host_kv(s: &str) -> String {
         let val = &after[..vlen];
         let lower = val.to_ascii_lowercase();
         if val.is_empty() || val.starts_with('<') || lower.starts_with("0x") {
-            // nothing to redact, already a placeholder, or a hex diagnostic dump — not a host
+            // nothing to redact, already a placeholder, or a hex diagnostic dump - not a host
             out.push_str(val);
         } else {
             out.push_str("<host>");
@@ -637,7 +637,7 @@ mod tests {
     /// Every rewrite assertion below runs through the LOCAL exit, so it is graded in the default
     /// `make check` rather than only under `--features lab-diagnostics`. The two exits share all
     /// five rewrites and differ only in whether they may drop a line, so this loses no coverage of
-    /// the rewriting itself — and the drop behaviour has its own tests at the bottom.
+    /// the rewriting itself - and the drop behaviour has its own tests at the bottom.
     fn kept(s: &str) -> String {
         scrub_local(s)
     }
@@ -678,7 +678,7 @@ mod tests {
         assert!(out.ends_with("/resolve/realdebrid/<redacted>/abc/1/file.mkv"), "{out}");
     }
 
-    /// A stream line that prints the URL's path apart from its host (`stream: … path=…`), with a
+    /// A stream line that prints the URL's path apart from its host (`stream: ... path=...`), with a
     /// debrid playback token as a base64 segment (`+`, `/`, `=`), seen in a beta's device log.
     #[test]
     fn a_token_in_a_separate_path_field_never_survives() {
@@ -702,7 +702,7 @@ mod tests {
         assert!(!out.contains("hunter22"), "{out}");
     }
 
-    /// A header value is a credential to END OF LINE — half a bearer token is still one.
+    /// A header value is a credential to END OF LINE - half a bearer token is still one.
     #[test]
     fn a_credential_header_is_cut_to_end_of_line() {
         let out = kept("hdr Authorization: Bearer ey.JhbGciOi.abc def");
@@ -732,8 +732,8 @@ mod tests {
     }
 
     /// **The device leak** (found on a real TV, `stream.rs:947`): a DNS resolution failure logs
-    /// `host=<fqdn>` with no `scheme://` in front of it, so [`scrub_authority`] — the pass that
-    /// catches every OTHER host in this file — never sees it. A real multi-label private hostname
+    /// `host=<fqdn>` with no `scheme://` in front of it, so [`scrub_authority`] - the pass that
+    /// catches every OTHER host in this file - never sees it. A real multi-label private hostname
     /// reached `webosiptv-events.log` unredacted this way. Reproduces the exact shape.
     #[test]
     fn a_dns_failure_does_not_leak_the_bare_hostname() {
@@ -778,7 +778,7 @@ mod tests {
         assert!(out.starts_with("open https://<host>"), "{out}");
     }
 
-    /// An ordinary line is untouched — this pass runs over every record of every upload, and a
+    /// An ordinary line is untouched - this pass runs over every record of every upload, and a
     /// scrubber that mangles healthy lines destroys the thing it is protecting.
     #[test]
     fn ordinary_lines_pass_through_unchanged() {
@@ -792,7 +792,7 @@ mod tests {
         }
     }
 
-    /// **The two leaks the DEVICE test found**, on the first real upload — neither of which any
+    /// **The two leaks the DEVICE test found**, on the first real upload - neither of which any
     /// host test had been written to look for, and both of which §6 promises are impossible.
     #[test]
     fn a_bare_address_and_a_household_name_are_both_redacted() {
@@ -816,7 +816,7 @@ mod tests {
         );
     }
 
-    /// Loopback and the unspecified address SURVIVE — they identify nobody, and a networking bug
+    /// Loopback and the unspecified address SURVIVE - they identify nobody, and a networking bug
     /// report is often exactly about what the app bound locally.
     #[test]
     fn loopback_survives_the_address_rewrite() {
@@ -937,7 +937,7 @@ mod tests {
         }
     }
 
-    /// A short identity is NOT applied — it would match inside ordinary words. Stated as a test
+    /// A short identity is NOT applied - it would match inside ordinary words. Stated as a test
     /// because it is a deliberate limit rather than an oversight.
     #[test]
     fn a_very_short_name_is_left_alone_by_design() {
@@ -945,7 +945,7 @@ mod tests {
         assert_eq!(out, "route=home focus ok");
     }
 
-    /// **The LOCAL exit may never drop a line** — the one behavioural difference between the two
+    /// **The LOCAL exit may never drop a line** - the one behavioural difference between the two
     /// exits, and the reason `scrub_local` exists at all. A record the remote exit refuses outright
     /// still reaches `webosiptv-events.log`, rewritten as far as the passes can manage.
     ///
@@ -976,7 +976,7 @@ mod tests {
 
     /// **The generic shapes the backstop owns**, quoted from the call sites that produce them:
     ///
-    /// * `search.rs` — the `q='…'` convention
+    /// * `search.rs` - the `q='...'` convention
     ///
     /// This is LG's "Content Viewing Information" category, which the app's Data Safety
     /// declaration has to be able to answer **Not collected** to. None of the other four passes
@@ -986,7 +986,7 @@ mod tests {
     ///
     /// **`rk=` is deliberately not banned.** A ratingKey is server-local, this file is 0640 (the
     /// owner and the app's group, never world), and it is the primary handle for triaging a
-    /// playback bug — `distribution.md`'s own remediation for the title leak was *"logging
+    /// playback bug - `distribution.md`'s own remediation for the title leak was *"logging
     /// ratingKeys instead of titles"*, which is what `app.rs` now does. It is a remote-exit
     /// concern: a ratingKey plus a server identity is viewing history, so it is stripped on the
     /// way out rather than on the way to disk.
@@ -1022,7 +1022,7 @@ mod tests {
     /// There is no rewrite that distinguishes `'The One Where Ross Finds Out'` from
     /// `task: spawn 'labup' REFUSED` or `auth: 'probe' -> ok`. Redacting every single-quoted span
     /// would gut the log; redacting none of them lets a title through. So the mechanism for titles
-    /// is **not** this module — it is that the call sites do not write them, which
+    /// is **not** this module - it is that the call sites do not write them, which
     /// `no_log_call_site_interpolates_viewing_content` pins by reading the source.
     ///
     /// Asserting the limitation keeps it honest: if someone later teaches the scrubber to eat
@@ -1038,8 +1038,8 @@ mod tests {
     }
 
     /// The ban list `no_log_call_site_interpolates_viewing_content` reads: a banned substring in a
-    /// `log(&format!(…))` call, why it is banned, and the `(file, receiver-spelling)` pairs that
-    /// are exempt — household identity logged through a differently-spelled receiver, not viewing
+    /// `log(&format!(...))` call, why it is banned, and the `(file, receiver-spelling)` pairs that
+    /// are exempt - household identity logged through a differently-spelled receiver, not viewing
     /// content. See that test's doc for why the exemption is scoped by FILE and not by substring
     /// alone.
     const BANNED: &[(&str, &str, &[(&str, &str)])] = &[
@@ -1061,9 +1061,9 @@ mod tests {
         ),
     ];
 
-    /// Every [`BANNED`] hit in one `log(&format!(…))` call, as one formatted offence line per hit
+    /// Every [`BANNED`] hit in one `log(&format!(...))` call, as one formatted offence line per hit
     /// (empty if the call is clean). `path` decides which of a needle's file-scoped exemptions
-    /// apply — an exception is struck from the call text FIRST (so a `tile.title` in a call cannot
+    /// apply - an exception is struck from the call text FIRST (so a `tile.title` in a call cannot
     /// mask a `d.title` sitting beside it in the SAME call), but only when `path` ends with the
     /// exception's own file.
     fn banned_hits_in_call(path: &std::path::Path, line: usize, call: &str) -> Vec<String> {
@@ -1088,9 +1088,9 @@ mod tests {
 
     /// **Finding 1, phase 11 review (2026-09-10).** Red before the fix: the exception used to be a
     /// bare substring strip (`call.replace("tile.title", "")`) applied regardless of which file the
-    /// call came from, so a `tile.title()` receiver OUTSIDE `auth.rs` — exactly what
+    /// call came from, so a `tile.title()` receiver OUTSIDE `auth.rs` - exactly what
     /// `ui::tile::Tile::title` (implemented for `pms::PmsMovie`, the library's own content item)
-    /// would spell at a call site — was silently exempted too. Scoping the exception to `auth.rs`
+    /// would spell at a call site - was silently exempted too. Scoping the exception to `auth.rs`
     /// closes that: this call, attributed to an unrelated screen module, must still be caught.
     #[test]
     fn the_tile_title_exception_does_not_exempt_a_content_tile_outside_auth_rs() {
@@ -1103,7 +1103,7 @@ mod tests {
         );
     }
 
-    /// The counterpart: the exemption still holds where it is real — `auth.rs`'s own
+    /// The counterpart: the exemption still holds where it is real - `auth.rs`'s own
     /// switch-diagnostic lines, which log the roster tile's name as household identity.
     #[test]
     fn the_tile_title_exception_still_applies_inside_auth_rs() {
@@ -1120,41 +1120,41 @@ mod tests {
     /// The scrubber cannot catch a programme title (see the test above), so what actually keeps
     /// viewing content out of the log is that no call site writes it. That is a property of ~520
     /// `crate::eventlog::log` sites, it is invisible to every other test in this suite, and it regresses the
-    /// moment somebody adds `'{}'` with a title in it — which is exactly how the original leak got
+    /// moment somebody adds `'{}'` with a title in it - which is exactly how the original leak got
     /// in. So it is asserted the only way it can be: by grepping the tree.
     ///
     /// The banned identifiers are the FIELDS that carry viewing content, not the words. Each one
     /// was a real leak:
     ///
-    /// * `ep_title`   — `app.rs`'s Up Next line; logs `rk=` now (2026-08-29)
-    /// * `q='`        — `search.rs`, seven sites; logs `q[Nch]` now (2026-08-29)
-    /// * the subtitle cue's text — `player/mod.rs`; logs `len=` now (2026-08-29)
-    /// * `.title` / `title}` — `metadata.rs`'s `detail:` line carried the item's own title in
+    /// * `ep_title` - `app.rs`'s Up Next line; logs `rk=` now (2026-08-29)
+    /// * `q='` - `search.rs`, seven sites; logs `q[Nch]` now (2026-08-29)
+    /// * the subtitle cue's text - `player/mod.rs`; logs `len=` now (2026-08-29)
+    /// * `.title` / `title}` - `metadata.rs`'s `detail:` line carried the item's own title in
     ///   quotes on every detail open, for as long as that line has existed (found 2026-09-10,
     ///   restructure phase 11). It logs `rk=`/`sid=` and the shape counts now.
     ///
-    /// **The gate reads the whole `log(&format!(…))` CALL, not the one line the call opens on**,
+    /// **The gate reads the whole `log(&format!(...))` CALL, not the one line the call opens on**,
     /// and that widening is what makes the fourth entry possible at all: the `detail:` line spells
     /// its format string on one line and its arguments on the two below, so a line-scoped grep
     /// could not have seen `d.title` however the needle was spelled. The two older needles are
-    /// clean under the stricter read too — widening found no new hit for either.
+    /// clean under the stricter read too - widening found no new hit for either.
     ///
     /// Deliberately NOT banned: `.name` and `.title` on a server or a USER. Those are household
     /// identity rather than viewing content, they are genuinely load-bearing in `auth.rs`'s
     /// diagnostics, and `scrub_identities` removes them from the line at write time using the list
-    /// the session layer publishes. Two different problems, two different mechanisms — so the
+    /// the session layer publishes. Two different problems, two different mechanisms - so the
     /// `.title` needle carries ONE exception, `tile.title`: a roster tile's title IS the profile's
     /// name, which is that identity case, and it is `auth.rs`'s seven switch-diagnostic lines.
     ///
     /// **The exception is scoped by FILE, not by receiver name alone** (fixed 2026-09-10, phase 11
-    /// review, finding 1). It used to be a bare substring strip applied to every call in the tree —
+    /// review, finding 1). It used to be a bare substring strip applied to every call in the tree -
     /// but the base module `tile` (re-exported as `ui::tile::Tile`) defines
-    /// `pub trait Tile { fn title(&self) -> &str; … }`, the library's own
+    /// `pub trait Tile { fn title(&self) -> &str; ... }`, the library's own
     /// CONTENT item (implemented for `pms::PmsMovie`), whose idiomatic receiver name is also
-    /// `tile`. A future `log(&format!("… {} …", tile.title()))` over a content tile would spell the
+    /// `tile`. A future `log(&format!("... {} ...", tile.title()))` over a content tile would spell the
     /// exact exempted substring and this gate would stay silent on a real title leak. So [`BANNED`]
-    /// pairs each exception with the file it is legitimate in — today that is `auth.rs` alone, the
-    /// only file that logs a roster tile's own name — and [`banned_hits_in_call`] only strikes an
+    /// pairs each exception with the file it is legitimate in - today that is `auth.rs` alone, the
+    /// only file that logs a roster tile's own name - and [`banned_hits_in_call`] only strikes an
     /// exception when the call came from that file. A new module logging `tile.title` through some
     /// OTHER receiver is still the leak this entry exists for; only `auth.rs`'s switch diagnostics
     /// are exempt.
@@ -1195,20 +1195,20 @@ mod tests {
     }
 
     /// Parenthesis depth over `chars`, counting only `(`/`)` that are OUTSIDE a string or char
-    /// literal — the fix for finding 2 of the phase 11 review (2026-09-10). [`log_calls`] used to
+    /// literal - the fix for finding 2 of the phase 11 review (2026-09-10). [`log_calls`] used to
     /// count bare `(`/`)` with no notion of a literal at all, on the claim that an unbalanced quote
     /// can only widen its span; a `)` inside a log call's own FORMAT STRING (a real shape in this
-    /// tree — see `a_closing_paren_inside_the_format_string_does_not_truncate_the_call_span`)
+    /// tree - see `a_closing_paren_inside_the_format_string_does_not_truncate_the_call_span`)
     /// disproves that, since it can decrement the running depth to zero before the real closing
     /// paren, truncating the span short of the argument line.
     ///
-    /// Tracks `\`-escapes inside both a `"…"` string and a `'…'` char literal, so `"a\"b"` and
-    /// `'\''` do not mis-toggle. Deliberately does not special-case a raw string (`r#"…"#`): no
-    /// `log(&format!` call in this tree uses one (checked 2026-09-10 — re-check before relying on
+    /// Tracks `\`-escapes inside both a `"..."` string and a `'...'` char literal, so `"a\"b"` and
+    /// `'\''` do not mis-toggle. Deliberately does not special-case a raw string (`r#"..."#`): no
+    /// `log(&format!` call in this tree uses one (checked 2026-09-10 - re-check before relying on
     /// this again if that changes). If one ever appears, the failure mode is the same SAFE one this
     /// whole scanner had before the fix: an unrecognised `#`/`"` pair is just ordinary characters
     /// here, so the span can only run long, never short. A bare `'` that does not close within a
-    /// couple of characters (a lifetime — `'a`, `'static`) is left as an ordinary character rather
+    /// couple of characters (a lifetime - `'a`, `'static`) is left as an ordinary character rather
     /// than treated as opening a literal, so it cannot swallow real parens hunting for a closing
     /// quote that will never come.
     fn paren_depth_outside_literals(chars: &[char]) -> i32 {
@@ -1227,11 +1227,11 @@ mod tests {
                 in_str = true;
             } else if c == '\'' {
                 if chars.get(i + 1) == Some(&'\\') && chars.get(i + 3) == Some(&'\'') {
-                    i += 3; // `'\X'` — land on the closing quote
+                    i += 3; // `'\X'` - land on the closing quote
                 } else if chars.get(i + 2) == Some(&'\'') {
-                    i += 2; // `'X'` — land on the closing quote
+                    i += 2; // `'X'` - land on the closing quote
                 }
-                // else: a lifetime or stray apostrophe — leave it as an ordinary character
+                // else: a lifetime or stray apostrophe - leave it as an ordinary character
             } else {
                 match c {
                     '(' => depth += 1,
@@ -1244,7 +1244,7 @@ mod tests {
         depth
     }
 
-    /// Every `log(&format!(…))` / `log(&*format!(…))` call in one source file, as
+    /// Every `log(&format!(...))` / `log(&*format!(...))` call in one source file, as
     /// `(1-based line the call opens on, the WHOLE call flattened onto one line)`.
     ///
     /// The span ends where the parentheses opened by `log(` balance again, counted by
@@ -1292,17 +1292,17 @@ mod tests {
     }
 
     /// **Finding 2, phase 11 review (2026-09-10).** The doc above `log_calls` claimed an unbalanced
-    /// quote can only WIDEN the span, never shorten it — true for a quote with no `(`/`)` inside,
+    /// quote can only WIDEN the span, never shorten it - true for a quote with no `(`/`)` inside,
     /// false the moment one appears. A `)` inside the FORMAT STRING on the call's own opening line
     /// decrements the naive counter early: two closing parens with no matching opens are enough to
-    /// walk the running depth (2, after `log(` + `format!(`) down to 0 before the argument line —
-    /// where `d.title` actually sits — is ever appended. That is exactly the multi-line shape
+    /// walk the running depth (2, after `log(` + `format!(`) down to 0 before the argument line -
+    /// where `d.title` actually sits - is ever appended. That is exactly the multi-line shape
     /// `no_log_call_site_interpolates_viewing_content`'s `detail:` entry names as the reason the
     /// gate reads the whole call rather than one line; a `)` in the format string defeats the same
     /// widening from the opposite direction.
     ///
     /// Red before the fix: the format string here contains `))` with no matching opens, so the old
-    /// depth walk reached 0 on the string's own line and truncated the span there — `d.title` was
+    /// depth walk reached 0 on the string's own line and truncated the span there - `d.title` was
     /// never appended and this assertion failed.
     #[test]
     fn a_closing_paren_inside_the_format_string_does_not_truncate_the_call_span() {

@@ -43,7 +43,7 @@ pub struct ScrimLiftRead<'a> {
 
 pub type ScrimLift = for<'a> fn(ScrimLiftRead<'a>);
 
-/// The [`Scrim::lift`] of a surface with nothing to lift — a named `fn` rather than a closure, so
+/// The [`Scrim::lift`] of a surface with nothing to lift - a named `fn` rather than a closure, so
 /// [`Scrim::NONE`] can be a `const`. (`popover::Opener::NONE` carries its own twin of this for the
 /// legacy popovers; the two disappear together when the last of those becomes a surface.)
 fn no_lift(_: ScrimLiftRead<'_>) {}
@@ -53,14 +53,14 @@ fn no_lift(_: ScrimLiftRead<'_>) {}
 ///
 /// It is a REQUEST rather than a drawing, and that is the whole of why this type exists. The dim
 /// sits between the page and the surface's own glass, so it is part of what that glass looks
-/// through — which means it has to be on the framebuffer *before* the surface's glass grabs its
+/// through - which means it has to be on the framebuffer *before* the surface's glass grabs its
 /// backdrop, i.e. inside the page pass, several call frames away from the surface that owns it.
 /// The surface therefore states its weight here and the container
 /// ([`ModalStack::draw_scrims`](crate::containers::modal::ModalStack::draw_scrims)) draws it,
 /// in one place, for every surface, in phase order.
 ///
 /// **The weight is a ROLE, and the ink is the page's own light.** `alpha` is one of the
-/// `theme::underlay::DIM_*` rows — no surface states a number of its own — and the container paints
+/// `theme::underlay::DIM_*` rows - no surface states a number of its own - and the container paints
 /// it through the stack's one `UnderlayField` (`containers::modal::ModalUnderlay`) as
 /// `Role::Dim { weight: theme::underlay::TINT }`, latched from the undimmed host page (or, over the
 /// video plane, [`UnderlaySource::Flat`], the neutral ink). So the dim keeps the page's colour where the
@@ -73,9 +73,9 @@ pub struct Scrim {
     /// spring and by `nav::page_alpha`, so the dim ramps with the panel and dips with a route
     /// change exactly as `Popover::scrim` did.
     pub alpha: f32,
-    /// Re-draw the element this surface was opened FROM, ABOVE the dim — the profile chip, a
+    /// Re-draw the element this surface was opened FROM, ABOVE the dim - the profile chip, a
     /// focused card. A SECOND draw rather than a cut-out (`popover::Popover::scrim_lifting` has
-    /// the visual argument), and a bare `fn` — rather than a closure — because only the element's
+    /// the visual argument), and a bare `fn` - rather than a closure - because only the element's
     /// own screen knows where it landed and how to paint it, and this is minted as a `const` on
     /// that screen's own `Screen::scrim`.
     ///
@@ -88,7 +88,7 @@ pub struct Scrim {
     ///
     /// [`ModalStack::draw_scrims`]: crate::containers::modal::ModalStack::draw_scrims
     pub lift: ScrimLift,
-    /// Where the dim's inherited light comes from — see [`UnderlaySource`]. Every constructor
+    /// Where the dim's inherited light comes from - see [`UnderlaySource`]. Every constructor
     /// but [`Scrim::over_video`] answers [`UnderlaySource::Page`].
     pub source: UnderlaySource,
 }
@@ -98,7 +98,7 @@ pub struct Scrim {
 /// this says where that field is latched from.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum UnderlaySource {
-    /// The host page itself, read off the framebuffer before any dim is on it — every surface
+    /// The host page itself, read off the framebuffer before any dim is on it - every surface
     /// presented over a page.
     Page,
     /// Nothing honest to inherit (a surface over the hardware video plane, which GL cannot read
@@ -108,7 +108,7 @@ pub enum UnderlaySource {
 }
 
 impl Scrim {
-    /// No dim and nothing to lift — every page, and every surface that draws its own ground.
+    /// No dim and nothing to lift - every page, and every surface that draws its own ground.
     pub const NONE: Scrim = Scrim {
         alpha: 0.0,
         lift: no_lift,
@@ -134,7 +134,7 @@ impl Scrim {
         }
     }
 
-    /// A dim of `alpha` over the VIDEO PLANE in the neutral flat ink — the player's panels, whose
+    /// A dim of `alpha` over the VIDEO PLANE in the neutral flat ink - the player's panels, whose
     /// page is a hole GL cannot sample, and which stay neutral rather than casting the playing
     /// item's artwork colour over the picture.
     pub const fn over_video(alpha: f32) -> Scrim {
@@ -148,7 +148,7 @@ impl Scrim {
 
 /// The screen (§6.1). `step` is the only entrance that mutates logical state after construction.
 pub trait Screen<H: Host>: Machine<H, Ev = ScreenEvent<H>> + Focusable<H> {
-    /// The heartbeat word — byte-identical to today's route word (§15.3).
+    /// The heartbeat word - byte-identical to today's route word (§15.3).
     fn name(&self) -> &'static str;
     fn state(&self) -> &dyn LogicalState;
     fn crumb(&self, cx: &Cx<'_, H>) -> Option<Cow<'_, str>>;
@@ -163,7 +163,7 @@ pub trait Screen<H: Host>: Machine<H, Ev = ScreenEvent<H>> + Focusable<H> {
     fn strip_reachable(&self) -> bool {
         true
     }
-    /// The page's declared `Link`s (§7.3 step 3) — the strip→hero door among them.
+    /// The page's declared `Link`s (§7.3 step 3) - the strip→hero door among them.
     fn links(&self, _out: &mut Vec<Link>) {}
     fn focus_source(&self) -> FocusSource {
         FocusSource::Engine
@@ -179,7 +179,7 @@ pub trait Screen<H: Host>: Machine<H, Ev = ScreenEvent<H>> + Focusable<H> {
     fn pointer_held(&self) -> bool {
         false
     }
-    /// **The render this screen holds of its own** — how many backing textures, and their bytes —
+    /// **The render this screen holds of its own** - how many backing textures, and their bytes -
     /// for the frame's [`RenderSet`](crate::frame::RenderSet) check (§8.3).
     ///
     /// The default is [`RenderReport::NONE`] and it is the truthful answer for almost every screen
@@ -187,7 +187,7 @@ pub trait Screen<H: Host>: Machine<H, Ev = ScreenEvent<H>> + Focusable<H> {
     /// pools (`ui::tex`'s posters, `ui::icons`, the glyph cache, the ONE `popover::host`
     /// `FrameCache` a covered host is served from, the blur chain) which are counted once, where
     /// they live, and never per screen that samples them. Override this only where the screen's
-    /// own code called `upload_rgba` and its own code will call `delete_tex` — today that is
+    /// own code called `upload_rgba` and its own code will call `delete_tex` - today that is
     /// `screens::login` (the QR bitmap) and `screens::player` (the PGS/VobSub display set). The
     /// inventory and the ceiling's derivation are in `ui/frame/render_set.rs`.
     ///
@@ -196,7 +196,7 @@ pub trait Screen<H: Host>: Machine<H, Ev = ScreenEvent<H>> + Focusable<H> {
     fn render_report(&self) -> RenderReport {
         RenderReport::NONE
     }
-    /// **The modal dim this SURFACE asks its host page for** — see [`Scrim`]. A page answers
+    /// **The modal dim this SURFACE asks its host page for** - see [`Scrim`]. A page answers
     /// [`Scrim::NONE`] and so does every surface that draws its own ground; the container asks
     /// only surfaces, and only ones whose host is cached rather than replaced.
     fn scrim(&self) -> Scrim {
@@ -208,7 +208,7 @@ pub trait Screen<H: Host>: Machine<H, Ev = ScreenEvent<H>> + Focusable<H> {
     fn ground_ready(&self) -> bool {
         false
     }
-    /// This screen's own [`ReturnState::memory`] payload, RIGHT NOW — asked by the dispatcher's
+    /// This screen's own [`ReturnState::memory`] payload, RIGHT NOW - asked by the dispatcher's
     /// `ret()` (spec §6.1 tier 2) at the moment a navigation OFF this screen is raised, exactly as
     /// `focus` is read off the engine at the same instant. **Pure, like every other query here**:
     /// answering is a snapshot, never a mutation, and a screen that has nothing worth remembering
@@ -223,7 +223,7 @@ pub trait Screen<H: Host>: Machine<H, Ev = ScreenEvent<H>> + Focusable<H> {
     fn memory_at(&self, _focus: Option<FocusKey<H::Elem>>) -> H::Memory {
         self.memory()
     }
-    /// **Repaint the focused element above a modal dim** — the item-menu opener lift, asked of
+    /// **Repaint the focused element above a modal dim** - the item-menu opener lift, asked of
     /// whichever page hosts the menu. `focus` is the engine key the surface was opened from, passed
     /// explicitly so the page never keeps a cursor of its own. A page with no card to lift draws
     /// nothing, which is the default. The host calls it only while `focus` is still what the page
@@ -238,7 +238,7 @@ pub trait Screen<H: Host>: Machine<H, Ev = ScreenEvent<H>> + Focusable<H> {
     fn opener(&self) -> Option<(EntryId, Option<FocusKey<H::Elem>>)> {
         None
     }
-    /// **The card the page has focused, and where it sits** — the host's question for an item menu
+    /// **The card the page has focused, and where it sits** - the host's question for an item menu
     /// and for the focus probe, asked of whichever card page is on screen so the host names no
     /// screen type. `focus` is the engine key to answer for (a page answers only its own entry's
     /// cards); `None` for a page with no card, which is the default. The rect is measured only
@@ -246,7 +246,7 @@ pub trait Screen<H: Host>: Machine<H, Ev = ScreenEvent<H>> + Focusable<H> {
     fn focused_card<'a>(&self, _cx: &Cx<'a, H>, _focus: Option<FocusKey<H::Elem>>, _at: Option<At>) -> Option<FocusedCard<'a>> {
         None
     }
-    /// **Where the focused card sits, without needing its item to resolve** — the live drawn rect
+    /// **Where the focused card sits, without needing its item to resolve** - the live drawn rect
     /// of the card `focus` names. An opener that only anchors a menu (the item travels on the
     /// request, it is not re-read) asks this instead of [`Self::focused_card`], so a page whose
     /// data moved on between the hold and the request still anchors the menu where the card is.
@@ -263,19 +263,19 @@ pub trait Screen<H: Host>: Machine<H, Ev = ScreenEvent<H>> + Focusable<H> {
     }
 }
 
-/// Return state (§6.1 tier 2): on the `Entry`, captured at request time — what an evicted entry
+/// Return state (§6.1 tier 2): on the `Entry`, captured at request time - what an evicted entry
 /// remounts from.
 ///
 /// `M` is the opaque per-screen payload (`Host::Memory`), defaulted to `()` so every existing
-/// spelling — `ReturnState<H::Elem>`, `ReturnState::default()` — keeps meaning exactly what it did
+/// spelling - `ReturnState<H::Elem>`, `ReturnState::default()` - keeps meaning exactly what it did
 /// before this field existed: a Host with nothing to remember (`InnerHost`/`FixtureHost`,
 /// and any container that only ever names `ReturnState<K>` with one type
 /// argument) pays nothing and changes nothing. A screen that DOES need to remember something asks
 /// for it through [`Screen::memory_at`] and fixes its Host's `Memory` associated type to a concrete
-/// payload — see that method's doc and `stores/metadata.rs`'s module doc (`Spot`, the worked case).
+/// payload - see that method's doc and `stores/metadata.rs`'s module doc (`Spot`, the worked case).
 ///
 /// **Not `Copy`.** It was, while its only fields were a key and a float; `M` is application data
-/// (a `Spot` is not `Copy`) and every real use here is a single owned value passed once — `Clone`
+/// (a `Spot` is not `Copy`) and every real use here is a single owned value passed once - `Clone`
 /// costs nothing to keep for a caller that genuinely needs a second copy, and dropping the derive
 /// only removes a bound this type never relied on.
 #[derive(Clone, Debug)]
@@ -285,7 +285,7 @@ pub struct ReturnState<K, M = ()> {
     pub remembered: Vec<(GroupId, K)>,
     pub scroll: f32,
     /// The screen's own [`Screen::memory`] snapshot, taken the moment a navigation off it was
-    /// raised — tier 2's answer to "where was this page standing" for whatever a screen's `focus`
+    /// raised - tier 2's answer to "where was this page standing" for whatever a screen's `focus`
     /// and `scroll` alone cannot say (spec §6.1; e.g. Detail's season/column/sub-row `Spot`).
     pub memory: M,
 }
@@ -317,7 +317,7 @@ pub trait Mounter<H: Host> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// §7.1 — the container query protocol
+// §7.1 - the container query protocol
 // ---------------------------------------------------------------------------------------------
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -341,7 +341,7 @@ pub enum GroupKind {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Seat {
     Nearest,
-    /// The group's remembered element — except an UP/DOWN press into a card lattice
+    /// The group's remembered element - except an UP/DOWN press into a card lattice
     /// (`ElemKind::Card` `Row` or `Grid`), which lands through `seat` on the card above or below
     /// the cursor, so "down, right, up" closes a square (`focus::projects_across`). Sideways
     /// doors, entries and restores, selector rows and columns keep the remembered element.
@@ -400,7 +400,7 @@ pub struct GroupSpec {
     pub elem: ElemKind,
 }
 
-/// A declared non-standard transition (§7): at `from`'s `dir` edge, focus goes to `to` — and
+/// A declared non-standard transition (§7): at `from`'s `dir` edge, focus goes to `to` - and
 /// wins over the group's `EdgeRule` for that direction only.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Link {
@@ -409,7 +409,7 @@ pub struct Link {
     pub to: GroupId,
 }
 
-/// Who answers a direction for this screen (§7.6): the engine, or the legacy ladders — for a
+/// Who answers a direction for this screen (§7.6): the engine, or the legacy ladders - for a
 /// screen that answers `Legacy` the engine and the hit map are INERT. The player is the last
 /// one that does (phase 12); the blank route-word page that used to be the other went in 10.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -443,7 +443,7 @@ pub struct FocusedCard<'a> {
     pub item: &'a dyn std::any::Any,
     /// The live drawn rect ([`Placed::rect`]).
     pub rect: Option<Rect>,
-    /// The settled focus-scaled rect ([`Placed::rest_rect`]) — what an opener anchors to.
+    /// The settled focus-scaled rect ([`Placed::rest_rect`]) - what an opener anchors to.
     pub rest_rect: Option<Rect>,
 }
 
@@ -460,7 +460,7 @@ pub struct Placed {
     pub rect: Rect,
     pub rest_rect: Rect,
     pub clip: Rect,
-    /// The element's INDEX in its group when it is one — the `from` tie-break of
+    /// The element's INDEX in its group when it is one - the `from` tie-break of
     /// `card_row::column_near_x` (an exact tie keeps the index you had; any direction-only rule
     /// ratchets), carried on the placement so `seat` can read it without a second argument.
     pub index: Option<u32>,
@@ -469,7 +469,7 @@ pub struct Placed {
 /// EVERY method takes `&self`: the engine never mutates a screen (§7.3 step 5 says who does).
 pub trait Focusable<H: Host> {
     fn groups(&self, cx: &Cx<'_, H>, out: &mut Vec<GroupSpec>);
-    /// Which group an element belongs to — what the engine consults an `EdgeRule` on.
+    /// Which group an element belongs to - what the engine consults an `EdgeRule` on.
     fn group_of(&self, key: &H::Elem, cx: &Cx<'_, H>) -> Option<GroupId>;
     fn neighbour(&self, key: FocusKey<H::Elem>, dir: Dir, cx: &Cx<'_, H>) -> Step<H::Elem>;
     fn place(&self, key: &H::Elem, cx: &Cx<'_, H>, at: At) -> Option<Placed>;
@@ -477,7 +477,7 @@ pub trait Focusable<H: Host> {
     fn seat(&self, g: GroupId, from: Placed, cx: &Cx<'_, H>) -> FocusKey<H::Elem>;
 }
 
-/// A component that can be focused AND drawn — what `&dyn Focusable` cannot (§7.1).
+/// A component that can be focused AND drawn - what `&dyn Focusable` cannot (§7.1).
 pub trait Part<H: Host>: Focusable<H> {
     fn prepare(&mut self, b: &mut Budget, cx: &Cx<'_, H>);
     fn draw(&mut self, f: &mut DrawFrame<'_, '_, H>, rect: Rect);
@@ -492,8 +492,8 @@ pub trait Composed<H: Host> {
 }
 
 /// A `Composed` screen's focus protocol is its parts' concatenated in `layout` order. Not a
-/// blanket `impl<T: Composed> Focusable for T` — coherence forbids any other `Focusable` impl
-/// beside one (the widgets' own, `ui::geom`) — so a composed screen writes
+/// blanket `impl<T: Composed> Focusable for T` - coherence forbids any other `Focusable` impl
+/// beside one (the widgets' own, `ui::geom`) - so a composed screen writes
 /// `focusable_via_composed!(Type)`, which delegates to these five.
 pub fn composed_groups<H: Host, T: Composed<H> + ?Sized>(s: &T, cx: &Cx<'_, H>, out: &mut Vec<GroupSpec>) {
     for (id, _) in s.layout(cx) {
@@ -627,7 +627,7 @@ macro_rules! focusable_via_composed {
     };
 }
 
-/// `impl Focusable<H> for $t` by delegation to a VIEW the screen builds for the frame — a
+/// `impl Focusable<H> for $t` by delegation to a VIEW the screen builds for the frame - a
 /// `TableScreen`/`DocumentScreen` over its own state (`fn $view(&self) -> impl Focusable<$h>`).
 /// The screen keeps the widgets; the composition is rebuilt per query, exactly as the draw
 /// rebuilds it (phase 5b's family pages).
@@ -635,7 +635,7 @@ macro_rules! focusable_via_composed {
 /// The second form is for a screen generic over its host (a page that reads its store through a
 /// host trait): `focusable_via_view!(Screen, H: [Bounds], view)` writes
 /// `impl<H: Bounds> Focusable<H> for Screen` and calls `self.view::<H>()`, so the view method is
-/// generic too (`fn view<H: Bounds>(&self) -> impl Focusable<H> + '_`) — a `cards::Stack` page.
+/// generic too (`fn view<H: Bounds>(&self) -> impl Focusable<H> + '_`) - a `cards::Stack` page.
 #[macro_export]
 macro_rules! focusable_via_view {
     (@impl [$($gen:tt)*] $t:ty, $h:ty, $view:ident, [$($turbofish:tt)*]) => {
@@ -757,19 +757,19 @@ pub struct DrawFrame<'a, 'views, H: Host> {
     pub chrome_alpha: f32,
     pub view_tab: Option<u32>,
     pub blur_amount: f32,
-    /// The ROUTE-level nav dip's page alpha this frame was built with (spec §14 phase 8) — what
+    /// The ROUTE-level nav dip's page alpha this frame was built with (spec §14 phase 8) - what
     /// `ui::nav::page_alpha()` answered at the one per-frame read the application made, carried
     /// alongside `page_alpha` rather than folded only into it. A container (a `RouteSurface`'s
     /// own appear motion, a `NavStack`'s push/pop transition) is free to overwrite `page_alpha`
-    /// with its own LOCAL alpha for the page/surface it draws — surfaces do, at
-    /// `dispatch.rs`'s `f.page_alpha = s.motion.appear` — and a screen that also needs the outer
+    /// with its own LOCAL alpha for the page/surface it draws - surfaces do, at
+    /// `dispatch.rs`'s `f.page_alpha = s.motion.appear` - and a screen that also needs the outer
     /// route fade (Settings' scrim wants both: its own appear AND the page fading beneath it;
     /// Detail's hero-button ambient sample must not run while a route change is still in flight)
     /// reads this field instead, so it survives that overwrite. Never mutated after
-    /// construction — the one write is `with_navigation`.
+    /// construction - the one write is `with_navigation`.
     pub nav_page_alpha: f32,
     pub press: PressRead<H::Elem>,
-    /// **The page under this surface, as the container latched it** — the `ModalStack`'s one
+    /// **The page under this surface, as the container latched it** - the `ModalStack`'s one
     /// underlay field (`containers::modal::ModalUnderlay`), which a popover panel's ground is drawn
     /// from (`widgets::panel_ground`). `None` on a page's own frame and on any frame whose
     /// container owns no field; a panel reads `None`, or a field not latched yet, as "draw the flat
@@ -840,7 +840,7 @@ impl<'a, 'views, H: Host> DrawFrame<'a, 'views, H> {
     /// Carry this frame's presentation into a nested frame, including any container alpha.
     ///
     /// Deliberately carries the (possibly container-overwritten) `page_alpha`, not
-    /// `nav_page_alpha` — a nested frame (a page pushed inside a surface's own stack, say) is a
+    /// `nav_page_alpha` - a nested frame (a page pushed inside a surface's own stack, say) is a
     /// new LOCAL cascade and should not re-inherit the outer route fade as its own `page_alpha`
     /// a second time; a screen that needs the route fade at any depth reads `nav_page_alpha`
     /// directly, which every nested `DrawFrame` still carries unchanged since nothing but
@@ -872,7 +872,7 @@ impl<'a, 'views, H: Host> DrawFrame<'a, 'views, H> {
     }
 
     /// Open a GL scissor for `r` (painter space) for the rest of the returned scope: the
-    /// cascade's clip narrows to it and the scissor is restored when the scope drops — the RAII
+    /// cascade's clip narrows to it and the scissor is restored when the scope drops - the RAII
     /// replacement for the bare `Painter::clip`/`clip_clear` pair (spec §7.6). Draw the clipped
     /// content through the painter the scope hands back. A scope opened inside another
     /// INTERSECTS with it ([`ClipScope::open_in`]).
@@ -881,8 +881,8 @@ impl<'a, 'views, H: Host> DrawFrame<'a, 'views, H> {
     }
 
     /// **Does this walk feed the hit map?** Only the VISIBLE walk does (§7.6). A frame walks the
-    /// page closure up to four times — the text prewarm through a recording painter, backdrop
-    /// discovery, one replay per blur source (`app::run::draw`) and the visible pass — and the
+    /// page closure up to four times - the text prewarm through a recording painter, backdrop
+    /// discovery, one replay per blur source (`app::run::draw`) and the visible pass - and the
     /// dispatcher fills `Input`'s hit map from the visible pass alone. A stop placed in any other
     /// walk is layout work thrown away, so every stop producer asks this before it places
     /// anything (`if !f.records_stops() { return; }` at the top of each `record_stops`), and
@@ -903,7 +903,7 @@ impl<'a, 'views, H: Host> DrawFrame<'a, 'views, H> {
 /// A live GL scissor, restored on drop to what was set before it. Scopes NEST by intersection: an
 /// inner scope can only narrow the enclosing one, never widen past it, so a widget that clips its
 /// own viewport (`TableView::draw`) composes inside an outer panel clip with no knowledge of it.
-/// This is the ONE scissor stack — the painter's carried clip (`Painter::clipped`, what the hit
+/// This is the ONE scissor stack - the painter's carried clip (`Painter::clipped`, what the hit
 /// map reads) is the same rectangle by construction, so painting and hit-testing cannot drift.
 /// Pure bookkeeping on the host test binary (no GL is linked): what is graded is the stack.
 pub struct ClipScope {
@@ -912,7 +912,7 @@ pub struct ClipScope {
 }
 
 thread_local! {
-    /// The scissor currently set by a `ClipScope`, if any — what a nested scope restores to.
+    /// The scissor currently set by a `ClipScope`, if any - what a nested scope restores to.
     static CLIP_STACK: std::cell::Cell<Option<Rect>> = const { std::cell::Cell::new(None) };
 }
 
@@ -1018,7 +1018,7 @@ mod draw_frame_tests {
         }
     }
 
-    /// Spec §7.6: a stop is recorded in SCREEN space — the cascade's translate and pop folded
+    /// Spec §7.6: a stop is recorded in SCREEN space - the cascade's translate and pop folded
     /// in, and clipped to the cascade's clip. A tile drawn through `scaled(1.1)` registers its
     /// popped rect; its rest rect is the settled one.
     #[test]
@@ -1038,7 +1038,7 @@ mod draw_frame_tests {
     /// **Only the visible walk records stops.** A frame walks the page closure up to four times:
     /// the text prewarm (a recording painter), backdrop discovery, each blur source, and the
     /// visible pass. The hit map is filled from the visible pass alone, so a stop placed by any
-    /// other walk is layout work thrown away — Detail's `record_stops` alone places two stops per
+    /// other walk is layout work thrown away - Detail's `record_stops` alone places two stops per
     /// episode. `records_stops` is the one answer every stop producer asks before placing, and
     /// `stop` itself refuses outside it.
     #[test]
@@ -1138,11 +1138,11 @@ mod draw_frame_tests {
 
     /// Spec §14 phase 8: `nav_page_alpha` is the ROUTE-level nav dip's page alpha this frame was
     /// built with, and it must survive a container overwriting `page_alpha` with its own local
-    /// motion — exactly what `dispatch.rs`'s surface branch does (`f.page_alpha = s.motion.appear`)
+    /// motion - exactly what `dispatch.rs`'s surface branch does (`f.page_alpha = s.motion.appear`)
     /// so a surface's OWN appear animation, not the outer route fade, drives layout/hit-testing
     /// through `page_alpha`. Before this field existed, a screen that also needed the outer fade
     /// (Settings' scrim, Detail's ambient-sample gate) had nowhere to read it but the `ui::nav`
-    /// statics directly — this is the value that replaces that live read.
+    /// statics directly - this is the value that replaces that live read.
     #[test]
     fn nav_page_alpha_survives_a_containers_local_page_alpha_overwrite() {
         let m = crate::fixture::FixtureMeasure;
@@ -1164,7 +1164,7 @@ mod draw_frame_tests {
     }
 
     /// `DrawFrame::new` (no explicit navigation) is `NavPresentation::default()`, whose
-    /// `page_alpha` is 1.0 — the same rest value `ui::nav::page_alpha()` answers when no route
+    /// `page_alpha` is 1.0 - the same rest value `ui::nav::page_alpha()` answers when no route
     /// transition is in flight, so a screen built through the plain constructor sees the same
     /// "at rest" value from `nav_page_alpha` that it used to read live.
     #[test]

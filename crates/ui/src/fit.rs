@@ -1,4 +1,4 @@
-//! One declared-priority primitive for a line with two competing runs — [`two_runs`].
+//! One declared-priority primitive for a line with two competing runs - [`two_runs`].
 //!
 //! A settings row's label beside its trailing value and a section header beside its trailing
 //! accessory share one shape: two text runs on one line, of which ONE is the PRIMARY (the thing the
@@ -39,8 +39,8 @@ pub const HEADROOM: f32 = 0.98;
 ///
 /// If both natural widths plus `gap` fit, the secondary takes its natural width and the primary
 /// every pixel left. Otherwise the primary gets `max(span - secondary_nat - gap, min(primary_nat,
-/// span * primary_share))` — its natural width up to its share, never less than a fully-elided
-/// secondary would leave it — and the secondary gets what remains after the primary and the gap,
+/// span * primary_share))` - its natural width up to its share, never less than a fully-elided
+/// secondary would leave it - and the secondary gets what remains after the primary and the gap,
 /// floored at `0` for a span too small to hold both.
 pub fn two_runs(span: f32, gap: f32, pair: Pair) -> (f32, f32) {
     let slot = pair.secondary_nat + gap;

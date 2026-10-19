@@ -12,7 +12,7 @@
 //! The application crate enables it in `[dev-dependencies]` only, so no shipped build sees it.
 
 pub mod eventlog; // THE event log: `eventlog::log` is the one sink every module writes through
-pub mod paths; // where the app's own files live — /proc/self/exe, not a hardcoded install prefix
+pub mod paths; // where the app's own files live - /proc/self/exe, not a hardcoded install prefix
 pub mod task; // the one spawn: a refused thread is a return value, not a panic that kills the app
 pub mod cbuf; // fixed NUL-terminated C-string buffer read/write
 pub mod sha256; // SHA-256 / HMAC / PBKDF2, hand-written: the offline PIN verifier's hash

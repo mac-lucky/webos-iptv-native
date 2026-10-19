@@ -1,4 +1,4 @@
-//! **Synthetic grounds for judging a glass material — the test-pattern backdrop.**
+//! **Synthetic grounds for judging a glass material - the test-pattern backdrop.**
 //!
 //! Every material question this app has (how dense the tab track should be, where its polarity
 //! crosses, what the blur does to detail, whether the rim survives) is a question about the bar
@@ -14,7 +14,7 @@
 //! |---|---|---|
 //! | `flat:<L*>` | a neutral at that CIE lightness | the density solve and the polarity, one rung at a time |
 //! | `ramp` | black → white across the screen | where the material changes as the ground brightens |
-//! | `edge` | L\* 10 on the left, L\* 90 on the right | a bar spanning both — the case a 5-tap average cannot see |
+//! | `edge` | L\* 10 on the left, L\* 90 on the right | a bar spanning both - the case a 5-tap average cannot see |
 //! | `checker:<px>` | a checkerboard | what the blur does to detail, and whether it aliases |
 //! | `lines:<px>` | vertical bars | the same at the frequency text actually has |
 //! | `hbars:<px>` | HORIZONTAL bars | the only ground a top-or-bottom-edge lens can move |
@@ -25,14 +25,14 @@
 //!
 //! `solid` is to hue what `flat` is to lightness, and for the same reason: the bar averages five
 //! taps across its own width, so a ground that varies UNDER it collapses to one number and the
-//! sweep answers nothing. Stepping `solid:0:60`, `solid:30:60`, … holds everything still except the
+//! sweep answers nothing. Stepping `solid:0:60`, `solid:30:60`, ... holds everything still except the
 //! one variable.
 //!
 //! `flat` is the one that makes a SNAPSHOT possible: drive the ladder with `pat:flat:10`,
-//! `pat:flat:20`, … and one launch produces a whole graded set, on grounds that are identical
+//! `pat:flat:20`, ... and one launch produces a whole graded set, on grounds that are identical
 //! between runs and between packages. The comparison stops being a matching problem.
 //!
-//! **The pattern is drawn as PAGE CONTENT** — after the hero and the grid, before the chrome — so
+//! **The pattern is drawn as PAGE CONTENT** - after the hero and the grid, before the chrome - so
 //! it is exactly what `gfx::sample_ground` reads and exactly what the backdrop blur sources. It
 //! rides the page's own transition alpha, so a route change still dips it like anything else.
 use crate::{Painter, Rect};
@@ -50,17 +50,17 @@ pub enum Pattern {
     Edge,
     Checker(f32),
     Lines(f32),
-    /// Horizontal bars — `Lines` turned ninety degrees, and it exists for one reason.
+    /// Horizontal bars - `Lines` turned ninety degrees, and it exists for one reason.
     ///
     /// Every other ground in this set varies only ACROSS the screen, and the tab track's long
     /// edges are its top and bottom, whose normals point straight up and down. A refraction at
     /// those edges displaces the sample vertically, and a vertically-invariant ground is unchanged
-    /// by a vertical displacement — so on `edge`, `lines`, `ramp` and every `solid`, a lens on 88%
+    /// by a vertical displacement - so on `edge`, `lines`, `ramp` and every `solid`, a lens on 88%
     /// of the container's perimeter draws exactly nothing. `checker` has horizontal structure and
     /// hid this by half-answering it. This is the ground that makes the long edges legible.
     HBars(f32),
     /// **Which way up, and which way round.** Every other ground here is symmetric under at least
-    /// one mirror, so a backdrop sampled upside down — or left for right — looks exactly like a
+    /// one mirror, so a backdrop sampled upside down - or left for right - looks exactly like a
     /// backdrop sampled correctly. That failure has now happened twice in this material: once in
     /// the blur chain's stored row order, and once when a texture copy left the wrong texture bound
     /// and the panel filled with the page from the other side of itself. Both were caught by a
@@ -78,7 +78,7 @@ pub enum Pattern {
     Solid(f32, Option<f32>),
 }
 
-/// CIE L\* of an opaque colour — the same function every contrast note in this material quotes.
+/// CIE L\* of an opaque colour - the same function every contrast note in this material quotes.
 fn lstar_of(c: [f32; 4]) -> f32 {
     fn lin(v: f32) -> f32 {
         if v <= 0.03928 {
@@ -95,7 +95,7 @@ fn lstar_of(c: [f32; 4]) -> f32 {
     }
 }
 
-/// Fully saturated sRGB for a hue in 0..1 — the sweep's raw colour, before any lightness is asked of
+/// Fully saturated sRGB for a hue in 0..1 - the sweep's raw colour, before any lightness is asked of
 /// it.
 fn hue_rgb(h: f32) -> [f32; 4] {
     let h6 = (h.rem_euclid(1.0)) * 6.0;
@@ -115,8 +115,8 @@ fn hue_rgb(h: f32) -> [f32; 4] {
 ///
 /// **Saturation is spent to buy lightness, and that is the physics rather than a defect in the
 /// pattern.** A fully saturated blue is L\* 32 at its brightest; asking it for 70 can only be
-/// answered by mixing white in, which desaturates it. The alternative — clipping in a wide gamut and
-/// mapping back — would put colours on the screen the panel cannot show, which is worse for a test
+/// answered by mixing white in, which desaturates it. The alternative - clipping in a wide gamut and
+/// mapping back - would put colours on the screen the panel cannot show, which is worse for a test
 /// whose whole point is that the ground is exactly what it says.
 fn to_lstar(c: [f32; 4], target: f32) -> [f32; 4] {
     let toward = if lstar_of(c) < target { 1.0 } else { 0.0 };
@@ -144,7 +144,7 @@ fn to_lstar(c: [f32; 4], target: f32) -> [f32; 4] {
     ]
 }
 
-/// sRGB for a neutral at CIE L\* — the inverse of `lstar`, so a rung named 40 IS the rung the
+/// sRGB for a neutral at CIE L\* - the inverse of `lstar`, so a rung named 40 IS the rung the
 /// contrast tables call 40.
 fn gray(lstar: f32) -> [f32; 4] {
     let l = lstar.clamp(0.0, 100.0);
@@ -189,7 +189,7 @@ pub fn set(spec: &str) -> bool {
                 "hbars" => Pattern::HBars(if n.is_finite() && n >= 1.0 { n } else { 6.0 }),
                 // bare `hue` / `rainbow` keep each hue's own natural lightness; with an argument
                 // every column is normalised to it, which is the form that isolates HUE from
-                // brightness — the only way to ask whether the solve treats them evenly
+                // brightness - the only way to ask whether the solve treats them evenly
                 "hue" if arg.is_empty() || at.is_some() => Pattern::Hue(at),
                 "solid" => {
                     let (deg, rest) = arg.split_once(':').unwrap_or((arg, ""));
@@ -293,7 +293,7 @@ pub fn draw(p: Painter) {
             }
         }
         // The same bars laid across the screen instead of down it. The bar's own height is 76, so
-        // a 12px pitch puts three light and three dark bands behind it — enough that a bend at the
+        // a 12px pitch puts three light and three dark bands behind it - enough that a bend at the
         // top or bottom edge shows as the bands CURVING rather than as one band moving.
         Pattern::HBars(px) => {
             let n = (h / (px * 2.0)).ceil() as i32;
@@ -349,7 +349,7 @@ pub fn draw(p: Painter) {
     }
 }
 
-/// The dark ground a checker/lines pattern is drawn over — one quad, laid first.
+/// The dark ground a checker/lines pattern is drawn over - one quad, laid first.
 pub fn underlay(p: Painter) {
     match unsafe { *addr_of!(CURRENT) } {
         Some(Pattern::Checker(_)) | Some(Pattern::Lines(_)) | Some(Pattern::HBars(_)) => {
@@ -368,7 +368,7 @@ pub fn underlay(p: Painter) {
 mod tests {
     use super::*;
 
-    /// A rung named 40 must BE the rung every contrast table in this material's notes calls 40 —
+    /// A rung named 40 must BE the rung every contrast table in this material's notes calls 40 -
     /// the specs are read against those tables, so a pattern that is off by a few L\* silently
     /// invalidates the comparison it was built to make.
     #[test]

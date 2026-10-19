@@ -1,6 +1,6 @@
 //! **The live window, as pure arithmetic**: where a live playback starts, when the media playlist
 //! is reloaded, where the next segment is after a reload, and when a playlist that has stopped
-//! growing is declared dead. No I/O and no clock of its own — every function takes `now` in
+//! growing is declared dead. No I/O and no clock of its own - every function takes `now` in
 //! milliseconds from whatever clock the caller runs ([`super::source::Clock`]), so the tests drive
 //! them with a fake one.
 //!

@@ -1,4 +1,4 @@
-//! **The event log** — `/tmp/webosiptv-events.log` on the television, the app's one support channel.
+//! **The event log** - `/tmp/webosiptv-events.log` on the television, the app's one support channel.
 //!
 //! [`log`] is the ONE sink every module writes through; [`redact_tokens`] and [`scrub`] are the
 //! guards every line passes on the way, and [`ring`] is the lab's tap. It lives in the base layer
@@ -41,7 +41,7 @@ pub fn redact_tokens(m: &str) -> std::borrow::Cow<'_, str> {
         out.push_str(&rest[..at + KEY.len()]);
         out.push_str("<redacted>");
         let after = &rest[at + KEY.len()..];
-        // the value ends at the next query separator or any whitespace — whichever comes first
+        // the value ends at the next query separator or any whitespace - whichever comes first
         let end = after
             .find(|c: char| c == '&' || c.is_whitespace())
             .unwrap_or(after.len());
@@ -52,7 +52,7 @@ pub fn redact_tokens(m: &str) -> std::borrow::Cow<'_, str> {
 }
 
 /// The event log's path. One definition, because three things open this file: `log` below,
-/// the simulator binary (which truncates it at startup), and `src/main.c` on the television — and
+/// the simulator binary (which truncates it at startup), and `src/main.c` on the television - and
 /// the last of those cannot see this module, which is what [`crate::paths::ENV_STEERABLE`] guarantees.
 pub fn events_log() -> std::path::PathBuf {
     #[cfg(any(test, feature = "test-support"))]
@@ -159,12 +159,12 @@ mod private_log_tests {
 ///
 /// **Why that is acceptable where 0644 in the shared, mode-1777 `/tmp` was not** (the 2026-08-29
 /// closed entry in `docs/distribution.md`): "other" still gets nothing, and the content is no
-/// longer what it was — [`log`] passes every line through [`scrub::scrub_local`] before the write.
+/// longer what it was - [`log`] passes every line through [`scrub::scrub_local`] before the write.
 /// What stays open is that another native app in gid 5000 on the same television can read these
 /// files; `docs/distribution.md` §6.9 states that residual risk and the audit behind it.
 const LOG_MODE: u32 = 0o640;
 
-/// Open a log sink for append at [`LOG_MODE`] — **the one open discipline every Rust-side sink
+/// Open a log sink for append at [`LOG_MODE`] - **the one open discipline every Rust-side sink
 /// goes through** (the event log below and the panic hook's crash log in `app::boot`), the twin of
 /// `src/main.c`'s `open_fd_log`. The path is in the shared, sticky `/tmp`, so the open is a
 /// security boundary and refuses, with the file untouched:
@@ -172,8 +172,8 @@ const LOG_MODE: u32 = 0o640;
 /// * a symlink (`O_NOFOLLOW`);
 /// * anything that is not a regular file, or is not owned by this process's uid;
 /// * **a file with more than one link** (`st_nlink != 1`). A co-resident app in the same gid that
-///   can link names in `/tmp` can `link(2)` one of OUR 0600 files — the `auth.json` session
-///   fallback sits in the same runtime directory — onto a sink name when `fs.protected_hardlinks`
+///   can link names in `/tmp` can `link(2)` one of OUR 0600 files - the `auth.json` session
+///   fallback sits in the same runtime directory - onto a sink name when `fs.protected_hardlinks`
 ///   is off. The open then lands on an inode that passes every other check because it IS ours, and
 ///   the `fchmod` below would publish it to the group. Asked of the OPENED descriptor, so there is
 ///   no window between the check and the use.
@@ -239,23 +239,23 @@ pub fn append_record(path: &std::path::Path, line: &str) -> std::io::Result<()> 
     write_log_line(&mut open_log_append(path)?, line)
 }
 
-/// Append one line to the on-device event log (`/tmp/webosiptv-events.log`) — the primary debugging
+/// Append one line to the on-device event log (`/tmp/webosiptv-events.log`) - the primary debugging
 /// surface (`make run` fetches it). The ONE shared sink; modules bring it in as `use crate::eventlog::log;`.
 ///
-/// Every line goes through [`redact_tokens`] first — see its doc for why the guard lives here.
+/// Every line goes through [`redact_tokens`] first - see its doc for why the guard lives here.
 pub fn log(m: &str) {
     // Through the instance root, not a literal: several host simulators run at once, and one
     // shared event log would interleave their lines into something no run can be graded from.
-    // On the television the root is `/tmp`, so this is byte-for-byte the path it always was —
+    // On the television the root is `/tmp`, so this is byte-for-byte the path it always was -
     // `make run`, `tests/run.py` and every skill recipe still read the same file.
     let p = events_log();
     // The FULL local pass, not just the token backstop: identities, hostnames and bare
-    // addresses are rewritten before anything reaches the disk. `scrub_local` never DROPS a line —
+    // addresses are rewritten before anything reaches the disk. `scrub_local` never DROPS a line -
     // see its doc for why the network exit may and this one may not.
     let line = crate::eventlog::scrub::scrub_local(m);
     // The lab ring taps the log HERE, one call below the redaction, so it is by construction a
     // strict subset of the file every other tool reads and inherits the credential backstop above.
-    // Compiled out without the `lab-diagnostics` feature — see `lab`.
+    // Compiled out without the `lab-diagnostics` feature - see `lab`.
     #[cfg(feature = "lab-diagnostics")]
     crate::eventlog::ring::record(&line);
     let _ = append_record(&p, &line);
@@ -279,7 +279,7 @@ mod redact_tests {
         );
     }
 
-    /// A token in the MIDDLE keeps the parameters after it — the redaction ends at `&`, so a line
+    /// A token in the MIDDLE keeps the parameters after it - the redaction ends at `&`, so a line
     /// is not silently truncated from the token onward (which would hide the very fields that make
     /// the line worth logging).
     #[test]
@@ -394,13 +394,13 @@ mod log_sink_tests {
     }
 
     /// A umask is PROCESS-wide, so the body runs in a CHILD copy of the test binary (selected by
-    /// `CHILD_ENV`) whose umask is its own — the technique, and the reason, of
+    /// `CHILD_ENV`) whose umask is its own - the technique, and the reason, of
     /// `storage::diagnostics`' `publication_is_0640_even_under_a_restrictive_umask`: setting a
     /// restrictive umask here would silently change the mode of every file another test creates
     /// during the window.
     ///
     /// The contract is the one `webosiptv-diag.log` already ships: **0640** whatever the creating
-    /// process's umask says — group read, so a Dev Mode user (whose only tool is webOS Dev Manager,
+    /// process's umask says - group read, so a Dev Mode user (whose only tool is webOS Dev Manager,
     /// reading as an unprivileged user in the app's group) can download the file, and nothing at
     /// all for anyone outside that group. Three starting states, because each reaches the mode by
     /// a different route: a fresh create (the umask masks `open(2)`'s mode, so only the explicit
@@ -410,7 +410,7 @@ mod log_sink_tests {
         use std::os::unix::fs::MetadataExt;
         const CHILD_ENV: &str = "WEBOSIPTV_EVENTLOG_UMASK_CHILD";
         if std::env::var_os(CHILD_ENV).is_none() {
-            // libtest names a test without its crate: `eventlog::log_sink_tests::…`.
+            // libtest names a test without its crate: `eventlog::log_sink_tests::...`.
             let name = format!(
                 "{}::the_event_log_is_0640_even_under_a_restrictive_umask",
                 module_path!().split_once("::").unwrap().1

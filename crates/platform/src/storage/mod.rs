@@ -254,7 +254,7 @@ pub fn inject_next_commit_failure_for_test(stage: CommitStage) {
 /// Unconditionally clear whatever `inject_next_commit_failure_for_test` armed, whether or not it
 /// was ever consumed. A caller whose commit path can refuse BEFORE reaching the injected stage
 /// (`StaleAuthority`, a registry refusal, an admission refusal) must pair `inject_next_commit_failure_for_test`
-/// with this in a `Drop` guard — otherwise an unconsumed injection leaks into whichever canonical
+/// with this in a `Drop` guard - otherwise an unconsumed injection leaks into whichever canonical
 /// commit the test process runs next.
 #[cfg(any(test, feature = "test-support"))]
 pub fn clear_injected_commit_failure_for_test() {
@@ -564,8 +564,8 @@ static UNLINK_FAULT_FOR_TEST: std::sync::Mutex<Option<(PathBuf, i32)>> = std::sy
 /// Make every [`unlink`] of a path under `dir` fail with `errno`, on EVERY thread (the sign-out
 /// clear runs on the storage worker), until the guard drops. Scoped to a directory the test owns
 /// so a parallel test's cleanup elsewhere is untouched. The host cannot mount a read-only
-/// filesystem, and EROFS — which Linux returns from the parent's mount BEFORE it looks the child
-/// up — is exactly what the television answers for a candidate that does not exist.
+/// filesystem, and EROFS - which Linux returns from the parent's mount BEFORE it looks the child
+/// up - is exactly what the television answers for a candidate that does not exist.
 #[cfg(any(test, feature = "test-support"))]
 pub struct UnlinkFaultForTest;
 

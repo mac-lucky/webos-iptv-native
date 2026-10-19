@@ -5,10 +5,10 @@
 //! archival `com.palm.keymanager` AES-CFB interface is deliberately not used: it provides no
 //! authenticated-encryption primitive, and ciphertext integrity is part of the storage contract.
 //!
-//! This module deliberately uses LS2 as an unprivileged in-app client — the process's one client
+//! This module deliberately uses LS2 as an unprivileged in-app client - the process's one client
 //! in `webos::ls2`, a plain anonymous `LSRegister`; the `LSRegisterApplicationService(NULL, app_id)`
 //! it used until 2026-09-04 is refused by the hub on the dev set (`-1027 Invalid permissions`), so
-//! every probe here failed at registration and never reached a service — and no root-only broker,
+//! every probe here failed at registration and never reached a service - and no root-only broker,
 //! filesystem or HAL symbol. A normal SAM-launched app therefore follows the same unprivileged call path on
 //! development and retail sets; the retail LS2 entitlement itself is capability-probed at runtime
 //! and denial selects the mode-0600 fallback.
@@ -224,7 +224,7 @@ mod platform {
 
     /// One registration on the bus, kept alive for the length of a logical keymanager operation
     /// (`modern_crypt` needs begin → finish on ONE connection). The registration itself is the
-    /// process-wide `webos::ls2` client — the shape it registers with and the reason are there.
+    /// process-wide `webos::ls2` client - the shape it registers with and the reason are there.
     ///
     /// **A service that stalls once is not asked again on this client.** Registration succeeds on
     /// the dev set since 2026-09-04, which makes [`BUDGET`] REACHABLE from a synchronous session

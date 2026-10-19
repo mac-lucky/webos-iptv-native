@@ -5,7 +5,7 @@ use super::*;
 #[allow(unused_imports)]
 use super::test_support::*;
 
-/// **Profile 5** — single-layer IPT-PQ. `bl_compat = 0` ("none") is the field that says the
+/// **Profile 5** - single-layer IPT-PQ. `bl_compat = 0` ("none") is the field that says the
 /// base layer is not displayable by a decoder that ignores the RPU, and it is the whole
 /// reason this record is read at all.
 #[test]
@@ -20,7 +20,7 @@ fn a_profile_5_record_parses_with_no_base_layer_compatibility() {
     assert_eq!(d.dv_version_major, 1);
 }
 
-/// **Profile 7** — dual layer. The enhancement-layer flag is what identifies it; note the
+/// **Profile 7** - dual layer. The enhancement-layer flag is what identifies it; note the
 /// compatibility id is 6 here (the value the dev server reports for its P7 item), so a reader
 /// that only looked at `bl_compat == 0` would call this file fine.
 #[test]
@@ -34,7 +34,7 @@ fn a_profile_7_record_parses_with_an_enhancement_layer() {
     );
 }
 
-/// **Profile 8.1** — the base layer IS HDR10, which `bl_compat = 1` is exactly the statement
+/// **Profile 8.1** - the base layer IS HDR10, which `bl_compat = 1` is exactly the statement
 /// of. Nothing about this file should change behaviour anywhere.
 #[test]
 fn a_profile_8_1_record_parses_as_hdr10_compatible() {
@@ -46,7 +46,7 @@ fn a_profile_8_1_record_parses_as_hdr10_compatible() {
 
 /// The ABSENT case, and the short one. A file with no Dolby Vision has no side-data entry at
 /// all, which `dovi_conf` reports as `None` without ever reaching here; what this pins is the
-/// other way in — a TRUNCATED payload must not be read as a partial record, because nine
+/// other way in - a TRUNCATED payload must not be read as a partial record, because nine
 /// bytes taken out of a seven-byte allocation is a heap overread that returns a plausible
 /// profile number rather than crashing.
 #[test]
@@ -59,7 +59,7 @@ fn a_short_record_is_not_a_partial_record() {
     );
     // exactly nine is the boundary, and it is inclusive
     assert!(parse_dovi_conf(&dovi_bytes(5, 6, 1, 0, 1, 0)).is_some());
-    // a LONGER payload is fine and expected — a future FFmpeg may append fields, and the
+    // a LONGER payload is fine and expected - a future FFmpeg may append fields, and the
     // nine we read keep their meaning
     let mut long = dovi_bytes(8, 6, 1, 0, 1, 1);
     long.extend_from_slice(&[0xAA; 7]);
@@ -67,8 +67,8 @@ fn a_short_record_is_not_a_partial_record() {
 }
 
 /// Every field at its own offset: nine distinct byte values in, nine distinct values out.
-/// A transposition of any adjacent pair — the one mistake a hand-written record parse is
-/// actually prone to — fails here and nowhere else.
+/// A transposition of any adjacent pair - the one mistake a hand-written record parse is
+/// actually prone to - fails here and nowhere else.
 #[test]
 fn every_field_reads_from_its_own_byte() {
     let d = parse_dovi_conf(&[10, 11, 12, 13, 14, 15, 16, 17, 18]).unwrap();
@@ -110,7 +110,7 @@ fn nal_end_rejects_empty_and_overrun() {
 }
 
 /// Documents the defect `nal_end` exists to prevent. `usize` is 32 bits on the TV, so the
-/// guard that shipped — `i + nl > size` — WRAPPED for a length near u32::MAX, passed its own
+/// guard that shipped - `i + nl > size` - WRAPPED for a length near u32::MAX, passed its own
 /// bounds check, and panicked the demux thread inside the slice. This assertion cannot fail
 /// on a 64-bit host (the wrap is unreachable here), so it is a documentation test, not a
 /// regression gate: the real gate is that `nal_end` is a named function whose doc says not to
@@ -184,7 +184,7 @@ fn every_nal_is_emitted_with_a_start_code() {
 }
 
 /// A length field that claims more bytes than the packet holds must truncate cleanly rather
-/// than panic — this is the ordinary shape of a corrupt or mid-transfer-truncated AU.
+/// than panic - this is the ordinary shape of a corrupt or mid-transfer-truncated AU.
 #[test]
 fn a_length_past_the_end_truncates_instead_of_panicking() {
     let mut buf = avcc(&[&[0x41, 0x01]]);

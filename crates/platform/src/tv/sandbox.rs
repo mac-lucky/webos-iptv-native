@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 /// The three outcomes of the boot-time probe, cached for the process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
-    /// The SoC did not match the affected family — `/dev/rtkmem` was never probed.
+    /// The SoC did not match the affected family - `/dev/rtkmem` was never probed.
     NotApplicable,
     /// The SoC matched and `/dev/rtkmem` is readable.
     Ok,
@@ -21,7 +21,7 @@ pub fn publish(verdict: Verdict) {
 }
 
 /// TEST ONLY: force [`blocks_native_video`] to report blocked, without touching the process-wide
-/// `VERDICT` `OnceLock` — a real boot sets that exactly once via the port's probe, and no test can
+/// `VERDICT` `OnceLock` - a real boot sets that exactly once via the port's probe, and no test can
 /// re-init it to exercise the blocked path. Mirrors `ffi_host.rs`'s `FORCE_*` controls. There is no
 /// separate "release" call: `false` is the default, so a test that sets this to `true` must reset
 /// it to `false` before returning, under `tv_base::testlock::serial()`.
@@ -35,10 +35,10 @@ pub static FORCE_BLOCKED: std::sync::atomic::AtomicBool =
 /// first Load of every session.
 ///
 /// Reads with a plain `get()` (never `get_or_init`) so a call that races ahead of the port's
-/// probe sees `NotApplicable` for itself but leaves the cell EMPTY — a later [`publish`] can still
+/// probe sees `NotApplicable` for itself but leaves the cell EMPTY - a later [`publish`] can still
 /// `set()` the real verdict, and every subsequent call observes it. `get_or_init` would instead
 /// latch `NotApplicable` permanently on that first early call, silently discarding the real
-/// probe's `set()` and leaving the `devjail: … rtkmem=missing` log line contradicted by a gate
+/// probe's `set()` and leaving the `devjail: ... rtkmem=missing` log line contradicted by a gate
 /// that reports not-blocked forever.
 pub fn blocks_native_video() -> bool {
     #[cfg(any(test, feature = "test-support"))]
@@ -48,7 +48,7 @@ pub fn blocks_native_video() -> bool {
     blocks(&VERDICT)
 }
 
-/// PURE half of [`blocks_native_video`]'s verdict, taking the cell as a parameter — so the
+/// PURE half of [`blocks_native_video`]'s verdict, taking the cell as a parameter - so the
 /// early-read-vs-later-write race it exists to guard against can be tested against a throwaway
 /// local `OnceLock`, rather than by writing into the real process-wide `VERDICT` (which a test can
 /// never un-set, and which every later test's `blocks_native_video()` call also reads).
@@ -59,10 +59,10 @@ fn blocks(cell: &OnceLock<Verdict>) -> bool {
     )
 }
 
-/// The closed-enum sandbox fact for every telemetry event — `ok` / `missing` / `n/a` — read from
+/// The closed-enum sandbox fact for every telemetry event - `ok` / `missing` / `n/a` - read from
 /// the SAME cached verdict [`blocks_native_video`] gates playback on, never a second probe of
 /// `/dev/rtkmem`. An unset cell (a call racing ahead of boot's probe, the same race
-/// [`blocks_native_video`]'s doc describes) reads as `n/a` — the same fallback that function uses,
+/// [`blocks_native_video`]'s doc describes) reads as `n/a` - the same fallback that function uses,
 /// so a telemetry event and the gate it would have been diagnosing this attempt's failure against
 /// can never disagree about what this jail carries.
 pub fn context() -> &'static str {
@@ -107,11 +107,11 @@ mod tests {
     /// `blocks_native_video()` (before the port's probe has ever run) must NOT permanently latch
     /// `NotApplicable` into the cell. With the old `get_or_init(|| NotApplicable)` reader this
     /// first call would win the race and every later `VERDICT.set(Missing)` from the real probe
-    /// would be silently dropped (`OnceLock::set` returns `Err` once already initialized) — the
+    /// would be silently dropped (`OnceLock::set` returns `Err` once already initialized) - the
     /// gate would report "not blocked" forever while the boot log said `rtkmem=missing`.
     ///
     /// Exercised against a throwaway local cell via `blocks`, not the process-wide `VERDICT`
-    /// static — that `OnceLock` can never be un-set, so writing into the real one here would
+    /// static - that `OnceLock` can never be un-set, so writing into the real one here would
     /// permanently latch `blocks_native_video()` to `true` for every other test in this process,
     /// un-serialized. See finding
     /// `rtkmem-probe-test-permanently-sets-the-process-wide-oncelock`.

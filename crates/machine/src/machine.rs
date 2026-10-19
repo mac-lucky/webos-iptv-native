@@ -3,11 +3,11 @@
 //! effect vocabulary `Fx`, input events, navigation ops, addressing, and the `LogicalState` /
 //! `Canon` pair every hashed state implements.
 //!
-//! **Phase 2-i — the contract spike.** This module and its siblings (`screen`, `present`,
+//! **Phase 2-i - the contract spike.** This module and its siblings (`screen`, `present`,
 //! `landing`, `tex`, `frame`, `dispatch`) are a COMPILING host-only skeleton; nothing in the
 //! product calls them until phase 2 replaces `app/run.rs`'s loop with `dispatch`. They exist so
 //! the boundaries are proven to COMPOSE against the layer rule (§2.1: this module names no
-//! application type, no widget, no engine, no screen — `stores/` will reach `ui::` through this
+//! application type, no widget, no engine, no screen - `stores/` will reach `ui::` through this
 //! module alone) before any real code moves. Every type here is what the spec names; where the
 //! spike narrows one (such as a `Timer` with no owner registry) the doc
 //! on it says so.
@@ -23,23 +23,23 @@ use super::present::{Present, PresentEvent, Provenance};
 pub trait Host: 'static {
     /// The app's screen argument enum (what an entry is mounted from).
     type Arg: ScreenArg;
-    /// App effects: Store / Net / Disk / Sys / Player / Poster / Emit — executed by `app/effects.rs`.
+    /// App effects: Store / Net / Disk / Sys / Player / Poster / Emit - executed by `app/effects.rs`.
     type Fx: 'static;
-    /// App payloads: async results, store notices, deliveries — parsed by the REQUESTER.
+    /// App payloads: async results, store notices, deliveries - parsed by the REQUESTER.
     type Msg: 'static;
     /// `ElemKey`: interned, never a String.
     type Elem: Copy + Eq + Hash + 'static;
-    /// The read side: `&BrowseView`, `&MetadataView`, … as one `Copy` bundle of references.
+    /// The read side: `&BrowseView`, `&MetadataView`, ... as one `Copy` bundle of references.
     type Views<'a>: Copy;
     /// The application's initial conditions for a recording header (§5.3).
     type Init: LogicalState + 'static;
     /// The opaque per-screen payload `ReturnState`'s tier-2 `memory` field carries (spec §6.1;
     /// `ui::screen::ReturnState<K, M>`'s `M`, defaulted to `()` there so a Host that has nothing to
-    /// remember pays nothing). **The library never names what is INSIDE it** — that would be an
-    /// application type crossing the layer rule (§2.1) — only that every screen's payload lives in
+    /// remember pays nothing). **The library never names what is INSIDE it** - that would be an
+    /// application type crossing the layer rule (§2.1) - only that every screen's payload lives in
     /// ONE type, because one `NavStack<H, T>` holds heterogeneous `Entry<H>`s and so cannot carry a
     /// different concrete memory type per screen. An application with several screens that need to
-    /// remember something (Detail's `Spot`, a future Library `Cursor` mirror, …) folds them into
+    /// remember something (Detail's `Spot`, a future Library `Cursor` mirror, ...) folds them into
     /// one enum and fixes `Memory` to it (`AppHost` uses `PageMemory`); a bundle with
     /// nothing to remember fixes it to `()`, like `FixtureHost` and `InnerHost`.
     /// See `stores/metadata.rs`'s module doc for the worked case (`Spot`) and
@@ -93,7 +93,7 @@ newtype!(
     GroupId
 );
 newtype!(
-    /// An opaque poster identity — the seam between the app's source and the render cache (§10).
+    /// An opaque poster identity - the seam between the app's source and the render cache (§10).
     PosterKey
 );
 newtype!(
@@ -199,8 +199,8 @@ pub trait Measure {
     }
 
     /// `width` for a borrowed `&str` (spec §4.3, phase 12 D4): builds the transient `CString` so
-    /// a draw-time call site measures a `String`/`&str` slice without hand-rolling one — the exact
-    /// conversion every `tv_gfx::text::text_width(c.as_ptr(), …)` call site already did, moved
+    /// a draw-time call site measures a `String`/`&str` slice without hand-rolling one - the exact
+    /// conversion every `tv_gfx::text::text_width(c.as_ptr(), ...)` call site already did, moved
     /// behind the capability so the raw free function stops being reachable outside `ui/text*.rs`
     /// and the three `Measure` impls. An embedded NUL (never produced by real UI strings) answers
     /// `0.0`, the same fallback `CString::new(..).ok()` gave every caller before.
@@ -213,13 +213,13 @@ pub trait Measure {
     /// **Are these answers the process's live font, and nothing else?** `true` only for the
     /// device/simulator font (`TtfMeasure`, the widgets' `LegacyMeasure`) and for
     /// `ui::rec::Measurements::Live` over one of them. Such a capability may share a result
-    /// memoised from the SAME font across frames and views (`TextView`'s wrap memo) — a wrap
+    /// memoised from the SAME font across frames and views (`TextView`'s wrap memo) - a wrap
     /// through it cannot differ from one through the free functions.
     ///
     /// Every other capability answers `false`: a recording must SEE each query to write it into
     /// its table, and a replay or fixture answers from a table that a live-font memo would mask.
     /// Measured 2026-09-19: with no such sharing, the Detail page re-wrapped every paragraph
-    /// through TrueType on every frame — the page was CPU-bound at 50 fps with nothing drawn.
+    /// through TrueType on every frame - the page was CPU-bound at 50 fps with nothing drawn.
     fn live_font(&self) -> bool {
         false
     }
@@ -239,7 +239,7 @@ pub fn elide_by(s: &str, budget: f32, cont: bool, measure: impl Fn(&str) -> f32)
     if budget <= 0.0 || measure(&target) <= budget {
         return target;
     }
-    // largest char-prefix of `s` whose "prefix…" still fits `budget`
+    // largest char-prefix of `s` whose "prefix..." still fits `budget`
     let chars: Vec<char> = s.chars().collect();
     let (mut lo, mut hi) = (0usize, chars.len());
     while lo < hi {
@@ -287,7 +287,7 @@ pub struct PressRead<K = ()> {
     /// Milliseconds a HOLDABLE (card) press has been held down right now, still undecided: `None`
     /// for no press, a control face's press (no hold gesture), a released or cancelled one.
     /// The reader divides by the hold threshold (`ui::press::LONG_MS`, which this layer cannot
-    /// name) — it is what the hold hint's cap fills from.
+    /// name) - it is what the hold hint's cap fills from.
     pub held_ms: Option<u32>,
     /// The element the dip belongs to, for as long as the press machine is moving it: from the
     /// key-down until the spring-back has settled, INCLUDING after the press was abandoned and the
@@ -341,7 +341,7 @@ impl<K> Default for FocusRead<K> {
     }
 }
 
-/// Focus identity (§7.2): the entry and the CONTROL (never its face). Strict equality — no
+/// Focus identity (§7.2): the entry and the CONTROL (never its face). Strict equality - no
 /// item-first/slot-second fallback; promotion is an explicit `reconcile` answer.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct FocusKey<K> {
@@ -404,7 +404,7 @@ impl<'p, H: Host> Effects<'p, H> {
         }
     }
 
-    /// A sink over a handle the caller already holds — a surface stepping the pages of its OWN
+    /// A sink over a handle the caller already holds - a surface stepping the pages of its OWN
     /// stack (phase 5b's `SettingsSurface`) builds one over its inner buffer and forwards.
     pub fn from_handle(buf: &'p mut Vec<Stamped<H>>, from: MachineId, present: PresentHandle<'p>) -> Self {
         Self {
@@ -438,7 +438,7 @@ impl<'p, H: Host> Effects<'p, H> {
         self.note(PresentEvent::Damage(why));
     }
 
-    /// Who this sink stamps — a machine that emits on behalf of a child uses it for `Provenance`.
+    /// Who this sink stamps - a machine that emits on behalf of a child uses it for `Provenance`.
     pub fn from(&self) -> MachineId {
         self.from
     }
@@ -464,7 +464,7 @@ impl<'p, H: Host> Effects<'p, H> {
 
 /// The library's effect vocabulary (§3.1). Damage is NOT a variant: `Effects::invalidate`.
 pub enum Fx<H: Host> {
-    /// Structural — executed only at NAV COMMIT (§3.3 step 7).
+    /// Structural - executed only at NAV COMMIT (§3.3 step 7).
     Nav(NavOp<H::Arg>),
     Mount(EntryId),
     Unmount(EntryId),
@@ -548,7 +548,7 @@ impl<H: Host> ScreenEvent<H> {
     }
 }
 
-/// Lifecycle entry (§6.1) — distinct from `Seat`, the focus-entry policy.
+/// Lifecycle entry (§6.1) - distinct from `Seat`, the focus-entry policy.
 #[derive(Clone, Copy, Debug)]
 pub enum Enter<K> {
     Fresh { focus: FocusTarget<K> },
@@ -560,13 +560,13 @@ pub enum Enter<K> {
 /// `ContainerGroup` and `FirstInGroup` name the SAME group and can resolve through the SAME
 /// `Seat::Remembered` policy, yet they must not be interchangeable: only the container mounting a
 /// page knows whether that page has been seen before. A table's `Seat` is a property of the
-/// GROUP — it says how to seat a cursor that lands there by direction, by a `Link`, or by a plain
-/// re-entry within the still-live screen — and rightly stays `Remembered` for all of those. But
+/// GROUP - it says how to seat a cursor that lands there by direction, by a `Link`, or by a plain
+/// re-entry within the still-live screen - and rightly stays `Remembered` for all of those. But
 /// `Enter::Fresh` means the screen is being shown for the first time in this visit, and a
 /// remembered cursor cannot belong to a page nobody has looked at yet: every nested Settings page
 /// shares one `EntryId` with its siblings (the surface's own, `RouteSurface::run_inner`) and every
 /// one of their tables shares `GroupId(0)`, so `Seat::Remembered`'s `(EntryId, GroupId)` key is
-/// literally the SAME key across a push from Root into Legal — pushing OK on Settings' second row
+/// literally the SAME key across a push from Root into Legal - pushing OK on Settings' second row
 /// then had Legal open already seated on ITS second row, because `seat_in`'s remembered arm read
 /// the outgoing page's cursor back for the incoming one. `FirstInGroup` is the container's way to
 /// say "ignore whatever is remembered here, this is new" without weakening `Seat::Remembered` for
@@ -574,20 +574,20 @@ pub enum Enter<K> {
 #[derive(Clone, Copy, Debug)]
 pub enum FocusTarget<K> {
     Elem(FocusKey<K>),
-    /// Seat by the group's own `Seat` policy (`Seat::Remembered` included) — a plain re-entry.
+    /// Seat by the group's own `Seat` policy (`Seat::Remembered` included) - a plain re-entry.
     ContainerGroup(GroupId),
-    /// Seat at the group's first selectable element, ignoring any remembered cursor for it — a
+    /// Seat at the group's first selectable element, ignoring any remembered cursor for it - a
     /// page being shown for the first time in this visit, where a remembered cursor cannot be
     /// ITS memory however the `(EntryId, GroupId)` key happens to compare.
     FirstInGroup(GroupId),
     /// The same seat as `FirstInGroup`, reported to `ScreenEvent::FocusMoved` as `By::Dir`
-    /// instead of `By::Restore` — a strip PILL's cover-and-mint (`NavStack`'s `SelectTab`
+    /// instead of `By::Restore` - a strip PILL's cover-and-mint (`NavStack`'s `SelectTab`
     /// arm), never a `Push`/`Root` mint. A tab press always originates FROM the visible strip,
     /// so the arrival is exactly as deliberate as a directional move into the same group would
     /// be; reporting `By::Restore` for it read as "the page is being restored to where it was",
     /// which is false the first time a tab is ever visited, and it silently disabled every
     /// screen's own "deliberate move" arrival animation (`library::LibraryScreen`'s
-    /// `pop_from_rest`, gated on `By::Dir | By::Pointer`) for that one path only — the reason a
+    /// `pop_from_rest`, gated on `By::Dir | By::Pointer`) for that one path only - the reason a
     /// fresh Home/Search → TV Shows mint SNAPPED to the first tile while a Movies → TV Shows
     /// peer switch (which never leaves the strip's already-focused pill, and never re-enters
     /// through here at all) animated normally. `stack.rs`'s `SelectTab` "cover-and-mint" arm is
@@ -818,8 +818,8 @@ pub struct Addr {
     pub req: RequestId,
 }
 
-/// Canonical state (§5.4): a hand-written encoder — floats as bits, collections as explicitly
-/// ordered sequences, enums as explicit discriminants — hashed to one `u64`. No JSON is hashed.
+/// Canonical state (§5.4): a hand-written encoder - floats as bits, collections as explicitly
+/// ordered sequences, enums as explicit discriminants - hashed to one `u64`. No JSON is hashed.
 pub struct Canon {
     h: u64,
     len: u64,

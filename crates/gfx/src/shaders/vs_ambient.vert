@@ -21,7 +21,7 @@ varying highp vec2 v_dither_nc;
 #endif
 #ifdef WI_WASH_INK
 // THE INK RAMP ON THE WASH (`gfx::draw_ambient_inked`): a vertical scrim ramp of one ink laid over
-// the field — the screen's atmospheric ramp, which used to be one or two more full-width blended
+// the field - the screen's atmospheric ramp, which used to be one or two more full-width blended
 // passes over the same pixels. Its alpha runs LINEARLY from `u_inka.x` at this rect's top to
 // `u_inka.y` at its bottom (the caller cuts the ramp at its knees, so each rect is one straight
 // segment), which makes it exact per vertex, like the field itself.
@@ -35,7 +35,7 @@ uniform vec2 u_inka;
 varying float v_inka;
 // The wash with a photograph dissolved INTO it (`fs_art_wash.frag`, `gfx::draw_art_wash`): the
 // same field over the same mesh, also handing the fragment the photograph's texture coordinate.
-// It is linear in position, so — like the noise coordinate — it interpolates exactly and the
+// It is linear in position, so - like the noise coordinate - it interpolates exactly and the
 // fragment does no arithmetic to find it.
 uniform highp vec4 u_art;    // the art quad: (x, y, 1/w, 1/h) in authored pixels
 uniform highp vec4 u_uvrect; // the texture window the quad samples: (u, v, du, dv)

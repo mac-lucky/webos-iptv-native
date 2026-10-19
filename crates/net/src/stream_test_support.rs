@@ -21,9 +21,9 @@ impl LoopbackReply {
 /// short one, close. The status is handed back raw: `0` is what `http_open`'s parser leaves when
 /// no `HTTP/1.x NNN` line ever arrived.
 ///
-/// These assertions used to call `stream::http_get`, and they outlived it: what they grade —
+/// These assertions used to call `stream::http_get`, and they outlived it: what they grade -
 /// that a chunked body is decoded on the READ path, that a truncated one still reaches its caller,
-/// that a refused open still leaves the server's code readable — is a property of
+/// that a refused open still leaves the server's code readable - is a property of
 /// `http_open`/`http_read`, not of the wrapper that wrapped them. What the production composition
 /// above this layer makes of the same four sockets (`crate::http`'s plaintext arm: a `0` becomes
 /// `None`, a 401 stays a response) is graded against a real socket in `http`'s own tests.
@@ -109,8 +109,8 @@ pub(super) unsafe fn connect_v6(fd: c_int, sa: &libc::sockaddr_in6, timeout_ms: 
 
 /// One `addrinfo` node pointing at a caller-owned `sockaddr`, for testing [`connect_any`]'s
 /// walk without a resolver in the loop. The chain a real DNS answer produces is not something a
-/// test can arrange on demand — which address a name yields, and in what order, is the
-/// machine's business — so the walk is graded on a list built by hand instead.
+/// test can arrange on demand - which address a name yields, and in what order, is the
+/// machine's business - so the walk is graded on a list built by hand instead.
 pub(super) fn ainfo(
     family: c_int,
     sa: *mut libc::sockaddr,
@@ -129,7 +129,7 @@ pub(super) fn ainfo(
 /// Answer ONE request with `resp` verbatim, then close; hands back the bound port and the
 /// server thread to join. `resp` is written as raw bytes precisely so a test can put things in
 /// a header that no `&str` could hold. The listener moves into the thread, so the socket is
-/// released once the response is out — which is also what gives the reader its EOF.
+/// released once the response is out - which is also what gives the reader its EOF.
 pub(super) fn one_shot_server(resp: Vec<u8>) -> (u16, std::thread::JoinHandle<()>) {
     use std::io::{Read, Write};
     let srv = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
@@ -150,7 +150,7 @@ pub(super) fn open_against(port: u16) -> (Box<HttpStream>, c_int) {
     open_host_against("127.0.0.1", port)
 }
 
-/// …and the same for a host that is not the v4 loopback literal — a name, a bracketed v6
+/// ...and the same for a host that is not the v4 loopback literal - a name, a bracketed v6
 /// literal, a bare one.
 pub(super) fn open_host_against(host: &str, port: u16) -> (Box<HttpStream>, c_int) {
     let h = std::ffi::CString::new(host).unwrap();
@@ -167,7 +167,7 @@ pub(super) fn open_host_against(host: &str, port: u16) -> (Box<HttpStream>, c_in
     (hs, rv)
 }
 
-/// A one-shot server that hands the REQUEST back to the test as well as answering it — the
+/// A one-shot server that hands the REQUEST back to the test as well as answering it - the
 /// only way to grade a header we emit rather than one we parse.
 pub(crate) fn one_shot_echo(
     bind: &str,
@@ -200,7 +200,7 @@ pub(super) fn host_line(req: &[u8]) -> String {
 }
 
 /// Can this machine use the IPv6 loopback at all? A container or a set with IPv6 compiled out
-/// cannot, and the v6 cases below are then not failing — they are unrunnable. Say so on the
+/// cannot, and the v6 cases below are then not failing - they are unrunnable. Say so on the
 /// output rather than passing quietly, because a test that reports success having never opened
 /// an AF_INET6 socket is exactly the false green this file's own notes warn about.
 pub(super) fn v6_loopback_or_skip(what: &str) -> Option<std::net::TcpListener> {

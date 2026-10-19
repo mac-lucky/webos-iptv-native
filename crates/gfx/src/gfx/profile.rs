@@ -1,4 +1,4 @@
-//! Draw-phase instrumentation with three intentionally separate measurement modes — arm exactly
+//! Draw-phase instrumentation with three intentionally separate measurement modes - arm exactly
 //! one per run.
 //!
 //! `/tmp/webosiptv-profile` selects one phase for asynchronous
@@ -29,7 +29,7 @@
 //! its blur and glass passes in [`phase`] and reports each blur region through
 //! [`note_blur_config`], and the `gfx` layer may not name `ui`. `ui` re-exports it as
 //! `ui::profile`, so every screen still wraps its draw phases the same way. The one thing the
-//! profiler read FROM `ui` — the LOAD DIAL's live step — is published here instead
+//! profiler read FROM `ui` - the LOAD DIAL's live step - is published here instead
 //! ([`publish_dial`]), by the dial that owns the decision.
 // `ui/mod.rs` blankets its whole tree with this attribute, which is what kept the stub half of this
 // file (the entry points a build without `devtriggers` still calls) clear of dead-code findings.
@@ -78,14 +78,14 @@ mod imp {
     /// Every name `phase()` can be called with. Two of the wrappers compose their name from a loop
     /// index (`blur.reduce{1,2}`, `blur.tap{1,2}`), so this cannot be derived from the call sites
     /// and must be kept beside them. Its only job is to refuse a trigger that names nothing: an
-    /// unknown filter arms the profiler, logs `on`, and then silently never matches — which reads
+    /// unknown filter arms the profiler, logs `on`, and then silently never matches - which reads
     /// exactly like "this phase costs nothing".
     pub const PHASES: [&str; 32] = [
         "profile.empty",
         "frame.ui",
         "main.ui",
         "blur.copy",
-        // The direct path's own source pass — the one phase the capture path does not have.
+        // The direct path's own source pass - the one phase the capture path does not have.
         "blur.scene",
         "blur.reduce1",
         "blur.reduce2",
@@ -138,14 +138,14 @@ mod imp {
     const NCOUNTERS: usize = COUNTERS.len();
     static ON: AtomicBool = AtomicBool::new(false);
 
-    /// `/tmp/webosiptv-cpuprof` — the THIRD mode, and the only one that measures the CPU.
+    /// `/tmp/webosiptv-cpuprof` - the THIRD mode, and the only one that measures the CPU.
     ///
     /// The timer-query and HWCNT modes price GPU work, and both are blind to the case the
     /// frame-drop detector reports as `draw=24ms swap=0.3ms`: a frame whose time is spent on the
     /// render thread ISSUING the page rather than on the GPU drawing it. This mode wraps every
-    /// `phase` call in `Instant::now()` — nested phases are inclusive, and a phase met inside the
+    /// `phase` call in `Instant::now()` - nested phases are inclusive, and a phase met inside the
     /// blur SOURCE pass is accounted under its own `~src` key rather than folded into the visible
-    /// pass — and logs one `PROFILE CPU phase=… n=… mean_ms=… max_ms=…` line per phase every
+    /// pass - and logs one `PROFILE CPU phase=... n=... mean_ms=... max_ms=...` line per phase every
     /// [`LOG_EVERY`] drawn frames. No `glFinish`, no filter, every phase at once: two clock reads
     /// per phase is the whole perturbation, so it can run beside a scene's `fps=`.
     static CPU_ON: AtomicBool = AtomicBool::new(false);
@@ -427,8 +427,8 @@ mod imp {
 
     /// Log each block's `PRFCNT_EN` mask once per run, from the first dump that arrives.
     ///
-    /// A counter can read zero for two very different reasons — the work did not happen, or the
-    /// hardware never enabled that counter group — and nothing else in the output distinguishes
+    /// A counter can read zero for two very different reasons - the work did not happen, or the
+    /// hardware never enabled that counter group - and nothing else in the output distinguishes
     /// them. On this Mali-T820 the tiler block reports `0x1f`: only words 4..19 are live, so
     /// `TILER_ACTIVE` (word 22) is structurally zero and must not be read as "the tiler was idle".
     fn note_block_enables(sample: &Sample) {
@@ -519,7 +519,7 @@ mod imp {
         sw: i32,
         sh: i32,
     ) {
-        // …or whenever the LOAD DIAL is armed. The region a leg actually blurred is the one thing
+        // ...or whenever the LOAD DIAL is armed. The region a leg actually blurred is the one thing
         // that cannot be recovered afterwards, and requiring a profiler to see it means it can only
         // be seen in runs whose frame rate the profiler has already changed.
         if !enabled() && !crate::gpu_timer::enabled() && !super::dial_armed() {

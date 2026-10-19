@@ -62,7 +62,7 @@ pub struct AllowBlocking {
 /// The ledger's final two entries are both refused-worker fallbacks, not user actions:
 /// `task::spawn_or_inline` (the OS refused a worker thread, so server-side stop work that must not
 /// be dropped runs inline under the caller's label) and `route::decision::scrobble_stop` (a refused
-/// `spawn_small_keeping` — its old reporter handle and stop fence must stay ordered, which a plain
+/// `spawn_small_keeping` - its old reporter handle and stop fence must stay ordered, which a plain
 /// inline cannot promise).
 #[track_caller]
 pub fn allow_blocking(reason: &'static BlockingLabel) -> AllowBlocking {
@@ -121,7 +121,7 @@ pub fn assert_may_block(label: &'static BlockingLabel) -> BlockingGuard {
         _label: super::watchdog::enter_label(label), _thread: PhantomData }
 }
 
-/// `file:line` — `Location`'s own `Display` also prints the column, which no one greps by.
+/// `file:line` - `Location`'s own `Display` also prints the column, which no one greps by.
 struct Site<'a>(&'a Location<'a>);
 impl std::fmt::Display for Site<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -1,4 +1,4 @@
-//! `Instruments` — the frame's own measurement (restructure spec §8.4): the eight phase stamps
+//! `Instruments` - the frame's own measurement (restructure spec §8.4): the eight phase stamps
 //! over the frame algorithm's steps, the per-second `worstframe=`/`worstprep=` peaks the heartbeat
 //! carries, and the `FRAMEDROP` line. Lifted out of `app/run.rs` in phase 2 so the loop reads as
 //! its algorithm and the instrument is one value with one owner (`App.instr`).
@@ -8,17 +8,17 @@
 //! FRAMEDROP fields in the spec's order (ingest results tick_drain navcommit prepare draw capture
 //! swap), `worstframe=` LAST of the graded fields on the heartbeat. Phase 11 added the rest of
 //! §8.4: `coldopen` (its own line, once per screen mount, UNARMED), and `carried=`/`dropped=`/
-//! `budget=`/`evicted_hot=` after `worstprep=` — see [`Instruments::heartbeat_tail`] for the wire
+//! `budget=`/`evicted_hot=` after `worstprep=` - see [`Instruments::heartbeat_tail`] for the wire
 //! order and why nothing may be inserted ahead of `fps=` or `worstframe=`.
 //!
 //! Phase timing and present-to-present pacing are armed, and the split is the measurement's
 //! cost: the eight phases and the two peaks need a clock read per phase, so they hide behind
 //! `webosiptv-framedrop`; every other field is a counter somebody already keeps, so it prints in
-//! every build. The one §8.4 names and this module does NOT have is `allocs=` — see
+//! every build. The one §8.4 names and this module does NOT have is `allocs=` - see
 //! `heartbeat_tail`'s doc for why a counting allocator was not invented to fill it.
 //!
 //! Armed by `webosiptv-framedrop[=<ms>]`; unarmed, every stamp is the frame's origin and every
-//! phase reads 0.0 — the counter is never read, so an unarmed frame pays nothing.
+//! phase reads 0.0 - the counter is never read, so an unarmed frame pays nothing.
 
 #[cfg(not(any(test, feature = "test-support")))]
 extern "C" {
@@ -53,7 +53,7 @@ pub enum Phase {
     Swap = 8,
 }
 
-/// Microseconds on the performance counter — the frame budget's clock (`ui::frame::Budget`).
+/// Microseconds on the performance counter - the frame budget's clock (`ui::frame::Budget`).
 pub fn now_us() -> u64 {
     // SAFETY: SDL is initialised before the loop; no arguments, no memory of ours.
     let (t, f) = unsafe { (SDL_GetPerformanceCounter(), SDL_GetPerformanceFrequency()) };
@@ -68,7 +68,7 @@ pub fn now_us() -> u64 {
 /// (`gfx`). All four are read-and-reset atomics owned by the module that increments them.
 ///
 /// **They are a FRAME's counts, and until phase 11 they were not.** Their only drain was the
-/// `extra()` closure of [`Instruments::frame_drop_line`], which runs AFTER the threshold check —
+/// `extra()` closure of [`Instruments::frame_drop_line`], which runs AFTER the threshold check -
 /// so on a healthy frame nothing drained them, and the numbers printed beside the next slow frame
 /// covered every frame since the last slow one. A `FRAMEDROP` line with `up=9` on it therefore
 /// said "nine uploads since the previous drop line", which reads as this frame's cost and is not
@@ -84,7 +84,7 @@ pub struct FrameCounters {
 }
 
 /// The heartbeat's frame-plan fields (spec §8.4), gathered by the loop once a second and printed
-/// after `worstprep=` — before `rec=`/`sim=1`, so `tests/run.py`'s `FPS_RE` and `WORST_RE` anchors
+/// after `worstprep=` - before `rec=`/`sim=1`, so `tests/run.py`'s `FPS_RE` and `WORST_RE` anchors
 /// are untouched. Plain scalars rather than the frame plan's own types: this module is `diag/`
 /// and has no business naming `ui::frame::budget::Class`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -231,9 +231,9 @@ pub struct Instruments {
 
 /// **The frame-drop detector's context ring** (`/tmp/webosiptv-framering[=<ms>]`).
 ///
-/// Reading a slow frame needs the frames around it — the one before it committed late or did not,
+/// Reading a slow frame needs the frames around it - the one before it committed late or did not,
 /// the one after it is short or is not, and a compositor callback for frame N arrives during
-/// frame N+1 — so a pacing investigation used to arm `framedrop=0.01` and log every frame. That is
+/// frame N+1 - so a pacing investigation used to arm `framedrop=0.01` and log every frame. That is
 /// ~60 scrub + open + append + close round trips a second ON THE FRAME THREAD, in the phase being
 /// measured. With the ring armed every frame's line is still formatted, but it is only HELD: the
 /// last [`Self::BEFORE`] lines stay in memory, and they reach the log when a frame crosses `slow_ms`,
@@ -305,7 +305,7 @@ impl Instruments {
         }
     }
 
-    /// This frame's counters, REPLACING the last frame's — see [`FrameCounters`] for why that
+    /// This frame's counters, REPLACING the last frame's - see [`FrameCounters`] for why that
     /// word is the whole point. Called once per presented frame, before [`Self::frame_drop_line`].
     pub fn note_frame_counters(&mut self, c: FrameCounters) {
         self.counters = c;
@@ -371,10 +371,10 @@ impl Instruments {
 
     /// The just-finished frame's total (Top→Swap), or `0.0` unarmed. The narrow read the
     /// stress-bench oscillators (`dev::scenarios::bench_frame_tick`) need without duplicating
-    /// what [`Self::frame_drop_line`] already computes — that method's `total` local, pulled out
+    /// what [`Self::frame_drop_line`] already computes - that method's `total` local, pulled out
     /// so a caller that wants the number and not the threshold/log-line behaviour can have it.
     /// No side effect, unlike `frame_drop_line`: it does not fold into `self.worst` and may be
-    /// called on every iteration, presented or not — an unpresented frame's Draw/Capture/Swap
+    /// called on every iteration, presented or not - an unpresented frame's Draw/Capture/Swap
     /// stamps equal Prepare's (`skip_present_phases`), so its "total" reads as the prepare-only
     /// cost, which is why callers that want presented-frame timing gate on `Frame::present`
     /// themselves rather than trusting this alone.
@@ -387,7 +387,7 @@ impl Instruments {
 
     /// The just-presented frame's present-to-present interval in ms: its Swap stamp minus the
     /// previous presented frame's. `None` unarmed, and for the first frame after startup or a
-    /// skipped present (an idle gap is not a cadence sample — `skip_present_phases`). Read it
+    /// skipped present (an idle gap is not a cadence sample - `skip_present_phases`). Read it
     /// BEFORE [`Self::frame_drop_line`], which advances the previous-present stamp.
     pub fn present_interval_ms(&self) -> Option<f64> {
         if !self.armed {
@@ -399,8 +399,8 @@ impl Instruments {
 
     /// At the iteration's tail of a PRESENTED frame: fold the total into the peak and return the
     /// `FRAMEDROP` line when it crossed the threshold. The four per-frame counters come from
-    /// [`Self::note_frame_counters`] — this frame's, not the accumulation since the last drop
-    /// line — and `extra` is the loop's own trailing fields (route, load, snap), appended
+    /// [`Self::note_frame_counters`] - this frame's, not the accumulation since the last drop
+    /// line - and `extra` is the loop's own trailing fields (route, load, snap), appended
     /// verbatim after them.
     pub fn frame_drop_line(&mut self, extra: &dyn Fn() -> String) -> Option<String> {
         if !self.armed {
@@ -457,17 +457,17 @@ impl Instruments {
     /// The heartbeat's trailing fields, and the per-second reset. The WIRE ORDER is a contract:
     ///
     /// ```text
-    /// … fps=<n> [load= snap= period=] [worstframe= worstprep=] carried= dropped= budget= evicted_hot= [frame_n= frame_gt16= frame_gt33= frame_gt50= frame_gt100= frame_max= frame_p95= frame_p99= [pupf= pupf_ge22= pup=]] [rec=] [sim=1]
+    /// ... fps=<n> [load= snap= period=] [worstframe= worstprep=] carried= dropped= budget= evicted_hot= [frame_n= frame_gt16= frame_gt33= frame_gt50= frame_gt100= frame_max= frame_p95= frame_p99= [pupf= pupf_ge22= pup=]] [rec=] [sim=1]
     /// ```
     ///
     /// * `worstframe=`/`worstprep=` are the ARMED pair (`webosiptv-framedrop`) and stay LAST of
-    ///   the graded fields — `tests/run.py`'s `WORST_RE` anchors on `worstframe=` and `FPS_RE` on
+    ///   the graded fields - `tests/run.py`'s `WORST_RE` anchors on `worstframe=` and `FPS_RE` on
     ///   `fps=`, both with a lazy `.*?` in front, so a field may be appended after them and never
     ///   inserted between `loop=`/`route=`/`overlay=`.
     /// * The four frame-plan fields (spec §8.4) print UNARMED, on every heartbeat, because none
     ///   of them costs a measurement: they are counters four owners already keep. `budget=` is
     ///   `admitted/refused`, with `/solo:<class>` appended only when a solo take was admitted in
-    ///   the second — a field that is usually absent, so its presence is the event.
+    ///   the second - a field that is usually absent, so its presence is the event.
     /// * The ARMED `frame_*` summary measures intervals between consecutive presented swaps.
     ///   It includes pacing delays outside the CPU phases, excludes gaps across a skipped
     ///   present, and resets each heartbeat while preserving the previous present timestamp.
@@ -475,7 +475,7 @@ impl Instruments {
     ///   whole milliseconds; an overflow percentile (>255ms) reports the maximum interval.
     /// * `rec_us` is the recorder's spend this second (spec §5.3): it rides after all of them,
     ///   and its presence is what disqualifies the run's `fps=`/`worstframe=` in `tests/run.py`,
-    ///   exactly as the profiler triggers do — a recorder perturbs the pacing it feeds.
+    ///   exactly as the profiler triggers do - a recorder perturbs the pacing it feeds.
     ///
     /// There is deliberately NO `allocs=` field, which §8.4 names for `hostsim`. This crate has
     /// no `GlobalAlloc` and phase 11 did not add one: a counting allocator is a whole-process
@@ -522,7 +522,7 @@ impl Instruments {
 ///
 /// The definition, which is the whole of it:
 ///
-/// * the clock starts on the frame that executed `Fx::Mount` for that body — `Dispatcher::mount`,
+/// * the clock starts on the frame that executed `Fx::Mount` for that body - `Dispatcher::mount`,
 ///   the same event `FrameReport::mounted` reports;
 /// * it stops on the FIRST frame that body both PREPARED and DREW. A body that mounts and is
 ///   unmounted without ever drawing produces no line at all, and its pending record is dropped
@@ -531,13 +531,13 @@ impl Instruments {
 ///   iteration is `ms=0`, and that is the honest reading: the instrument measures how long a
 ///   screen took to get on screen, not how long the frame it landed in took (`worstframe=` and
 ///   `FRAMEDROP` are that);
-/// * `prepared` is whether the frame it drew on refused NOTHING it asked for — the `Budget`'s
+/// * `prepared` is whether the frame it drew on refused NOTHING it asked for - the `Budget`'s
 ///   refusal count taken at the opening of that frame's prepare window and read again at the
 ///   draw. It is the frame's verdict rather than the screen's, deliberately: the budget admits
 ///   per CLASS across the whole frame, so "did this screen get everything" is not a question the
 ///   budget can answer and pretending otherwise would put a per-screen word on a per-frame fact.
 ///
-/// It is UNARMED — no trigger, no threshold — because it is one line per screen mount, and the
+/// It is UNARMED - no trigger, no threshold - because it is one line per screen mount, and the
 /// scene it re-bases (`cold-open`) could not be graded from `FRAMEDROP` without censoring itself:
 /// the detector only prints above the threshold `tests/run.py` armed it with, so every cold open
 /// FASTER than the ceiling left no line, and a run of them was graded as passes with no samples
@@ -546,7 +546,7 @@ impl Instruments {
 ///
 /// **One route is structurally invisible to it: the player.** Its page still answers
 /// `FocusSource::Legacy`, so `bridge::page_owned` is false there and the loop draws that page
-/// itself rather than through `Dispatcher::draw_with` — the pending record is never matched and
+/// itself rather than through `Dispatcher::draw_with` - the pending record is never matched and
 /// no line is emitted. That ends when the player's focus moves onto the engine; nothing else is
 /// needed here.
 #[derive(Default)]
@@ -876,14 +876,14 @@ mod tests {
     }
 
     /// The defect this fixed: the counters were drained by the `extra()` closure, which runs only
-    /// AFTER the threshold check — so a slow frame's `up=`/`cards=` covered every frame since the
+    /// AFTER the threshold check - so a slow frame's `up=`/`cards=` covered every frame since the
     /// previous slow one. The loop hands each presented frame's own counts to
     /// `note_frame_counters` now; two frames apart, the second line carries only the second's.
     #[test]
     fn a_frame_drop_line_carries_this_frames_counters_and_not_the_last_ones() {
         let mut i = Instruments::new(true, 10.0);
         i.perf_freq = 1000.0;
-        // frame 1: nine uploads, but a 5 ms frame — under the threshold, so NO line
+        // frame 1: nine uploads, but a 5 ms frame - under the threshold, so NO line
         i.stamps = [0, 1, 1, 1, 1, 2, 4, 4, 5];
         i.note_frame_counters(FrameCounters {
             uploads: 9,
@@ -892,7 +892,7 @@ mod tests {
             cards_off: 3,
         });
         assert!(i.frame_drop_line(&|| "route=detail".into()).is_none());
-        // frame 2: nothing uploaded, and slow — the line must not inherit frame 1's nine
+        // frame 2: nothing uploaded, and slow - the line must not inherit frame 1's nine
         i.stamps = [0, 1, 2, 3, 4, 5, 40, 41, 42];
         i.note_frame_counters(FrameCounters {
             uploads: 0,
@@ -915,7 +915,7 @@ mod tests {
             c.take_lines().is_empty(),
             "another body's draw is not this mount's"
         );
-        // …and the frame it does draw on: 40 ms later, budget refused nothing
+        // ...and the frame it does draw on: 40 ms later, budget refused nothing
         c.note_prepare(3);
         c.drawn(7, 1_040, 3);
         assert_eq!(

@@ -3,14 +3,14 @@
 //! A media URL commonly answers `302` with a presigned CDN URL on ANOTHER origin, usually https,
 //! sometimes via a relative `Location`; a socket open that did not follow it reported
 //! `ff: http_open FAILED status=302` and the demuxer saw no access units. These grade every
-//! plaintext media open the demux thread makes — the progressive first open and the AVIO seek
-//! reopen — against loopback servers that answer that way.
+//! plaintext media open the demux thread makes - the progressive first open and the AVIO seek
+//! reopen - against loopback servers that answer that way.
 
 use super::*;
 
 /// A loopback server that answers each connection with ONE scripted response and closes it,
-/// recording the raw bytes each request arrived with (a request head, or — for a client that
-/// opened TLS on it — the start of a ClientHello). Sequential by design: every client here is.
+/// recording the raw bytes each request arrived with (a request head, or - for a client that
+/// opened TLS on it - the start of a ClientHello). Sequential by design: every client here is.
 struct Scripted {
     port: u16,
     seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>>,
@@ -252,7 +252,7 @@ fn a_progressive_open_follows_a_302() {
 }
 
 /// An https hop cannot be spoken by the socket client; it must be handed to libcurl. The
-/// loopback "CDN" speaks no TLS, so the open fails — what grades the routing is that the bytes
+/// loopback "CDN" speaks no TLS, so the open fails - what grades the routing is that the bytes
 /// that reached it are a TLS ClientHello (record type 0x16), not a plaintext `GET`.
 #[test]
 fn an_https_hop_from_the_socket_path_is_routed_to_curl() {

@@ -1,4 +1,4 @@
-//! **AES-128-CBC with PKCS#7 padding, decryption side** — what an HLS `EXT-X-KEY:METHOD=AES-128`
+//! **AES-128-CBC with PKCS#7 padding, decryption side** - what an HLS `EXT-X-KEY:METHOD=AES-128`
 //! segment is (RFC 8216 §5.2): the whole segment (or its byte range) encrypted under one 16-byte
 //! key, CBC-chained from the tag's `IV` or, without one, from the segment's media sequence number
 //! as a big-endian 128-bit integer, and padded with PKCS#7.

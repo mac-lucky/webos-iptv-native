@@ -1,4 +1,4 @@
-//! The dispatcher's INPUT path (spec §15.1, §7.3–§7.6): the owner's first refusal, the engine
+//! The dispatcher's INPUT path (spec §15.1, §7.3 - §7.6): the owner's first refusal, the engine
 //! behind it, the press arm by element kind, the hit map's double buffer and its gates, the
 //! television keyboard as an owner, and a legacy page for which all of it is inert.
 
@@ -324,7 +324,7 @@ fn elem(d: &Dispatcher<FixtureHost>) -> Option<u32> {
     d.focus().map(|k| k.elem)
 }
 
-/// §7.3 step 1: a control that handles a direction keeps it from the engine — the modal's
+/// §7.3 step 1: a control that handles a direction keeps it from the engine - the modal's
 /// slider-shaped arm answers `Handled::Yes` and focus does not move.
 #[test]
 fn a_control_that_handles_a_direction_keeps_it_from_the_engine() {
@@ -342,9 +342,9 @@ fn a_control_that_handles_a_direction_keeps_it_from_the_engine() {
     assert!(s.contains("keys=10"), "the control took it: {s}");
 }
 
-/// §6.2: the strip is the CONTAINER's group, contributed above the page's — UP from the row
+/// §6.2: the strip is the CONTAINER's group, contributed above the page's - UP from the row
 /// lands on the nearest pill when no pill is the selected destination's (`strip_fallback`, which
-/// wins when set) — and the page gates it: a page snapped to its grid has no strip
+/// wins when set) - and the page gates it: a page snapped to its grid has no strip
 /// to reach.
 #[test]
 fn the_strip_is_the_containers_group_and_the_page_gates_it() {
@@ -516,7 +516,7 @@ fn a_held_pointer_is_swallowed_and_is_never_a_miss() {
 }
 
 /// §7.3 step 6: a store landing that shrinks the row makes the owner's `reconcile` answer a
-/// different key — delivered as `FocusMoved{Reconcile}` after the notice and before the draw.
+/// different key - delivered as `FocusMoved{Reconcile}` after the notice and before the draw.
 #[test]
 fn reconcile_runs_after_a_landing_and_before_draw() {
     let (mut d, mut rig, _) = booted();
@@ -656,7 +656,7 @@ fn a_bare_element_activates_on_the_down_edge() {
     d.frame(&mut rig, tick(16), vec![key(Key::Right, tick(16))], vec![], &mut NoTap);
     assert_eq!(elem(&d), Some(1), "Enter seated tile 0; RIGHT walked to 1");
     let before = events_of(&d, 0);
-    // Home handles OK itself (it opens a page); Page(1) does too — use a card page that does not:
+    // Home handles OK itself (it opens a page); Page(1) does too - use a card page that does not:
     // the fixture's Home consumes OK, so grade the arm on the pointer path's twin instead
     d.frame(&mut rig, tick(32), vec![click(90.0, 190.0, tick(32))], vec![], &mut NoTap);
     assert!(d.input.arm.map_or(false, |a| a.holdable), "a card arms a HOLDABLE press");
@@ -664,7 +664,7 @@ fn a_bare_element_activates_on_the_down_edge() {
     d.frame(&mut rig, tick(48), vec![key_up(Key::Ok, tick(48))], vec![], &mut NoTap);
 }
 
-/// §7.3 step 7: while the television's keyboard is up it is the input owner — keys still reach
+/// §7.3 step 7: while the television's keyboard is up it is the input owner - keys still reach
 /// the page (the field consumes them) but the engine is never consulted.
 #[test]
 fn the_system_keyboard_is_an_input_owner() {
@@ -878,8 +878,8 @@ fn keyboard_request_payload_and_owner_binding_are_part_of_the_state_hash() {
     assert_ne!(first, d.state_hash(), "the binding changes which later close request is accepted");
 }
 
-/// §7.6: a screen that declares `FocusSource::Legacy`/`HitSource::Legacy` — the player, and
-/// `FixtureArg::Legacy` here — leaves the engine, the map and `on_miss` INERT; its own ladders
+/// §7.6: a screen that declares `FocusSource::Legacy`/`HitSource::Legacy` - the player, and
+/// `FixtureArg::Legacy` here - leaves the engine, the map and `on_miss` INERT; its own ladders
 /// stay the single writer.
 #[test]
 fn a_legacy_page_never_consults_the_map_or_the_engine() {
@@ -950,9 +950,9 @@ fn resolve_mode_reports_every_mismatch_and_continues_from_the_recording() {
     // tamper frame 2's resolution: the engine says 1, the recording now says 0
     rec.frames[1].focus = Some(Some((1, 0, Some(1))));
     let report = replay(&rec, true);
-    // frame 2: the engine's 1 against the recorded 0 — one line, and replay CONTINUES FROM THE
+    // frame 2: the engine's 1 against the recorded 0 - one line, and replay CONTINUES FROM THE
     // RECORDING; frame 3: from the recorded 0 the engine's RIGHT lands on 1, the recording says
-    // 2 — a second pointwise line; frame 4 (no input) agrees again. Never an avalanche.
+    // 2 - a second pointwise line; frame 4 (no input) agrees again. Never an avalanche.
     let frames: Vec<u64> = report.focus_diffs.iter().map(|d| d.0).collect();
     assert_eq!(frames, vec![2, 3], "{:?}", report.safe_lines());
     assert_eq!(report.frames, rec.frames.len() as u64, "replay continued");

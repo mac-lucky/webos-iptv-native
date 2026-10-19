@@ -1,4 +1,4 @@
-//! `glassload` — the dev-only LOAD DIAL for the backdrop-glass chain, and the blurred-route-
+//! `glassload` - the dev-only LOAD DIAL for the backdrop-glass chain, and the blurred-route-
 //! transition prototype it was built beside.
 //!
 //! Everything here exists to answer one question the shipped scenes cannot: **where is the cliff?**
@@ -35,33 +35,33 @@
 //!
 //! A step is one of three things:
 //!
-//! * `off` — no extra draws at all: the control leg,
-//! * `<count>x<width>x<height>@<cadence>` — that many GLASS surfaces, where the cadence is
+//! * `off` - no extra draws at all: the control leg,
+//! * `<count>x<width>x<height>@<cadence>` - that many GLASS surfaces, where the cadence is
 //!   **presents between snapshot refreshes**: `@1` refreshes every presented frame, `@3` is the
 //!   shipped dynamic policy, `@0` captures once and caches forever,
-//! * `c<count>x<width>x<height>` (or `cf…` for the FOCUSED penumbra) — that many CARD composites,
+//! * `c<count>x<width>x<height>` (or `cf...` for the FOCUSED penumbra) - that many CARD composites,
 //!   the `draw_tex_carded` path every art tile takes,
-//! * `acct` — the REAL shipped Account popover, presented as its own `ModalStack` surface
+//! * `acct` - the REAL shipped Account popover, presented as its own `ModalStack` surface
 //!   (`bridge::open_account_menu`) over the real Home page, so
 //!   a synthetic surface and the thing it stands for can be interleaved in ONE launch. This step
 //!   exists because a dial panel and the shipped panel were read as the same configuration by two
 //!   different agents and disagreed by 15 fps; §"the reconciliation" in
 //!   `docs/glass-hardware-budget.md` is what it settled.
 //!
-//! Any step may carry a leading `s` — **spread**: instead of tiling adjacently in the middle, the
+//! Any step may carry a leading `s` - **spread**: instead of tiling adjacently in the middle, the
 //! surfaces are pushed apart along the diagonal, corner to corner. Same count, same area, and a
 //! blurred REGION that grows to most of the screen, because the one shared snapshot has to hold
 //! every glass surface in the frame and everything between them.
 //!
 //! The card form is the second axis this dial exists for. A sibling measurement priced a card
-//! fragment at **3.02 GPU cycles and 5.86 arithmetic words** — 3x a textured full-screen quad and
-//! 120x a gradient — from four peek-row tiles covering 13.6% of the panel. Card area is the one
+//! fragment at **3.02 GPU cycles and 5.86 arithmetic words** - 3x a textured full-screen quad and
+//! 120x a gradient - from four peek-row tiles covering 13.6% of the panel. Card area is the one
 //! quantity design controls directly and can scale freely, so "what happens when the panel is
 //! mostly cards" needed a dial rather than an extrapolation. Cards here sample four synthetic
 //! poster-sized textures in rotation, allocated once; see [`card_tex`] for why not one.
 //!
 //! Panels are tiled adjacently in a centred grid, so `n` surfaces cost `n` composites inside ONE
-//! grown region — which is the shape a real screen has, and the shape `gfx::blur_region_union`
+//! grown region - which is the shape a real screen has, and the shape `gfx::blur_region_union`
 //! is designed around. Two surfaces at opposite corners are a different (worse) case and are not
 //! what this dial produces; that asymmetry is recorded in `docs/glass-hardware-budget.md`.
 //!
@@ -71,21 +71,21 @@
 //! `theme::SURFACE_APP`, the route flips at the floor, the incoming page fades up. The design
 //! question is whether that grey trough can be a BLUR of the outgoing page with the tab bar's
 //! glass sitting on top of it. Armed, this module holds the page at full alpha and cross-fades a
-//! full-bleed glass surface over it instead, with a tab-track-shaped capsule composited above —
+//! full-bleed glass surface over it instead, with a tab-track-shaped capsule composited above -
 //! and the capsule samples the SAME cache, which is the whole compositional finding.
 //!
 //! Content is `<mode>[p][:<cadence>]`. Mode empty or `1` = one shared snapshot (what the
 //! architecture does today); `2` = force a SECOND snapshot between the two surfaces, which is what
 //! a private cache per surface would cost in cycles. A trailing `p` PINS the slab at full strength
-//! instead of riding the transition — a 210 ms fade gives a handful of frames to measure and is
+//! instead of riding the transition - a 210 ms fade gives a handful of frames to measure and is
 //! nearly impossible to photograph, so the pinned form is what a cost run and a capture use, and
 //! the unpinned form is what proves the motion reads. Both are behind the trigger; neither changes
 //! a default build.
 //!
 //! Main-thread only. The live state is [`Dial`], a field of the frame plan
 //! ([`crate::frame::glass::GlassPlan`]) since phase 11 rather than the eight `static mut`s it
-//! was before; the two things instruments read with no borrow of the plan in hand — the live step
-//! index and whether anything is armed — are PUBLISHED snapshots the dial writes on change
+//! was before; the two things instruments read with no borrow of the plan in hand - the live step
+//! index and whether anything is armed - are PUBLISHED snapshots the dial writes on change
 //! (spec §2.3). Every entry point is a no-op when the trigger is absent, and in a
 //! `--no-default-features` build `devtrig::read` is `None` at compile time, so nothing here can be
 //! reached at all.
@@ -98,12 +98,12 @@ use crate::{Painter, Rect};
 /// shader path the composite goes down, which is the whole point of having both on one dial.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
-    /// `fs_glass` over the shared blurred snapshot — the backdrop panel.
+    /// `fs_glass` over the shared blurred snapshot - the backdrop panel.
     Glass,
-    /// `draw_tex_carded` — texture + edge sheen + folded drop shadow. `true` = drawn at the FOCUSED
+    /// `draw_tex_carded` - texture + edge sheen + folded drop shadow. `true` = drawn at the FOCUSED
     /// pop, which grows the penumbra and so the rasterized quad.
     Card { focused: bool },
-    /// `draw_tex` at radius 0 — the FLAT textured quad, the cheapest full-coverage path the app
+    /// `draw_tex` at radius 0 - the FLAT textured quad, the cheapest full-coverage path the app
     /// has and the one the hero photograph takes. The control the other two are priced against.
     Image,
     /// Not a synthetic surface at all: the REAL Account popover, on the real route, with cached
@@ -120,7 +120,7 @@ pub struct Step {
     /// Push the surfaces apart to opposite corners instead of tiling them adjacently, so the one
     /// shared blur region has to span them and everything in between.
     pub spread: bool,
-    /// How many surfaces. Zero is the control leg — the page with nothing extra on it at all.
+    /// How many surfaces. Zero is the control leg - the page with nothing extra on it at all.
     pub n: u32,
     /// Each surface's authored size. The snapshot region is the union of these grown by
     /// `gfx::BLUR_MARGIN` (88) on every side and clamped to the screen.
@@ -140,7 +140,7 @@ impl Step {
         cadence: 0,
     };
 
-    /// Total composite area this step submits, in authored px — the x axis of the scaling law.
+    /// Total composite area this step submits, in authored px - the x axis of the scaling law.
     /// NOMINAL: a card's quad is additionally inflated by its penumbra, and a glass panel's
     /// snapshot region by `gfx::BLUR_MARGIN`, neither of which is included here.
     pub fn px(self) -> f64 {
@@ -154,7 +154,7 @@ pub struct Sweep {
     steps: Vec<Step>,
 }
 
-/// Corner radius every load-dial panel is drawn with — the popover radius, so the composite is the
+/// Corner radius every load-dial panel is drawn with - the popover radius, so the composite is the
 /// same shader path a real panel takes (rounded SDF, bevel, rim, interior early-out).
 const PANEL_RADIUS: f32 = 28.0;
 /// Gap between tiled panels, authored px. Small enough that `n` panels stay inside one grown
@@ -191,7 +191,7 @@ pub fn parse(spec: &str) -> Option<Sweep> {
             });
             continue;
         }
-        // `s` = spread, before the kind prefix. Stripped first so `sc4x…` reads as spread cards.
+        // `s` = spread, before the kind prefix. Stripped first so `sc4x...` reads as spread cards.
         let (spread, tok) = match tok.strip_prefix('s') {
             Some(r) => (true, r),
             None => (false, tok),
@@ -229,7 +229,7 @@ pub fn parse(spec: &str) -> Option<Sweep> {
 
 /// Where `step`'s panels sit: a centred grid, row-major, clipped to what fits on the screen.
 ///
-/// Pure, so the packing is host-gradeable — a dial that silently drew four panels where the spec
+/// Pure, so the packing is host-gradeable - a dial that silently drew four panels where the spec
 /// asked for eight would report a cost for a configuration that never ran.
 pub fn layout(step: Step) -> Vec<Rect> {
     if step.n == 0 || matches!(step.kind, Kind::Account) {
@@ -285,7 +285,7 @@ pub struct Dial {
     /// Which step is live, or -1 when the dial is disarmed. Mirrored into `gfx::profile` on every
     /// change, because the heartbeat and every HWCNT phase record read it with no `&App` in hand.
     step: i32,
-    /// Presented frames since the current step began — the cadence clock.
+    /// Presented frames since the current step began - the cadence clock.
     presents: u32,
     /// `SDL_GetTicks` at the first prepared frame, so step boundaries are wall-clock and
     /// independent of how many frames the set managed to draw.
@@ -294,9 +294,9 @@ pub struct Dial {
     navblur: u32,
     /// Presents between navblur snapshot refreshes.
     navblur_cadence: u32,
-    /// Hold the slab at full strength rather than riding the transition — see the module doc.
+    /// Hold the slab at full strength rather than riding the transition - see the module doc.
     navblur_pin: bool,
-    /// The synthetic poster textures the card steps sample — see [`Dial::card_tex`].
+    /// The synthetic poster textures the card steps sample - see [`Dial::card_tex`].
     card_tex: [u32; NCARD_TEX],
 }
 
@@ -324,7 +324,7 @@ impl Dial {
 
     /// Mirror the two decisions instruments read into their published snapshots. There is exactly
     /// one `Dial` in the process (the one on `App`'s frame plan), so the last one to change owns
-    /// the publication — constructing a plan therefore publishes too, which is what keeps a host
+    /// the publication - constructing a plan therefore publishes too, which is what keeps a host
     /// test that arms one from leaving the instruments armed for every test after it.
     pub fn publish(&self) {
         tv_gfx::gfx::profile::publish_dial(self.step, self.armed());
@@ -427,7 +427,7 @@ impl Dial {
     /// Does the live step want the REAL Account popover open? Read by `app.rs`, which owns `Route`.
     ///
     /// A dev step that changes the ROUTE rather than drawing something is unusual, and it is the only
-    /// way to put the shipped surface and a synthetic one in the same interleaved launch — which is
+    /// way to put the shipped surface and a synthetic one in the same interleaved launch - which is
     /// exactly what was needed when two agents read the same nominal configuration 15 fps apart.
     pub fn wants_account(&self) -> bool {
         let Some(s) = self.sweep.as_ref() else {
@@ -441,7 +441,7 @@ impl Dial {
         self.navblur > 0
     }
 
-    /// Is anything in this module armed? Nothing below runs — and no heartbeat field appears —
+    /// Is anything in this module armed? Nothing below runs - and no heartbeat field appears -
     /// unless this is true.
     #[inline]
     pub fn armed(&self) -> bool {
@@ -449,7 +449,7 @@ impl Dial {
     }
 }
 
-/// The live step index, or -1. Rides the heartbeat and every profiler record — read from the
+/// The live step index, or -1. Rides the heartbeat and every profiler record - read from the
 /// published snapshot, since neither caller holds the plan.
 #[inline]
 pub fn step_index() -> i32 {
@@ -474,7 +474,7 @@ impl Dial {
             return;
         }
         // A dial run is a perf measurement: it must keep presenting whatever the idle gate thinks.
-        // `wake` rather than `invalidate` — nothing here claims the PAGE's pixels changed.
+        // `wake` rather than `invalidate` - nothing here claims the PAGE's pixels changed.
         tv_machine::idle::wake();
         let Some((hold_ms, len)) = self.sweep.as_ref().map(|s| (s.hold_ms, s.steps.len())) else {
             return;
@@ -502,14 +502,14 @@ impl Dial {
     }
 
     /// Draw the dial's glass surfaces over whatever screen is up. Called after the route's own draw,
-    /// so the snapshot these take is of the COMPLETE page — which is the honest source for a surface
+    /// so the snapshot these take is of the COMPLETE page - which is the honest source for a surface
     /// that sits on top of everything.
     pub fn draw(&mut self) {
         if self.sweep.is_none() {
             return;
         }
         // A surface met while the page is being drawn as a blur SOURCE must not draw, record a need
-        // or take a capture — `gfx::draw_blur_backdrop` refuses anyway, but the frost quad would
+        // or take a capture - `gfx::draw_blur_backdrop` refuses anyway, but the frost quad would
         // still land in the source target. See `widgets::tab_glass_on`.
         if tv_gfx::gfx::blur_source_pass() {
             return;
@@ -575,7 +575,7 @@ impl Dial {
     }
 
     /// The synthetic poster textures the card steps sample, allocated once and reused for the process
-    /// lifetime (never per frame — see the shared brief's constraint).
+    /// lifetime (never per frame - see the shared brief's constraint).
     ///
     /// **Four of them, in rotation, and that is the load-bearing part.** A grid of N cards all reading
     /// ONE texture is a texture cache that stays warm and a memory system that never has to work, which
@@ -592,7 +592,7 @@ impl Dial {
             return tex;
         }
         let mut px = vec![0u8; W * H * 4];
-        // xorshift, so the bytes are incompressible and the image is identical on every run —
+        // xorshift, so the bytes are incompressible and the image is identical on every run -
         // a measurement whose texture content varied would not be re-runnable.
         let mut state: u32 = 0x9E37_79B9 ^ ((slot as u32 + 1) * 0x85EB_CA6B);
         for byte in px.iter_mut() {
@@ -611,13 +611,13 @@ impl Dial {
 ///
 /// Inflated well past the screen on every side ON PURPOSE: `fs_glass` puts its bevel, rim light and
 /// specular hairline within `GLASS_BEVEL` of the edge, and a full-screen blur must not be ringed by
-/// a lit chamfer. Pushing the geometry off-panel leaves only the interior early-out — one texture
-/// fetch plus dither per fragment — which is exactly what a full-screen backdrop blur is.
+/// a lit chamfer. Pushing the geometry off-panel leaves only the interior early-out - one texture
+/// fetch plus dither per fragment - which is exactly what a full-screen backdrop blur is.
 const NAV_BLEED: f32 = 80.0;
 
 /// The tab track's rest geometry, as a stand-in for the real strip.
 ///
-/// The real one is `widgets::draw_tab_row`'s fixed four-destination strip, drawn INSIDE the page —
+/// The real one is `widgets::draw_tab_row`'s fixed four-destination strip, drawn INSIDE the page -
 /// i.e. underneath anything this module composites. A representative capsule at its true y and
 /// height is what makes "the bar's glass
 /// on top of the blur" a thing that can be both measured and looked at.
@@ -672,7 +672,7 @@ impl Dial {
         );
         // Mode 2: a PRIVATE cache for the surface above. There is one snapshot chain in this renderer,
         // so the only way to give the capsule a backdrop that includes the slab beneath it is to take
-        // the whole chain again — which is precisely the cost a second cache would have.
+        // the whole chain again - which is precisely the cost a second cache would have.
         if self.navblur >= 2 {
             crate::popover::host::blur_invalidate();
         }
@@ -778,7 +778,7 @@ mod tests {
         assert!(four
             .iter()
             .all(|r| r.x + r.w <= SCR_W + 0.01 && r.y + r.h <= SCR_H + 0.01));
-        // …and asking for more than fits reports the number DRAWN, never the number requested.
+        // ...and asking for more than fits reports the number DRAWN, never the number requested.
         let many = layout(Step {
             kind: Kind::Glass,
             spread: false,
@@ -803,7 +803,7 @@ mod tests {
     }
 
     /// The card axis: `c`/`cf` must select the card composite, and `cf` must not be read as an
-    /// ordinary step whose count starts with `f` — the longer prefix has to be tried first, and
+    /// ordinary step whose count starts with `f` - the longer prefix has to be tried first, and
     /// getting that wrong rejects the whole spec rather than one token.
     #[test]
     fn a_card_step_is_the_same_geometry_down_a_different_shader() {
@@ -817,7 +817,7 @@ mod tests {
         assert_eq!(s.steps[3].kind, Kind::Glass);
         assert_eq!(s.steps[1].n, 40);
         assert_eq!(s.steps[1].px(), 40.0 * 220.0 * 330.0);
-        // …and the two card steps lay out identically, so a focused/resting A/B changes ONE thing.
+        // ...and the two card steps lay out identically, so a focused/resting A/B changes ONE thing.
         // `Rect` is neither `Debug` nor `PartialEq`, so compare the fields the layout decides.
         let (a, b) = (layout(s.steps[1]), layout(s.steps[2]));
         assert_eq!(a.len(), b.len());
@@ -828,7 +828,7 @@ mod tests {
     }
 
     /// The step that puts the SHIPPED surface on the same dial as the synthetic ones. It draws
-    /// nothing itself — `app.rs` routes to the real popover — so laying out no rects is the
+    /// nothing itself - `app.rs` routes to the real popover - so laying out no rects is the
     /// contract, not an oversight.
     #[test]
     fn the_account_step_asks_for_a_route_rather_than_drawing_a_stand_in() {
@@ -852,7 +852,7 @@ mod tests {
         assert_eq!(r.len(), 2);
         assert_eq!((r[0].x, r[0].y), (0.0, 0.0));
         assert_eq!((r[1].x, r[1].y), (SCR_W - 300.0, SCR_H - 300.0));
-        // …and the same spec without the `s` keeps them together in the middle.
+        // ...and the same spec without the `s` keeps them together in the middle.
         let t = parse("2x300x300@3").expect("spec");
         let a = layout(t.steps[0]);
         assert!(

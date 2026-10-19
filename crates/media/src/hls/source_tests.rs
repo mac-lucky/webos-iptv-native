@@ -1,5 +1,5 @@
 //! The HLS client against an in-memory server on a fake clock: what it requests, in what order and
-//! when, and what bytes it delivers — the whole state machine, with no socket and no sleeping.
+//! when, and what bytes it delivers - the whole state machine, with no socket and no sleeping.
 //! `hls/loopback_tests.rs` drives the real curl transport.
 
 use super::*;

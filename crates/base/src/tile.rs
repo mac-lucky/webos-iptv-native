@@ -1,4 +1,4 @@
-//! `Tile` — the item abstraction a shelf tile is drawn from (restructure spec §10): the title, the
+//! `Tile` - the item abstraction a shelf tile is drawn from (restructure spec §10): the title, the
 //! poster (a server id + path, resolved through `ui::tex`), the resume progress and the watch
 //! marks. `pms::PmsMovie` implements it and the widgets that draw a tile (`ui::widgets::poster_mark`)
 //! ask a `&dyn Tile`, never a Plex type.
@@ -15,10 +15,10 @@ pub trait Tile {
     fn title(&self) -> &str;
     /// The poster's `(server raw id, path)`, if the item has art.
     fn poster(&self) -> Option<(u16, &str)>;
-    /// How far in, 0..1 — `None` when never started or finished (the resume bar's fact).
+    /// How far in, 0..1 - `None` when never started or finished (the resume bar's fact).
     fn progress(&self) -> Option<f32>;
     /// Finished (the corner tick's fact).
     fn watched(&self) -> bool;
-    /// Never started at all — `!unwatched && !watched` is a part-watched container.
+    /// Never started at all - `!unwatched && !watched` is a part-watched container.
     fn unwatched(&self) -> bool;
 }

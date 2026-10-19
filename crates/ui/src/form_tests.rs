@@ -42,7 +42,7 @@ fn nav() -> RowKind<Dest> {
     RowKind::Nav(Dest::Sub)
 }
 
-/// A, B, sep, C, note, D — with A a Nav.
+/// A, B, sep, C, note, D - with A a Nav.
 fn sample(show_c: bool) -> F {
     F::new()
         .section(

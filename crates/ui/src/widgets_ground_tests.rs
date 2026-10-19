@@ -1,12 +1,12 @@
 //! `AmbientWash::draw_ground`'s geometry and algebra: the ONE-pass ground (wash, the photograph
 //! dissolving over it, the atmospheric ramp over both) must be the layered picture, pixel for pixel
-//! up to rounding. All pure — no GL — because a GLSL expression cannot be graded by `make check`;
+//! up to rounding. All pure - no GL - because a GLSL expression cannot be graded by `make check`;
 //! these are the replicas the shaders are held to (`fs_art_wash.frag`, `vs_ambient.vert`).
 
 use super::*;
 use crate::consts::{SCR_H, SCR_W};
 
-/// The pixel rows a quad covers under the rasteriser's pixel-centre rule — what the layered path
+/// The pixel rows a quad covers under the rasteriser's pixel-centre rule - what the layered path
 /// actually painted, which is the thing the one-pass split has to reproduce.
 fn rows(y: f32, h: f32) -> std::ops::Range<i32> {
     let first = (y - 0.5).ceil() as i32;
@@ -20,7 +20,7 @@ fn hero_art_at(snap: f32) -> Rect {
     Rect::new(0.0, -snap * (SCR_H - 120.0), SCR_W, SCR_H).cover(1280.0, 720.0)
 }
 
-/// **The split tiles the wash exactly** — the overlap plus the bands are every pixel of `r` once:
+/// **The split tiles the wash exactly** - the overlap plus the bands are every pixel of `r` once:
 /// no crack for the clear colour to show through, no row painted twice. And the overlap is
 /// exactly the rows and columns the layered art quad covered, so the one-pass region neither
 /// paints art where the layered path had only wash nor misses a row it had art on.
@@ -48,7 +48,7 @@ fn the_one_pass_split_tiles_the_wash_and_covers_exactly_the_arts_pixels() {
         bands.into_iter().flatten().for_each(&mut paint);
         assert!(hits.iter().all(|&n| n == 1), "art {art:?}: a pixel painted {:?} times",
             hits.iter().find(|&&n| n != 1));
-        // …and the one-pass region is exactly where the layered art rasterised on the panel.
+        // ...and the one-pass region is exactly where the layered art rasterised on the panel.
         let clip = |v: std::ops::Range<i32>, hi: f32| v.start.max(0)..v.end.min(hi as i32);
         assert_eq!(rows(over.y, over.h), clip(rows(art.y, art.h), SCR_H), "art {art:?}: rows");
         assert_eq!(rows(over.x, over.w), clip(rows(art.x, art.w), SCR_W), "art {art:?}: columns");
@@ -63,7 +63,7 @@ fn the_one_pass_split_tiles_the_wash_and_covers_exactly_the_arts_pixels() {
 }
 
 /// The dive lifts the art off the bottom of the panel: from then on the wash below it is a band of
-/// its own, and the overlap is the art's visible part — the two the dive draws every frame.
+/// its own, and the overlap is the art's visible part - the two the dive draws every frame.
 #[test]
 fn mid_dive_the_art_keeps_the_top_and_the_wash_alone_has_the_foot() {
     let (over, bands) = art_wash_split(Rect::FULL, hero_art_at(0.5)).unwrap();
@@ -72,8 +72,8 @@ fn mid_dive_the_art_keeps_the_top_and_the_wash_alone_has_the_foot() {
     assert_eq!(bands.map(q), [None, Some((0.0, 600.0, SCR_W, SCR_H - 600.0)), None, None]);
 }
 
-/// Home's ramp as the ground carries it is `base_scrim_a` — the curve the two layered `rect`s
-/// drew and the legibility table is graded on — at both stops, either side of each, and beyond.
+/// Home's ramp as the ground carries it is `base_scrim_a` - the curve the two layered `rect`s
+/// drew and the legibility table is graded on - at both stops, either side of each, and beyond.
 #[test]
 fn the_grounds_ramp_is_the_hero_scrim_curve() {
     for hero_a in [0.02f32, 0.35, 1.0] {
@@ -93,7 +93,7 @@ fn the_grounds_ramp_is_the_hero_scrim_curve() {
 
 /// **The ramp is carried per VERTEX, so it must be one straight segment inside every strip.** The
 /// strips `cut_at` makes tile their rect, cut on whole rows at the knees, and within each the
-/// ramp at every pixel centre is the linear interpolation of its two edge values — which is what
+/// ramp at every pixel centre is the linear interpolation of its two edge values - which is what
 /// the vertex shader's `mix(u_inka.x, u_inka.y, a_pos.y)` interpolates to.
 #[test]
 fn the_ramp_is_straight_inside_every_strip_the_ground_draws() {
@@ -117,7 +117,7 @@ fn the_ramp_is_straight_inside_every_strip_the_ground_draws() {
 }
 
 /// `fs_art_wash.frag`'s ONE blend is the layered picture's three: the dithered wash, the art over it
-/// at `art.a * tint.a`, and the ramp's ink over both — executed, channel by channel, over a grid.
+/// at `art.a * tint.a`, and the ramp's ink over both - executed, channel by channel, over a grid.
 #[test]
 fn one_opaque_fragment_is_the_wash_the_art_and_the_ramp_stacked() {
     let over = |dst: f32, src: f32, a: f32| dst * (1.0 - a) + src * a;

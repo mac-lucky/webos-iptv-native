@@ -1,4 +1,4 @@
-//! `TextLift` — the ONE animated focus treatment for a block of prose that is a focus stop but not
+//! `TextLift` - the ONE animated focus treatment for a block of prose that is a focus stop but not
 //! a card: the About synopsis and Languages columns, a person's bio, a collection's blurb, an
 //! episode's title+summary block. While focused the block grows to [`TEXT_LIFT_SCALE`] over a
 //! translucent plate with a soft shadow, the mockup's `textLift` component.
@@ -6,8 +6,8 @@
 //! **Scoped, so it cannot leak.** [`draw`] hands its `content` closure a painter that zooms every
 //! primitive about the block's origin ([`Painter::zoomed`]); that painter exists only inside the
 //! closure, so a sibling drawn afterwards through the caller's own `p` is never scaled. The zoom is
-//! a GPU-side quad resize of the already-cached glyph textures — no re-rasterizing, no new
-//! glyph-cache entries — and `Label`/`TextView` need no changes.
+//! a GPU-side quad resize of the already-cached glyph textures - no re-rasterizing, no new
+//! glyph-cache entries - and `Label`/`TextView` need no changes.
 //!
 //! The mockup's overshooting cubic-bezier is deliberately not reproduced: the block steps the same
 //! critically damped spring at `K_SCALE` as every other pop here (the episode still pops that way a
@@ -15,13 +15,13 @@
 
 use super::{theme, Painter, Rect, Spring, Zoom};
 
-/// The block's pop at full focus — the mockup's flat `scale(1.05)`. Distinct from
+/// The block's pop at full focus - the mockup's flat `scale(1.05)`. Distinct from
 /// [`theme::EP_CARD_FOCUS_SCALE`], which is the episode STILL's own pop.
 pub const TEXT_LIFT_SCALE: f32 = 1.05;
 
 /// Grow from the centre of the block.
 pub const CENTRE: (f32, f32) = (0.5, 0.5);
-/// Grow downward from a fixed top edge — for a block that sits under something that does not move.
+/// Grow downward from a fixed top edge - for a block that sits under something that does not move.
 pub const TOP_CENTRE: (f32, f32) = (0.5, 0.0);
 
 /// One block's animated focus state: a single spring in the normalized 0..1 focus factor, from
@@ -61,7 +61,7 @@ impl TextLift {
         1.0 + self.0.pos * (TEXT_LIFT_SCALE - 1.0)
     }
 
-    /// 0 at rest, 1 at full focus — drives the shadow and, by default, the plate.
+    /// 0 at rest, 1 at full focus - drives the shadow and, by default, the plate.
     pub fn factor(&self) -> f32 {
         self.0.pos.clamp(0.0, 1.0)
     }
@@ -74,7 +74,7 @@ pub fn plate_colour(f: f32) -> [f32; 4] {
     plate
 }
 
-/// `r` as it is drawn while lifted by `scale` about `origin` — for focus geometry that must follow
+/// `r` as it is drawn while lifted by `scale` about `origin` - for focus geometry that must follow
 /// the drawn block.
 pub fn lifted(r: Rect, origin: (f32, f32), scale: f32) -> Rect {
     Zoom::about(r, origin, scale).map(r)
@@ -179,7 +179,7 @@ mod tests {
         assert_eq!(at_rest.len(), 1, "content only: {at_rest:?}");
         assert_eq!(at_rest[0].1.x, 120.0, "and unscaled");
 
-        // The ghost-plate case: focus, then leave and settle — the same census as never focused.
+        // The ghost-plate case: focus, then leave and settle - the same census as never focused.
         settle(&mut lift, true);
         assert!(census_of(&lift).len() > 1, "a focused block draws its plate and shadow");
         settle(&mut lift, false);

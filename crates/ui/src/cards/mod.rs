@@ -1,4 +1,4 @@
-//! `tv_ui::cards` — the shared card sections (layer L1: the sections built on the L0 row and grid primitives).
+//! `tv_ui::cards` - the shared card sections (layer L1: the sections built on the L0 row and grid primitives).
 //!
 //! [`Shelf`] (one horizontal strip) and [`Grid`] (the six-column poster grid) own everything a card
 //! section does that is not the screen's content: the focus pop, the let-go of the tile that lost
@@ -6,7 +6,7 @@
 //! hit-map stops, `Focusable` placement, paging requests and idle. A screen supplies its content
 //! through [`CardSource`] and reacts to the one [`CardEvent`] [`Shelf::on`] / [`Grid::on`] returns;
 //! it writes no pop, stop, restore or paging code of its own (and, for the stack pages, no press
-//! code either — see the exceptions under "One entry").
+//! code either - see the exceptions under "One entry").
 //!
 //! The contract, fixed once for every section:
 //!
@@ -23,10 +23,10 @@
 //! - **Elem-keyed.** The section remembers no focus. Each call it reads the ENGINE's focus
 //!   (`cx.focus.current`, filtered to its entry) and resolves the element to an index through
 //!   [`CardSource::index_of`], so a landing that reorders content cannot leave it naming another
-//!   item. Events carry `H::Elem`. (The pop springs follow their elements — `pool.rs` — so a tick
+//!   item. Events carry `H::Elem`. (The pop springs follow their elements - `pool.rs` - so a tick
 //!   that finds the focused element at another index with NO `FocusMoved`, a
 //!   content landing, MOVES the spring to the new index, snaps the cell it left to rest and shifts
-//!   the scroll by the index delta so the tile does not move on screen — [`Landed`] reports it.
+//!   the scroll by the index delta so the tile does not move on screen - [`Landed`] reports it.
 //!   A non-deliberate `FocusMoved` adopts the new card whole and snaps the old one to rest; only a
 //!   deliberate move lets the old tile go over frames. At most one tile reads lifted in any frame,
 //!   including the one between the landing and the tick.)
@@ -39,7 +39,7 @@
 //!   shelves never animate; the springs are frame-time and count as layout motion. See `landing.rs`.
 //!   [`Grid`] does not animate landings.
 //! - **The pop rule.** A tile the engine reports focused that no deliberate move (`By::Dir` /
-//!   `By::Pointer`) announced draws at FULL focus scale at once — a restore or reconcile is adopted
+//!   `By::Pointer`) announced draws at FULL focus scale at once - a restore or reconcile is adopted
 //!   whole, a page returns exactly as it was left. An unfocused tile draws at rest (or the live
 //!   let-go of the one that just lost focus). A deliberate move grows from rest.
 //!   A shelf whose page is still dissolving in is [`dormant`](Shelf::dormant): nothing is lifted
@@ -126,7 +126,7 @@ pub trait CardSource<H: Host> {
     fn len(&self) -> usize;
     /// The engine element of card `i`.
     fn elem(&self, i: usize) -> H::Elem;
-    /// The card showing `e`, if it is in this source — the inverse of [`elem`](Self::elem).
+    /// The card showing `e`, if it is in this source - the inverse of [`elem`](Self::elem).
     fn index_of(&self, e: &H::Elem) -> Option<usize>;
     fn art(&self, i: usize) -> Art<'_>;
     /// The block drawn under the FOCUSED card (asked for that one card per frame).
@@ -218,8 +218,8 @@ pub trait CardSource<H: Host> {
         false
     }
     /// The element of the row's trailing **See all** tile, for a source that opts in (default:
-    /// none). A [`Stack`] shelf then shows one more cell after the last loaded card — the card's
-    /// absent ground, ring and pop, *See all* centred, no artwork (`card_row::draw_see_all`) — that
+    /// none). A [`Stack`] shelf then shows one more cell after the last loaded card - the card's
+    /// absent ground, ring and pop, *See all* centred, no artwork (`card_row::draw_see_all`) - that
     /// RIGHT from the last card reaches and that is never held, captioned or asked for. Its press
     /// is reported as [`CardEvent::Activate`] of this element; the screen opens the whole row. A
     /// row with no card yet shows no tile, and a row still paging draws its skeleton cells after

@@ -3,15 +3,15 @@
 //
 // Home's snap dive fades the hero photograph by (1 - snap) while sliding it up, and Detail's scroll
 // fades its still the same way, so for the whole of either motion the panel under the art is the
-// opaque wash AND the translucent photograph — two full passes over the same pixels. On the dev
+// opaque wash AND the translucent photograph - two full passes over the same pixels. On the dev
 // television (Mali-T820, 2026-09-28) that second pass is the frame's excess: the poster dive ran
 // 17-24 ms a frame across its whole curve, and drawing the wash only where the art is NOT took it
 // to 59.9 moving fps with no frame over 18 ms (`gfx::draw_art_wash` has the numbers). The frame is
 // arithmetic-bound, so the pass has to go, not get cheaper: here the wash is evaluated where the
 // art already is, and one fragment does the work of two.
 //
-// The wash is opaque, so the layered result — wash, then the art, then the screen's atmospheric
-// ramp of scrim ink over both (`gfx::draw_ambient_inked` has the ramp's half) — is exactly
+// The wash is opaque, so the layered result - wash, then the art, then the screen's atmospheric
+// ramp of scrim ink over both (`gfx::draw_ambient_inked` has the ramp's half) - is exactly
 //
 //   dst' = mix(mix(wash, art * tint.rgb, art.a * tint.a), ink, ramp)
 //

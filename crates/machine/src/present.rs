@@ -1,10 +1,10 @@
 //! The present gate as a MACHINE with an owner (spec §4.4). `Present` is an `App` field with one
-//! typed entrance on the main thread — `note(PresentEvent)`, reached through `PresentHandle` — and
+//! typed entrance on the main thread - `note(PresentEvent)`, reached through `PresentHandle` - and
 //! one per-frame question, `take(tick)`, asked exactly once at §3.3 step 8. Workers get exactly
 //! one documented atomic door (`wake_from_worker`, phase 2); nothing else touches the atomics.
 //!
 //! Phase 2-i: the logical half only. `machine/src/idle.rs` stays the product's gate until phase 2 swaps
-//! this in under it; the two agree on the one behaviour a test can pin — a settled screen stops
+//! this in under it; the two agree on the one behaviour a test can pin - a settled screen stops
 //! presenting and the keepalive bounds staleness.
 #![allow(dead_code)] // phase 2-i: no consumer until phase 2 (spec §13)
 
@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::machine::{MachineId, TimerId};
 
-/// The ONE worker-side door (spec §4.4): a poster decode completing, the lab uploader — anything
+/// The ONE worker-side door (spec §4.4): a poster decode completing, the lab uploader - anything
 /// off the main thread that needs the next frame to present. It is a flag, not an event: the
 /// main thread's `take` folds it into the frame's verdict as `Damage` with no provenance of its
 /// own, because a worker cannot say which machine it woke on behalf of. Nothing else touches
@@ -42,7 +42,7 @@ impl Present {
     }
 }
 
-/// Why a frame presents — recorded, so a replay diff can say WHY (§4.4).
+/// Why a frame presents - recorded, so a replay diff can say WHY (§4.4).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Provenance {
     Landing(MachineId),
@@ -78,7 +78,7 @@ pub const KEEPALIVE_MS: u32 = 2000;
 
 /// Whose springs are reporting (§4.4 `MotionScope`, structural): the dispatcher sets the scope
 /// around each body's step, so a surface's foreground motion never counts as the host page
-/// moving — the host snapshot is re-taken only for PAGE motion.
+/// moving - the host snapshot is re-taken only for PAGE motion.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Scope {
     #[default]
@@ -95,7 +95,7 @@ pub struct Present {
     video_plane: bool,
     fault: Option<Fault>,
     last_present_ms: u32,
-    /// The provenance of the first damage since the last take — what the recorder writes.
+    /// The provenance of the first damage since the last take - what the recorder writes.
     why: Option<Provenance>,
     /// The worker door this gate reads (`WAKE`, or a private flag in a test).
     door: &'static AtomicBool,
@@ -148,7 +148,7 @@ impl Present {
         }
     }
 
-    /// Side-effect-free: did anything CHANGE since the last take — damage, motion or a worker's
+    /// Side-effect-free: did anything CHANGE since the last take - damage, motion or a worker's
     /// wake? `peek` without its two unconditional terms (the bound video plane and the keepalive),
     /// which present a frame without anything on it having moved.
     pub fn changed(&self) -> bool {

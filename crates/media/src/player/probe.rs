@@ -9,7 +9,7 @@
 //!    (`BufferfeedStartOutcome::Probing`); `player::state` reads `Connecting`.
 //! 3. Every frame, `pump` polls it ([`PendingProbe::poll`]). A result resolves the session and the
 //!    start goes on to the native Load; a failure, or no result inside [`PROBE_BUDGET`], is an
-//!    explicit refusal (`StartRefusal::Probe`) — never a spinner.
+//!    explicit refusal (`StartRefusal::Probe`) - never a spinner.
 //! 4. A stop, a new start or a suspend cancels it ([`PendingProbe::cancel`]), which returns at once.
 
 use crate::ff::probe::ProbeIo;
@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 
 /// The longest a probe may take before the start is refused with `ProbeFailure::Timeout`. Opening a
 /// remote Matroska file and reading its streams is a connect, a TLS handshake and a few hundred KB
-/// to a few MB (`avformat_find_stream_info`'s default `probesize` is 5 MB) — seconds on a slow
+/// to a few MB (`avformat_find_stream_info`'s default `probesize` is 5 MB) - seconds on a slow
 /// link, not tens of them. The transports carry their own connect and stall bounds; this one is the
 /// promise that the player leaves `Connecting` whatever they do.
 pub const PROBE_BUDGET: Duration = Duration::from_secs(30);
@@ -97,7 +97,7 @@ impl PendingProbe {
 mod tests {
     use super::*;
 
-    /// A probe that has not answered is still `None` inside the budget and a TIMEOUT past it —
+    /// A probe that has not answered is still `None` inside the budget and a TIMEOUT past it -
     /// the bound that keeps `Connecting` from being forever.
     #[test]
     fn a_silent_probe_times_out_at_the_budget_and_is_cancelled() {

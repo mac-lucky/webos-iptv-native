@@ -2,7 +2,7 @@
 //! from its text and the URL it was answered from.
 //!
 //! General, not tailored to one server: every tag that changes which bytes are fetched or how they
-//! are assembled is read — `EXTINF`, `EXT-X-TARGETDURATION`, `EXT-X-MEDIA-SEQUENCE`,
+//! are assembled is read - `EXTINF`, `EXT-X-TARGETDURATION`, `EXT-X-MEDIA-SEQUENCE`,
 //! `EXT-X-DISCONTINUITY(-SEQUENCE)`, `EXT-X-ENDLIST`, `EXT-X-PLAYLIST-TYPE`, `EXT-X-BYTERANGE`,
 //! `EXT-X-KEY`, `EXT-X-MAP`, `EXT-X-GAP` and, in a master, `EXT-X-STREAM-INF` and `EXT-X-MEDIA`.
 //! Everything else (`EXT-X-PROGRAM-DATE-TIME`, `EXT-X-INDEPENDENT-SEGMENTS`, `EXT-X-START`, LL-HLS
@@ -13,7 +13,7 @@
 //! by the same RFC 3986 resolver the media plane follows redirects with
 //! (`tv_net::stream::redirect::resolve_location`), so a relative segment path, a `../` key path and
 //! an absolute CDN URL all come out as something the transport can request. A URI that resolver
-//! refuses (another scheme — `skd://`, `data:` — or a control byte) is a [`ParseError::BadUri`].
+//! refuses (another scheme - `skd://`, `data:` - or a control byte) is a [`ParseError::BadUri`].
 //!
 //! Durations are integer **microseconds**: `EXTINF:5.005` sums exactly, and the window arithmetic
 //! of [`super::live`] never accumulates float error.

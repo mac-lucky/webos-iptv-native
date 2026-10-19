@@ -81,7 +81,7 @@ fn a_typed_open_reports_the_header_deadline_that_stopped_it() {
 
 /// Regression: `connect(2)` was called blocking with no deadline, so an unreachable server
 /// froze the 60fps main loop for the kernel's SYN-retry budget (~2 min), once per request.
-/// 192.0.2.0/24 is TEST-NET-1 (RFC 5737) — guaranteed non-routable, so the handshake can
+/// 192.0.2.0/24 is TEST-NET-1 (RFC 5737) - guaranteed non-routable, so the handshake can
 /// never complete and the only thing that can end this call is the timeout. The port is an
 /// arbitrary high one, not :80 or :443, which can complete locally through an HTTP(S)
 /// interceptor without the address being reachable.
@@ -133,10 +133,10 @@ fn every_failed_open_retires_its_fd_and_leaks_nothing() {
     // The first case used to be the dotted quad `999.1.2.3`, rejected by the hand parse after
     // `socket()`. That parse is gone, and sending the same string on would have made this
     // OFFLINE suite do a DNS lookup: `999.1.2.3` is not an address, so it goes to the resolver
-    // as a NAME — where a network with NXDOMAIN hijacking answers it with a real web server
+    // as a NAME - where a network with NXDOMAIN hijacking answers it with a real web server
     // (and the open then SUCCEEDS, failing this test), and a network with a dead resolver
     // spends glibc's whole `timeout × attempts × nameservers` budget inside a ~0.3 s suite.
-    // An out-of-range port is the same early exit — refused in `resolve`, before any socket —
+    // An out-of-range port is the same early exit - refused in `resolve`, before any socket -
     // and it cannot leave the machine.
     for (label, ip, port) in [
         ("port out of range", &ip_refused, 70_000),
@@ -159,12 +159,12 @@ fn every_failed_open_retires_its_fd_and_leaks_nothing() {
         );
     }
 
-    // …and the descriptor is genuinely closed, not merely un-published.
+    // ...and the descriptor is genuinely closed, not merely un-published.
     //
     // The slack is deliberately loose, because `open_fd_count` is PROCESS-wide and this suite
     // runs in parallel: the sibling socket tests (loopback listeners, the two `ff.rs` counting
     // accepts) hold descriptors open across this window, so a strict +2 made the assertion fire
-    // on their scheduling rather than on a leak — it was already failing ~1 run in 6 before this
+    // on their scheduling rather than on a leak - it was already failing ~1 run in 6 before this
     // branch and got worse as the suite grew, which is a red gate that says nothing. What is
     // being detected is 32 leaked sockets; anything under a handful is other tests, and the two
     // are three quarters of an order of magnitude apart.
@@ -188,7 +188,7 @@ fn every_failed_open_retires_its_fd_and_leaks_nothing() {
 }
 
 /// The claim the whole single-closer protocol rests on: `shutdown(2)` wakes a peer that is
-/// already blocked in `recv`, which is what the interrupt sites need. (`close(2)` does not —
+/// already blocked in `recv`, which is what the interrupt sites need. (`close(2)` does not -
 /// that is why BACK during a stall used to wait out the 15 s SO_RCVTIMEO.) Two threads, a
 /// real loopback socket, no mocking.
 #[test]
@@ -220,7 +220,7 @@ fn shutdown_wakes_a_reader_that_is_already_blocked_in_recv() {
 
 /// The point of publishing the fd at `socket()`: an open that stalls is now interruptible.
 /// A listener that accepts and never answers puts `http_open` in its header `recv`, where it
-/// would otherwise sit out the full 15 s `SO_RCVTIMEO` — and the main thread waits on that in
+/// would otherwise sit out the full 15 s `SO_RCVTIMEO` - and the main thread waits on that in
 /// `teardown`'s join, which is the freeze this whole change exists to remove. The interrupt
 /// must also leave the stream RETIRED, not merely woken: a stale fd left in the atomic is one
 /// the next `http_shutdown` would shoot after the number had been recycled.
@@ -292,7 +292,7 @@ fn exactly_one_caller_can_claim_the_fd() {
     assert!(hs.fd() < 0, "the slot must be left closed");
 }
 
-/// The happy path still connects, and — the part that matters for every read below —
+/// The happy path still connects, and - the part that matters for every read below -
 /// the socket is handed back in BLOCKING mode.
 #[test]
 fn a_live_listener_connects_and_the_socket_is_left_blocking() {
