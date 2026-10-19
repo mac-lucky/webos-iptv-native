@@ -9,4 +9,5 @@ pub mod redact;
 pub mod refresh;
 pub mod storage;
 pub mod url;
+pub mod vod;
 pub mod xmltv;

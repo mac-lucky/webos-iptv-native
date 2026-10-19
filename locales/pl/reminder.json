@@ -1,0 +1,10 @@
+{
+  "reminder.added": "Ustawiono przypomnienie",
+  "reminder.cancel": "Anuluj przypomnienie",
+  "reminder.full": "Za dużo przypomnień",
+  "reminder.list": "Przypomnienia",
+  "reminder.removed": "Anulowano przypomnienie",
+  "reminder.set": "Przypomnij mi",
+  "reminder.starting": "Właśnie się zaczyna na kanale {channel}",
+  "reminder.watch_hint": "OK, aby oglądać, Wstecz, aby zamknąć"
+}

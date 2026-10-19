@@ -8,6 +8,7 @@
 //!
 //! Built with `--features hostsim`, the same binary is the desktop simulator (`sim`).
 
+mod backup;
 mod input;
 mod logos;
 mod logs;
@@ -19,6 +20,7 @@ mod shell;
 #[cfg(feature = "hostsim")]
 mod sim;
 mod store;
+mod subtitles;
 mod transport;
 
 #[cfg(feature = "hostsim")]
@@ -144,7 +146,7 @@ fn run(video: &Video, shell: &mut Shell, clock: u64) {
             match ev.kind() {
                 sdl::SDL_QUIT | sdl::SDL_APP_TERMINATING => {
                     log("lifecycle: quit");
-                    shell.save_progress();
+                    shell.shutdown();
                     return;
                 }
                 sdl::SDL_APP_WILLENTERBACKGROUND | sdl::SDL_APP_DIDENTERBACKGROUND => {
@@ -164,10 +166,19 @@ fn run(video: &Video, shell: &mut Shell, clock: u64) {
                 sdl::SDL_WINDOWEVENT => shell.redraw(),
                 sdl::SDL_KEYDOWN | sdl::SDL_KEYUP => {
                     let key = input::decode(&ev, ms() as u32);
-                    // Presses only, and nothing while the keyboard types. A code the remote table
-                    // does not name is logged raw, which is how a new firmware's codes are learnt.
+                    // A code the remote table does not name is logged raw, which is how a new
+                    // firmware's codes are learnt. Presses only; while the keyboard types, only
+                    // its own control keys (`input::loggable_while_typing`), every edge, and
+                    // never a typed character.
                     // Not `key:`: the log redactor masks the value of any `...key: value` label.
-                    if key.edge == input::Edge::Down && !shell.typing() {
+                    if shell.typing() {
+                        if input::loggable_while_typing(key.sym) {
+                            log(&format!(
+                                "keyboard: key sym={} wcode={} {:?}",
+                                key.sym, key.wcode, key.edge
+                            ));
+                        }
+                    } else if key.edge == input::Edge::Down {
                         match input::name(key.wcode) {
                             Some(name) => log(&format!("remote: {name}")),
                             None => log(&format!("remote: sym={} wcode={}", key.sym, key.wcode)),
@@ -186,7 +197,7 @@ fn run(video: &Video, shell: &mut Shell, clock: u64) {
         }
         if shell.exit() {
             log("exit");
-            shell.save_progress();
+            shell.shutdown();
             return;
         }
         if shell.needs_frame() && !background {

@@ -80,6 +80,24 @@ pub fn name(wcode: u32) -> Option<&'static str> {
     REMOTE.iter().find(|k| k.2 == wcode).map(|k| k.0)
 }
 
+/// Whether a key that arrives while the TV keyboard types may go into the log: its control keys
+/// (Enter, delete, clear, arrows and the like), never one that types a character. SDL gives a key
+/// with a character its code point and any other key its scancode with bit 30 set, except the
+/// keypad, whose digits and signs also carry a scancode, so those stay out (a USB keyboard's
+/// keypad would otherwise log a typed token digit by digit).
+pub fn loggable_while_typing(sym: u32) -> bool {
+    const SCANCODE_KEY: u32 = 1 << 30;
+    match sym {
+        0..=0x1f | 0x7f => true,
+        // SDL's keypad scancodes, all but its Enter (88).
+        SCANCODE_KEY.. => !matches!(
+            sym - SCANCODE_KEY,
+            84..=87 | 89..=99 | 103 | 133 | 134 | 176..=221
+        ),
+        _ => false,
+    }
+}
+
 /// An `SDL_KEYDOWN`/`SDL_KEYUP` event in LG's layout.
 #[cfg(not(feature = "hostsim"))]
 pub fn decode(ev: &Event, at_ms: u32) -> KeyEvent {
@@ -184,6 +202,37 @@ mod tests {
         assert_eq!(name(4), None);
         assert_eq!(name(WCODE_CH_UP_ALT), Some("CH+"));
         assert_eq!(name(WCODE_CH_DOWN_ALT), Some("CH-"));
+    }
+
+    #[test]
+    fn only_control_keys_are_loggable_while_the_keyboard_types() {
+        const KP: u32 = 1 << 30;
+        for sym in [
+            SDLK_RETURN,
+            SDLK_BACKSPACE,
+            0x7f,
+            SDLK_CLEAR,
+            SDLK_LEFT,
+            KP | 88,
+        ] {
+            assert!(loggable_while_typing(sym), "{sym:#x}");
+        }
+        // Characters, as code points or as the keypad's digits and signs.
+        for sym in [
+            b'a' as u32,
+            b'1' as u32,
+            b' ' as u32,
+            0x17c,
+            KP | 84,
+            KP | 89,
+            KP | 98,
+            KP | 99,
+            KP | 103,
+            KP | 176,
+            KP | 221,
+        ] {
+            assert!(!loggable_while_typing(sym), "{sym:#x}");
+        }
     }
 
     #[cfg(not(feature = "hostsim"))]

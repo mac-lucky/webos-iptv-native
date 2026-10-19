@@ -3,7 +3,7 @@
 //! here; every method is input in, state change (and commands) out, so the whole remote
 //! behaviour is host-tested.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use iptv::model::{Channel, ChannelKey, Programme, Timestamp};
@@ -95,6 +95,8 @@ pub struct Grid {
     pub now: Timestamp,
     /// Local time minus UTC, seconds.
     pub offset: i32,
+    /// The programmes with a reminder set (channel, start): their cells carry a bell.
+    pub reminders: HashSet<(ChannelKey, Timestamp)>,
 }
 
 impl Grid {
@@ -113,6 +115,7 @@ impl Grid {
             rows: Vec::new(),
             now: 0,
             offset: 0,
+            reminders: HashSet::new(),
         }
     }
 
@@ -189,6 +192,7 @@ impl Grid {
     /// (Back then returns to live).
     pub fn open(&mut self, data: &dyn TvData) {
         self.read_clock(data);
+        self.read_reminders(data);
         self.mode = Mode::Browse;
         self.flips.clear();
         self.read_playback(data);
@@ -217,6 +221,7 @@ impl Grid {
     /// everything read, and read again.
     pub fn refresh(&mut self, data: &dyn TvData, channels: Rc<[Rc<Channel>]>) {
         self.flips.clear();
+        self.read_reminders(data);
         self.rows.clear();
         self.details = None;
         self.read_clock(data);
@@ -225,6 +230,11 @@ impl Grid {
         }
         self.replace(channels);
         self.resolve(data);
+    }
+
+    fn read_reminders(&mut self, data: &dyn TvData) {
+        let list = data.reminders().into_iter();
+        self.reminders = list.map(|r| (r.channel, r.start)).collect();
     }
 
     fn replace(&mut self, channels: Rc<[Rc<Channel>]>) {

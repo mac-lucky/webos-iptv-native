@@ -6,7 +6,7 @@
 //! Ignored by default: they run in real time (about six minutes together). They provision
 //! themselves and skip, saying why, when they cannot:
 //!
-//! - The demuxer's libraries: `SNATIVE_APP_DIR` when set; else the bundled FFmpeg that
+//! - The demuxer's libraries: `WEBOSIPTV_APP_DIR` when set; else the bundled FFmpeg that
 //!   `cargo xtask ffmpeg --host` stages in `pkg/` (the exact build the TV ships); else `-wi` links
 //!   under `target/` to an FFmpeg 9's dylibs in `FFMPEG_LIB_DIR`, `/opt/homebrew/lib` or
 //!   `/usr/local/lib`.
@@ -67,12 +67,12 @@ fn fixture_from(var: &str, two_audio: bool, at_least: usize) -> Option<std::sync
     Some(std::sync::Arc::new(Fixture { segments }))
 }
 
-/// Stage the libraries (unless `SNATIVE_APP_DIR` names them) and boot curl and FFmpeg.
+/// Stage the libraries (unless `WEBOSIPTV_APP_DIR` names them) and boot curl and FFmpeg.
 fn boot() -> Result<(), String> {
-    if std::env::var_os("SNATIVE_APP_DIR").is_none() {
+    if std::env::var_os("WEBOSIPTV_APP_DIR").is_none() {
         let dir = stage_libraries()?;
         // Edition 2021: a safe call; this runs once, before any thread reads the variable.
-        std::env::set_var("SNATIVE_APP_DIR", &dir);
+        std::env::set_var("WEBOSIPTV_APP_DIR", &dir);
     }
     tv_net::net::global_init();
     crate::ff::boot();

@@ -38,7 +38,8 @@ fn playlist(channels: Vec<Channel>, guides: &[&str]) -> Playlist {
 fn store() -> RefreshStore {
     let storage = Storage::open_in_memory().unwrap();
     let id = storage.add_playlist("Main", PLAYLIST).unwrap();
-    RefreshStore::new(storage, id).with_clock(now)
+    assert_eq!(id, 1);
+    RefreshStore::new(storage).with_clock(now)
 }
 
 fn programme(channel: &str, title: &str) -> String {
@@ -89,23 +90,80 @@ fn guide_urls_follow_the_playlist_header() {
     let mut store = store();
     assert!(store.guide_urls().is_empty());
     store
-        .save_playlist(playlist(vec![channel("Alpha", "a")], &[OTHER, GUIDE]))
+        .save_playlist(1, playlist(vec![channel("Alpha", "a")], &[OTHER, GUIDE]))
         .unwrap();
     assert_eq!(store.guide_urls(), [OTHER, GUIDE]);
     store
-        .save_playlist(playlist(vec![channel("Alpha", "a")], &[GUIDE]))
+        .save_playlist(1, playlist(vec![channel("Alpha", "a")], &[GUIDE]))
         .unwrap();
     assert_eq!(store.guide_urls(), [GUIDE]);
+}
+
+#[test]
+fn a_guide_two_playlists_name_is_fetched_once_with_both_filters() {
+    let mut store = store();
+    let other = store
+        .storage()
+        .add_playlist("Other", "http://playlist.example/2.m3u")
+        .unwrap();
+    store
+        .save_playlist(1, playlist(vec![channel("Alpha", "a")], &[GUIDE]))
+        .unwrap();
+    store
+        .save_playlist(
+            other,
+            playlist(vec![channel("Bravo", "b")], &[OTHER, GUIDE]),
+        )
+        .unwrap();
+    assert_eq!(
+        store.guide_urls(),
+        [GUIDE, OTHER],
+        "playlist order, each once"
+    );
+    let xml = format!(
+        r#"<tv>{}{}{}</tv>"#,
+        programme("a", "A now"),
+        programme("b", "B now"),
+        programme("z", "Z now")
+    );
+    store.import_guide(GUIDE, &mut xml.as_bytes()).unwrap();
+    let storage = store.storage();
+    let sources = storage.epg_sources().unwrap();
+    let matcher = Matcher::new(&sources);
+    let titles = |id| -> Vec<Option<String>> {
+        storage
+            .channels(id)
+            .unwrap()
+            .iter()
+            .map(|c| {
+                let found = matcher.find(id, c, None)?;
+                storage.now_next(&found, NOW).unwrap().0.map(|p| p.title)
+            })
+            .collect()
+    };
+    assert_eq!(titles(1), [Some("A now".to_owned())]);
+    assert_eq!(titles(other), [Some("B now".to_owned())], "both filters");
+    // A disabled playlist is not fetched for: its guides go, and a guide only it uses is not
+    // read.
+    store.storage().set_playlist_enabled(other, false).unwrap();
+    assert_eq!(store.guide_urls(), [GUIDE]);
+    let other_xml = format!("<tv>{}</tv>", programme("b", "B other"));
+    assert_eq!(
+        store
+            .import_guide(OTHER, &mut other_xml.as_bytes())
+            .unwrap(),
+        Stored::Same
+    );
 }
 
 #[test]
 fn a_guide_import_keeps_only_the_playlist_channels() {
     let mut store = store();
     store
-        .save_playlist(playlist(
-            vec![channel("Alpha", "a"), channel("Bravo", "")],
-            &[GUIDE],
-        ))
+        .save_playlist(
+            1,
+            playlist(vec![channel("Alpha", "a"), channel("Bravo", "")], &[GUIDE]),
+        )
         .unwrap();
     let xml = format!(
         r#"<tv><channel id="a"><display-name>Alpha</display-name></channel><channel id="b"><display-name>Bravo</display-name></channel><channel id="z"><display-name>Zulu</display-name></channel>{}{}{}</tv>"#,
@@ -127,7 +185,7 @@ fn a_guide_import_keeps_only_the_playlist_channels() {
 fn guide_validators_lapse_when_the_channel_filter_changes() {
     let mut store = store();
     store
-        .save_playlist(playlist(vec![channel("Alpha", "a")], &[GUIDE]))
+        .save_playlist(1, playlist(vec![channel("Alpha", "a")], &[GUIDE]))
         .unwrap();
     store
         .import_guide(GUIDE, &mut "<tv></tv>".as_bytes())
@@ -136,15 +194,15 @@ fn guide_validators_lapse_when_the_channel_filter_changes() {
     assert_eq!(store.validators(GUIDE), etag("\"g1\""));
     // The same playlist again: not rewritten, and the filter is still current.
     assert_eq!(
-        store.save_playlist(playlist(vec![channel("Alpha", "a")], &[GUIDE])),
+        store.save_playlist(1, playlist(vec![channel("Alpha", "a")], &[GUIDE])),
         Ok(Stored::Same)
     );
     assert_eq!(store.validators(GUIDE), etag("\"g1\""));
     store
-        .save_playlist(playlist(
-            vec![channel("Alpha", "a"), channel("Bravo", "b")],
-            &[GUIDE],
-        ))
+        .save_playlist(
+            1,
+            playlist(vec![channel("Alpha", "a"), channel("Bravo", "b")], &[GUIDE]),
+        )
         .unwrap();
     assert_eq!(store.validators(GUIDE), Validators::default());
 }
@@ -153,7 +211,7 @@ fn guide_validators_lapse_when_the_channel_filter_changes() {
 fn programmes_before_their_channel_heal_on_the_next_full_download() {
     let mut store = store();
     store
-        .save_playlist(playlist(vec![channel("Alpha", "")], &[GUIDE]))
+        .save_playlist(1, playlist(vec![channel("Alpha", "")], &[GUIDE]))
         .unwrap();
     let xml = format!(
         r#"<tv>{}<channel id="late"><display-name>Alpha</display-name></channel></tv>"#,
@@ -179,7 +237,7 @@ fn programmes_before_their_channel_heal_on_the_next_full_download() {
 fn an_unknown_guide_becomes_a_manual_guide_for_every_playlist() {
     let mut store = store();
     store
-        .save_playlist(playlist(vec![channel("Alpha", "a")], &[]))
+        .save_playlist(1, playlist(vec![channel("Alpha", "a")], &[]))
         .unwrap();
     let xml = format!("<tv>{}</tv>", programme("a", "Extra"));
     store.import_guide(OTHER, &mut xml.as_bytes()).unwrap();
@@ -211,7 +269,7 @@ impl Read for Failing<'_> {
 fn a_cut_download_fails_and_keeps_the_previous_guide() {
     let mut store = store();
     store
-        .save_playlist(playlist(vec![channel("Alpha", "a")], &[GUIDE]))
+        .save_playlist(1, playlist(vec![channel("Alpha", "a")], &[GUIDE]))
         .unwrap();
     let good = format!("<tv>{}</tv>", programme("a", "Good"));
     store.import_guide(GUIDE, &mut good.as_bytes()).unwrap();
@@ -232,7 +290,7 @@ fn a_cut_download_fails_and_keeps_the_previous_guide() {
 #[test]
 fn a_guide_serving_no_channel_is_not_read() {
     let mut store = store();
-    store.save_playlist(playlist(vec![], &[GUIDE])).unwrap();
+    store.save_playlist(1, playlist(vec![], &[GUIDE])).unwrap();
     let mut never = Failing { data: b"", ok: 0 };
     assert_eq!(store.import_guide(GUIDE, &mut never), Ok(Stored::Same));
 }
@@ -241,7 +299,7 @@ fn a_guide_serving_no_channel_is_not_read() {
 fn a_cut_or_empty_guide_keeps_the_stored_one() {
     let mut store = store();
     store
-        .save_playlist(playlist(vec![channel("Alpha", "a")], &[GUIDE]))
+        .save_playlist(1, playlist(vec![channel("Alpha", "a")], &[GUIDE]))
         .unwrap();
     let good = format!("<tv>{}</tv>", programme("a", "Good"));
     store.import_guide(GUIDE, &mut good.as_bytes()).unwrap();

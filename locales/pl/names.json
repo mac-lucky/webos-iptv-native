@@ -1,0 +1,19 @@
+{
+  "names.add_prefix": "Dodaj przedrostek",
+  "names.add_suffix": "Dodaj przyrostek",
+  "names.added": "Dodano",
+  "names.count": {
+    "one": "{count} reguła",
+    "few": "{count} reguły",
+    "many": "{count} reguł",
+    "other": "{count} reguły"
+  },
+  "names.exists": "Już jest na liście",
+  "names.full": "Lista jest pełna",
+  "names.invalid": "Wpisz od 1 do 32 znaków",
+  "names.prefixes": "Usuwane przedrostki",
+  "names.remove": "Usuń",
+  "names.removed": "Usunięto",
+  "names.suffixes": "Usuwane przyrostki",
+  "names.title": "Nazwy kanałów"
+}

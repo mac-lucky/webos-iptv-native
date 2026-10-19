@@ -5,7 +5,7 @@
 //! LG's buffer-feed pipeline is told the codecs, the frame rate and the sink envelope in the Load
 //! payload, BEFORE the first access unit is fed, and it builds its decoders from that declaration
 //! rather than from the bitstream. So the facts here must be known at start, and the container is
-//! the only authority (an addon's metadata is not, and Stremio gives none): unless the caller hands
+//! the only authority (a playlist's metadata is not, and an M3U gives none): unless the caller hands
 //! in a declaration of its own with [`crate::session::PlaybackStart`], the player PROBES the stream
 //! with the bundled demuxer first (`ff::probe`, run off-frame by `player::probe`) and derives the
 //! declaration from what it read ([`derive_declaration`]). The demuxer then refuses a file that

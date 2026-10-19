@@ -3,6 +3,7 @@
 
 use iptv::catchup::in_archive;
 use iptv::model::{Channel, ChannelKey, Programme};
+use iptv::vod::VodKind;
 use tv_machine::machine::Measure;
 use tv_platform::i18n::msg;
 use tv_ui::Painter;
@@ -10,8 +11,15 @@ use tv_ui::Painter;
 use super::settings::{keys, Kind, Label, Settings};
 use super::side::{Edge, Page, Row, SidePanel};
 use super::{PanelCtx, PanelKey};
+use crate::data::VodSection;
 use crate::data::{Command, Group, Logos, Navigate, Output, Screen, ScreenMessage, Stream, TvData};
 use crate::input::{Action, Hold, Key, Press};
+use crate::library::LibraryPage;
+use crate::parental::{self, PinTask};
+use crate::playback::{
+    audio_offset, offset_label, sleep_label, sleep_left_label, with_channel_offset, SLEEP_MINUTES,
+};
+use crate::reminders::{self, Toggled};
 use crate::time::{hhmm, weekday};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,12 +39,39 @@ pub enum MenuItem {
     Guide,
     Channels,
     History,
+    /// The Movies and Shows sections, listed while the playlists carry VOD.
+    Movies,
+    Shows,
     // player menu
     AudioTrack,
     /// One track of the audio track page.
     Track(usize),
+    /// The subtitles page, and one row of it: a track, or `None` for off.
+    Subtitles,
+    Subtitle(Option<usize>),
     ReturnToLive,
     ManageFavorites,
+    /// Picture in picture: the guide full screen, the video playing on in a corner window.
+    Pip,
+    /// The playing channel's audio offset page, and one step of it (ms).
+    AudioOffset,
+    Offset(i32),
+    /// The display mode page, and one mode of it (its stored value).
+    DisplayMode,
+    Display(&'static str),
+    /// The sleep timer page, and one choice of it (minutes; 0 is off).
+    SleepTimer,
+    Sleep(u32),
+    /// Set or cancel the reminder for the focused future programme.
+    Remind,
+    /// Lock or unlock the channel, or the group, with the parental PIN.
+    LockChannel,
+    LockGroup,
+    /// The viewer's groups: Manage groups, the group's channels, a custom
+    /// group's own page.
+    ManageGroups,
+    ManageChannels,
+    EditGroup,
 }
 
 struct ChannelTarget {
@@ -45,6 +80,10 @@ struct ChannelTarget {
     programme: Option<Programme>,
     /// The programme can be played from the archive.
     from_start: bool,
+    /// The parental settings block the channel itself.
+    blocked: bool,
+    /// For a programme still to start: whether a reminder is set for it.
+    reminder: Option<bool>,
 }
 
 impl ChannelTarget {
@@ -55,7 +94,31 @@ impl ChannelTarget {
             favorite: cx.data.is_favorite(channel.key),
             programme: programme.cloned(),
             from_start: programme.is_some_and(|p| in_archive(channel, p, now)),
+            blocked: parental::channel_blocked(cx.settings, channel.key),
+            reminder: programme
+                .filter(|p| p.start > now)
+                .map(|p| reminders::has(cx.settings, channel.key, p.start)),
         }
+    }
+
+    /// Remind me (on a programme still to start) and the channel's lock.
+    fn user_rows(&self) -> Vec<Row<MenuItem>> {
+        let mut rows = Vec::new();
+        if let Some(set) = self.reminder {
+            let label = if set {
+                msg::reminder_cancel()
+            } else {
+                msg::reminder_set()
+            };
+            rows.push(Row::action(MenuItem::Remind, label));
+        }
+        let lock = if self.blocked {
+            msg::parental_unlock_channel()
+        } else {
+            msg::parental_lock_channel()
+        };
+        rows.push(Row::action(MenuItem::LockChannel, lock));
+        rows
     }
 
     /// Favourite, description and watch-from-start rows.
@@ -89,6 +152,22 @@ fn done(command: Command) -> Output {
     Output::command(command).and(Output::close())
 }
 
+/// Close the menu and ask for the PIN, which stores `value` under the parental `key`; a list
+/// with no room left says so instead.
+fn with_pin(key: &'static str, value: Option<String>, toast: &str) -> Output {
+    match value {
+        Some(value) => close_then(Navigate::Pin(PinTask::Set {
+            key,
+            value,
+            toast: toast.to_owned(),
+        })),
+        None => Output {
+            toast: Some(msg::parental_full().to_owned()),
+            ..Output::close()
+        },
+    }
+}
+
 /// Play `programme` from the archive, from its start, in full screen: every screen closes, as
 /// a Search or History pick does, rather than leaving it in the guide's preview.
 fn watch_from_start(channel: ChannelKey, programme: Programme) -> Output {
@@ -119,6 +198,11 @@ struct Menu {
     /// The player's audio tracks and the current one, for the player menu.
     tracks: Vec<String>,
     track: usize,
+    /// The player's subtitle tracks and the one shown (`None`: off), for the player menu.
+    subtitles: Vec<String>,
+    subtitle: Option<usize>,
+    /// The sleep timer's time left as the player menu opened.
+    sleep_left_secs: Option<u32>,
 }
 
 impl Menu {
@@ -130,6 +214,9 @@ impl Menu {
             utc_offset_secs: cx.data.utc_offset_secs(),
             tracks: Vec::new(),
             track: 0,
+            subtitles: Vec::new(),
+            subtitle: None,
+            sleep_left_secs: None,
         }
     }
 }
@@ -169,6 +256,7 @@ impl ContextMenu {
         if group.is_some() {
             rows.push(Row::submenu(MenuItem::GroupOptions, msg::group_options()));
         }
+        rows.extend(target.user_rows());
         rows.push(Row::action(MenuItem::Search, msg::common_search()));
         rows.push(Row::action(MenuItem::Settings, msg::common_settings()));
         Self {
@@ -177,8 +265,9 @@ impl ContextMenu {
         }
     }
 
-    /// The player menu: audio track, return to live while an archive plays, then the playing
-    /// channel's favourite, description and watch-from-start rows, and Settings.
+    /// The player menu: audio track, return to live while an archive plays, the playing
+    /// channel's audio offset, the display mode and the sleep timer, then its favourite,
+    /// description and watch-from-start rows, picture in picture, and Settings.
     pub fn player(cx: &PanelCtx) -> Self {
         let playback = cx.data.playback();
         let now = cx.data.now();
@@ -191,8 +280,20 @@ impl ContextMenu {
                     .value(current.map_or("", String::as_str)),
             );
         }
+        if !playback.subtitle_tracks.is_empty() {
+            let current = playback
+                .subtitle_track
+                .and_then(|i| playback.subtitle_tracks.get(i));
+            rows.push(
+                Row::submenu(MenuItem::Subtitles, msg::subtitles_title())
+                    .value(current.map_or(msg::subtitles_off(), String::as_str)),
+            );
+        }
         if playback.catchup.is_some() {
             rows.push(Row::action(MenuItem::ReturnToLive, msg::player_go_live()));
+        }
+        if let Some(ch) = &channel {
+            rows.extend(playback_rows(cx.settings, ch.key, playback.sleep_left_secs));
         }
         let target = channel.as_ref().map(|ch| {
             // the archived programme playing, else the one on air
@@ -205,6 +306,9 @@ impl ContextMenu {
         if let Some(t) = &target {
             rows.extend(t.rows());
         }
+        if channel.is_some() {
+            rows.push(Row::action(MenuItem::Pip, msg::pip_start()));
+        }
         rows.push(Row::action(MenuItem::Settings, msg::common_settings()));
         let title = channel
             .as_ref()
@@ -212,6 +316,9 @@ impl ContextMenu {
         let mut menu = Menu::new(target, None, cx);
         menu.tracks = playback.audio_tracks;
         menu.track = playback.audio_track;
+        menu.subtitles = playback.subtitle_tracks;
+        menu.subtitle = playback.subtitle_track;
+        menu.sleep_left_secs = playback.sleep_left_secs;
         Self {
             panel: SidePanel::new(Page::list(title, rows)),
             menu,
@@ -220,13 +327,22 @@ impl ContextMenu {
 
     /// The main menu, on the left edge.
     pub fn main(cx: &PanelCtx) -> Self {
-        let rows = vec![
+        let mut rows = vec![
             Row::action(MenuItem::Search, msg::common_search()),
             Row::action(MenuItem::Guide, msg::nav_epg()),
             Row::action(MenuItem::Channels, msg::common_channels()),
-            Row::action(MenuItem::History, msg::channel_history()),
-            Row::action(MenuItem::Settings, msg::common_settings()),
         ];
+        // A section only while it lists something the parental lock leaves.
+        let vod = cx.data.vod();
+        let any = |kind| vod.iter().any(|v| v.kind == kind && !cx.data.vod_locked(v));
+        if any(VodKind::Movie) {
+            rows.push(Row::action(MenuItem::Movies, msg::vod_movies()));
+        }
+        if any(VodKind::Episode) {
+            rows.push(Row::action(MenuItem::Shows, msg::vod_shows()));
+        }
+        rows.push(Row::action(MenuItem::History, msg::channel_history()));
+        rows.push(Row::action(MenuItem::Settings, msg::common_settings()));
         Self {
             panel: SidePanel::at(Edge::Left, Page::list(msg::player_menu(), rows)),
             menu: Menu::new(None, None, cx),
@@ -236,6 +352,7 @@ impl ContextMenu {
     /// The menu for a group in the groups panel: its options first.
     pub fn group(group: &Group, cx: &PanelCtx) -> Self {
         let mut rows = group_rows(group, cx.settings);
+        rows.extend(library_rows(group));
         rows.push(Row::action(
             MenuItem::ManageFavorites,
             msg::channel_favorite_manage(),
@@ -356,6 +473,8 @@ impl Menu {
             MenuItem::Guide => close_then(Navigate::Guide),
             MenuItem::Channels => close_then(Navigate::ChannelList { preview: false }),
             MenuItem::History => close_then(Navigate::History),
+            MenuItem::Movies => close_then(Navigate::Vod(VodSection::Movies)),
+            MenuItem::Shows => close_then(Navigate::Vod(VodSection::Shows)),
             MenuItem::AudioTrack => {
                 let rows = self
                     .tracks
@@ -367,12 +486,158 @@ impl Menu {
                 Output::default()
             }
             MenuItem::Track(i) => done(Command::SelectAudioTrack(i)),
+            MenuItem::Subtitles => {
+                let off = Row::check(
+                    MenuItem::Subtitle(None),
+                    msg::subtitles_off(),
+                    self.subtitle.is_none(),
+                );
+                let tracks = self.subtitles.iter().enumerate().map(|(i, name)| {
+                    Row::check(MenuItem::Subtitle(Some(i)), name, self.subtitle == Some(i))
+                });
+                let rows = std::iter::once(off).chain(tracks).collect();
+                let focus = self.subtitle.map_or(0, |i| i + 1);
+                panel.push(Page::list(msg::subtitles_title(), rows).focused(focus));
+                Output::default()
+            }
+            MenuItem::Subtitle(pick) => done(Command::SelectSubtitleTrack(pick)),
             MenuItem::ReturnToLive => done(Command::ReturnToLive),
+            MenuItem::Pip => close_then(Navigate::Pip),
             MenuItem::ManageFavorites => Output {
                 message: Some(ScreenMessage::ManageFavorites),
                 ..Output::close()
             },
+            MenuItem::ManageGroups => close_then(Navigate::Library(LibraryPage::Groups)),
+            MenuItem::ManageChannels => match &self.group {
+                Some(group) => close_then(Navigate::Library(LibraryPage::Channels(group.clone()))),
+                None => Output::default(),
+            },
+            MenuItem::EditGroup => match &self.group {
+                Some(Group::Custom(name)) => {
+                    close_then(Navigate::Library(LibraryPage::CustomGroup(name.clone())))
+                }
+                _ => Output::default(),
+            },
+            MenuItem::AudioOffset => {
+                if let Some(key) = self.channel.as_ref().map(|c| c.key) {
+                    panel.push(offset_page(&self.settings, key));
+                }
+                Output::default()
+            }
+            MenuItem::Offset(ms) => self.set_offset(panel, ms),
+            MenuItem::DisplayMode => {
+                let current = self.settings.get(keys::PLAYER_DISPLAY_MODE);
+                let options = choices(keys::PLAYER_DISPLAY_MODE);
+                let rows = options
+                    .iter()
+                    .map(|&(value, label)| {
+                        Row::check(MenuItem::Display(value), &label.text(), value == current)
+                    })
+                    .collect();
+                let focus = options.iter().position(|(v, _)| *v == current);
+                let page = Page::list(msg::playback_display_mode(), rows);
+                panel.push(page.focused(focus.unwrap_or(0)));
+                Output::default()
+            }
+            MenuItem::Display(value) => {
+                let out = self
+                    .settings
+                    .change(keys::PLAYER_DISPLAY_MODE, value.to_owned());
+                panel.pop();
+                let shown = self.settings.display(keys::PLAYER_DISPLAY_MODE);
+                panel.for_each_row(|row| {
+                    if row.id == MenuItem::DisplayMode {
+                        row.set_value(&shown);
+                    }
+                });
+                out.map_or_else(Output::default, Output::command)
+            }
+            MenuItem::SleepTimer => {
+                // No timer: Off is the current choice; a running one shows its time left instead.
+                let off = self.sleep_left_secs.is_none();
+                let rows = SLEEP_MINUTES
+                    .iter()
+                    .map(|&m| Row::check(MenuItem::Sleep(m), &sleep_label(m), m == 0 && off))
+                    .collect();
+                panel.push(Page::list(msg::playback_sleep_timer(), rows));
+                Output::default()
+            }
+            MenuItem::Sleep(minutes) => done(Command::SleepTimer { minutes }),
+            MenuItem::Remind => self.toggle_reminder(),
+            MenuItem::LockChannel => self.toggle_channel_lock(),
+            MenuItem::LockGroup => self.toggle_group_lock(),
         }
+    }
+
+    /// Set the reminder for the focused programme, or cancel it.
+    fn toggle_reminder(&mut self) -> Output {
+        let Some((key, Some(p))) = self.channel.as_ref().map(|c| (c.key, c.programme.as_ref()))
+        else {
+            return Output::default();
+        };
+        let (value, toast) = match reminders::toggled(&self.settings, key, p.start, &p.title) {
+            Toggled::Added(v) => (v, msg::reminder_added()),
+            Toggled::Removed(v) => (v, msg::reminder_removed()),
+            Toggled::Full => {
+                return Output {
+                    toast: Some(msg::reminder_full().to_owned()),
+                    ..Output::close()
+                }
+            }
+        };
+        let Some(command) = self.settings.change(keys::REMINDERS, value) else {
+            return Output::close();
+        };
+        Output {
+            toast: Some(toast.to_owned()),
+            ..done(command)
+        }
+    }
+
+    /// Lock the channel, or unlock it: either takes the PIN.
+    fn toggle_channel_lock(&self) -> Output {
+        let Some(ch) = &self.channel else {
+            return Output::default();
+        };
+        let toast = if ch.blocked {
+            msg::parental_channel_unlocked()
+        } else {
+            msg::parental_channel_locked()
+        };
+        let value = parental::channels_toggled(&self.settings, ch.key);
+        with_pin(keys::PARENTAL_CHANNELS, value, toast)
+    }
+
+    /// Lock the playlist group, or unlock it: either takes the PIN.
+    fn toggle_group_lock(&self) -> Output {
+        let Some(Group::Playlist(name)) = &self.group else {
+            return Output::default();
+        };
+        let toast = if parental::group_blocked(&self.settings, name) {
+            msg::parental_group_unlocked()
+        } else {
+            msg::parental_group_locked()
+        };
+        let value = parental::groups_toggled(&self.settings, name);
+        with_pin(keys::PARENTAL_GROUPS, value, toast)
+    }
+
+    /// The playing channel's audio offset becomes `ms`: stored as its own, heard at once. The
+    /// page stays, the pick checked, so another step can be tried by ear.
+    fn set_offset(&mut self, panel: &mut SidePanel<MenuItem>, ms: i32) -> Output {
+        let Some(key) = self.channel.as_ref().map(|c| c.key) else {
+            return Output::default();
+        };
+        let list = with_channel_offset(&self.settings, key, ms);
+        let out = self.settings.change(keys::CHANNEL_AUDIO_OFFSETS, list);
+        panel.replace(offset_page(&self.settings, key));
+        let shown = offset_label(i64::from(audio_offset(&self.settings, Some(key))));
+        panel.for_each_row(|row| {
+            if row.id == MenuItem::AudioOffset {
+                row.set_value(&shown);
+            }
+        });
+        out.map_or_else(Output::default, Output::command)
     }
 
     /// Hide the group, or show it again if it is hidden.
@@ -389,6 +654,7 @@ impl Menu {
                 keys::GROUPS_HIDDEN,
                 self.settings.hidden_groups_toggled(name),
             ),
+            Group::Custom(_) => return Output::default(),
         };
         let Some(command) = self.settings.change(key, value) else {
             return Output::close();
@@ -411,11 +677,24 @@ fn group_rows(group: &Group, settings: &Settings) -> Vec<Row<MenuItem>> {
     } else {
         msg::group_hide()
     };
-    vec![
-        Row::action(MenuItem::HideGroup, hide),
+    let mut rows = Vec::new();
+    // A custom group is not hidden but deleted.
+    if !matches!(group, Group::Custom(_)) {
+        rows.push(Row::action(MenuItem::HideGroup, hide));
+    }
+    rows.push(
         Row::submenu(MenuItem::ChannelSorting, msg::group_channel_sorting())
             .value(&settings.display(keys::GROUPS_CHANNEL_SORT)),
-    ]
+    );
+    if let Group::Playlist(name) = group {
+        let lock = if parental::group_blocked(settings, name) {
+            msg::parental_unlock_group()
+        } else {
+            msg::parental_lock_group()
+        };
+        rows.push(Row::action(MenuItem::LockGroup, lock));
+    }
+    rows
 }
 
 /// Whether the settings hide `group` from the groups panel.
@@ -425,14 +704,73 @@ pub fn group_hidden(group: &Group, settings: &Settings) -> bool {
         Group::All => !settings.flag(keys::GROUPS_SHOW_ALL),
         Group::History => !settings.flag(keys::GROUPS_SHOW_HISTORY),
         Group::Playlist(name) => settings.hidden_groups().any(|n| n == name),
+        Group::Custom(_) => false,
     }
 }
 
+/// The rows of the viewer's groups: the group's channels (to copy, move or reorder them; not
+/// History's), a custom group's own page, Manage groups.
+fn library_rows(group: &Group) -> Vec<Row<MenuItem>> {
+    let mut rows = Vec::new();
+    if *group != Group::History {
+        rows.push(Row::action(
+            MenuItem::ManageChannels,
+            msg::library_channels(),
+        ));
+    }
+    if matches!(group, Group::Custom(_)) {
+        rows.push(Row::action(MenuItem::EditGroup, msg::library_edit_group()));
+    }
+    rows.push(Row::action(MenuItem::ManageGroups, msg::library_groups()));
+    rows
+}
+
 fn sort_options() -> &'static [(&'static str, Label)] {
-    match super::settings::spec(keys::GROUPS_CHANNEL_SORT).map(|s| s.kind) {
+    choices(keys::GROUPS_CHANNEL_SORT)
+}
+
+/// The options of the choice setting `key`.
+fn choices(key: &str) -> &'static [(&'static str, Label)] {
+    match super::settings::spec(key).map(|s| s.kind) {
         Some(Kind::Choice(options)) => options,
         _ => &[],
     }
+}
+
+/// The player menu's rows for the sound and picture of `channel`, and the sleep timer, each
+/// with its current value.
+fn playback_rows(
+    settings: &Settings,
+    channel: ChannelKey,
+    sleep_left_secs: Option<u32>,
+) -> Vec<Row<MenuItem>> {
+    let offset = offset_label(i64::from(audio_offset(settings, Some(channel))));
+    let sleep = sleep_left_secs.map_or_else(|| sleep_label(0), sleep_left_label);
+    vec![
+        Row::submenu(MenuItem::AudioOffset, msg::playback_audio_offset()).value(&offset),
+        Row::submenu(MenuItem::DisplayMode, msg::playback_display_mode())
+            .value(&settings.display(keys::PLAYER_DISPLAY_MODE)),
+        Row::submenu(MenuItem::SleepTimer, msg::playback_sleep_timer()).value(&sleep),
+    ]
+}
+
+/// The audio offset page for `channel`: every step of the range, the one it plays with checked
+/// and focused, so Up and Down move it a step at a time.
+fn offset_page(settings: &Settings, channel: ChannelKey) -> Page<MenuItem> {
+    let current = audio_offset(settings, Some(channel));
+    let rows: Vec<_> = choices(keys::AUDIO_OFFSET_MS)
+        .iter()
+        .filter_map(|&(value, label)| {
+            let ms = value.parse().ok()?;
+            Some(Row::check(
+                MenuItem::Offset(ms),
+                &label.text(),
+                ms == current,
+            ))
+        })
+        .collect();
+    let focus = rows.iter().position(|r| r.checked() == Some(true));
+    Page::list(msg::playback_audio_offset(), rows).focused(focus.unwrap_or(0))
 }
 
 /// The description page: when it airs, then its text.
@@ -540,6 +878,7 @@ mod tests {
                 "Watch from start",
                 "Manage favorites",
                 "Group options",
+                "Lock channel",
                 "Search",
                 "Settings"
             ]
@@ -547,7 +886,13 @@ mod tests {
         let bare = ContextMenu::channel(&data.channels[0], None, None, &cx);
         assert_eq!(
             labels(&bare),
-            ["Add to favorites", "Manage favorites", "Search", "Settings"]
+            [
+                "Add to favorites",
+                "Manage favorites",
+                "Lock channel",
+                "Search",
+                "Settings"
+            ]
         );
     }
 
@@ -690,6 +1035,9 @@ mod tests {
             [
                 "Show group",
                 "Channel sorting",
+                "Lock group",
+                "Manage channels",
+                "Manage groups",
                 "Manage favorites",
                 "Search",
                 "Settings"
@@ -699,6 +1047,45 @@ mod tests {
             keys(&mut menu, &[Key::Ok]).commands,
             [set(keys::GROUPS_HIDDEN, "")]
         );
+    }
+
+    #[test]
+    fn a_groups_menu_opens_the_library_pages() {
+        let data = FakeData::new(NOW, 3);
+        let settings = Settings::new();
+        let cx = PanelCtx {
+            data: &data,
+            settings: &settings,
+        };
+        let kids = Group::Custom("Kids".into());
+        let mut menu = ContextMenu::group(&kids, &cx);
+        assert_eq!(
+            labels(&menu)[..4],
+            [
+                "Channel sorting",
+                "Manage channels",
+                "Edit group",
+                "Manage groups"
+            ],
+            "a custom group is deleted, not hidden"
+        );
+        let open = |page| Output::close().and(Output::navigate(Navigate::Library(page)));
+        assert_eq!(
+            choose(&mut menu, "Edit group"),
+            open(LibraryPage::CustomGroup("Kids".into()))
+        );
+        let mut menu = ContextMenu::group(&kids, &cx);
+        assert_eq!(
+            choose(&mut menu, "Manage channels"),
+            open(LibraryPage::Channels(kids.clone()))
+        );
+        let mut menu = ContextMenu::group(&Group::History, &cx);
+        assert!(!labels(&menu).contains(&"Manage channels"));
+        assert_eq!(
+            choose(&mut menu, "Manage groups"),
+            open(LibraryPage::Groups)
+        );
+        assert!(!group_hidden(&kids, &settings));
     }
 
     #[test]
@@ -842,9 +1229,13 @@ mod tests {
             labels(&menu),
             [
                 "Audio track",
+                "Audio offset",
+                "Display mode",
+                "Sleep timer",
                 "Add to favorites",
                 "Programme description",
                 "Watch from start",
+                "Picture in picture",
                 "Settings"
             ]
         );
@@ -873,6 +1264,69 @@ mod tests {
             Output::default()
         );
         assert_eq!(menu.panel().page().title(), archived.title);
+    }
+
+    #[test]
+    fn picture_in_picture_opens_the_guide_with_the_video_in_a_corner() {
+        let mut data = FakeData::new(NOW, 3);
+        data.playback.channel = Some(data.channels[1].key);
+        let settings = Settings::new();
+        let cx = PanelCtx {
+            data: &data,
+            settings: &settings,
+        };
+        let mut menu = ContextMenu::player(&cx);
+        assert_eq!(
+            choose(&mut menu, "Picture in picture"),
+            close_then(Navigate::Pip)
+        );
+    }
+
+    #[test]
+    fn the_subtitles_page_picks_a_track_or_off() {
+        let mut data = FakeData::new(NOW, 3);
+        data.playback.channel = Some(data.channels[0].key);
+        let settings = Settings::new();
+        let cx = PanelCtx {
+            data: &data,
+            settings: &settings,
+        };
+        let menu = ContextMenu::player(&cx);
+        assert!(
+            !labels(&menu).contains(&"Subtitles"),
+            "no row without a track"
+        );
+
+        data.playback.subtitle_tracks = vec!["Polski".into(), "English".into()];
+        let cx = PanelCtx {
+            data: &data,
+            settings: &settings,
+        };
+        let mut menu = ContextMenu::player(&cx);
+        assert_eq!(labels(&menu)[0], "Subtitles");
+        assert_eq!(menu.panel().page().rows()[0].value_text(), Some("Off"));
+        assert_eq!(keys(&mut menu, &[Key::Ok]), Output::default());
+        assert_eq!(labels(&menu), ["Off", "Polski", "English"]);
+        assert_eq!(menu.panel().page().focus(), 0);
+        assert_eq!(menu.panel().page().rows()[0].checked(), Some(true));
+        assert_eq!(
+            choose(&mut menu, "English"),
+            done(Command::SelectSubtitleTrack(Some(1)))
+        );
+
+        data.playback.subtitle_track = Some(1);
+        let cx = PanelCtx {
+            data: &data,
+            settings: &settings,
+        };
+        let mut menu = ContextMenu::player(&cx);
+        assert_eq!(menu.panel().page().rows()[0].value_text(), Some("English"));
+        keys(&mut menu, &[Key::Ok]);
+        assert_eq!(menu.panel().page().focus(), 2, "on the track shown");
+        assert_eq!(
+            choose(&mut menu, "Off"),
+            done(Command::SelectSubtitleTrack(None))
+        );
     }
 
     #[test]
@@ -916,5 +1370,144 @@ mod tests {
         // Left goes nowhere on the left edge; Right, toward the content, closes like Back
         assert_eq!(keys(&mut menu, &[Key::Left]), Output::default());
         assert_eq!(keys(&mut menu, &[Key::Right]), Output::close());
+    }
+
+    #[test]
+    fn the_main_menu_lists_movies_and_shows_while_the_playlist_has_them() {
+        let mut data = FakeData::new(NOW, 3);
+        data.vod = crate::vod::fake::items("");
+        let settings = Settings::new();
+        let cx = PanelCtx {
+            data: &data,
+            settings: &settings,
+        };
+        let menu = ContextMenu::main(&cx);
+        assert_eq!(
+            labels(&menu),
+            ["Search", "TV guide", "Channels", "Movies", "Shows", "History", "Settings"]
+        );
+        for (label, section) in [
+            ("Movies", crate::data::VodSection::Movies),
+            ("Shows", crate::data::VodSection::Shows),
+        ] {
+            let mut menu = ContextMenu::main(&cx);
+            assert_eq!(choose(&mut menu, label), close_then(Navigate::Vod(section)));
+        }
+        data.vod.retain(|v| v.kind == VodKind::Movie);
+        let cx = PanelCtx {
+            data: &data,
+            settings: &settings,
+        };
+        assert!(!labels(&ContextMenu::main(&cx)).contains(&"Shows"));
+    }
+
+    /// The value shown on the root row `label` of `menu`.
+    fn value_of(menu: &ContextMenu, label: &str) -> Option<String> {
+        let rows = menu.panel().page().rows();
+        let row = rows.iter().find(|r| r.label() == label)?;
+        row.value_text().map(str::to_owned)
+    }
+
+    #[test]
+    fn the_audio_offset_steps_by_fifty_ms_and_is_kept_for_the_channel() {
+        let mut data = FakeData::new(NOW, 3);
+        let key = data.channels[0].key;
+        data.playback.channel = Some(key);
+        let settings = Settings::from_stored([(keys::AUDIO_OFFSET_MS, "-100")]);
+        let cx = PanelCtx {
+            data: &data,
+            settings: &settings,
+        };
+        let mut menu = ContextMenu::player(&cx);
+        assert_eq!(value_of(&menu, "Audio offset").as_deref(), Some("-100 ms"));
+        assert_eq!(choose(&mut menu, "Audio offset"), Output::default());
+        let page = menu.panel().page();
+        assert_eq!((page.title(), page.rows().len()), ("Audio offset", 41));
+        assert_eq!(
+            page.rows()[page.focus()].label(),
+            "-100 ms",
+            "on the default"
+        );
+        assert_eq!(page.rows()[page.focus()].checked(), Some(true));
+        // one step later, then another: each is stored at once and the page stays
+        let stored = |ms: i32| {
+            let s = Settings::from_stored([(keys::AUDIO_OFFSET_MS, "-100")]);
+            Output::command(Command::SetSetting {
+                key: keys::CHANNEL_AUDIO_OFFSETS.to_owned(),
+                value: with_channel_offset(&s, key, ms),
+            })
+        };
+        assert_eq!(keys(&mut menu, &[Key::Down, Key::Ok]), stored(-50));
+        assert_eq!(keys(&mut menu, &[Key::Down, Key::Ok]), stored(0));
+        let page = menu.panel().page();
+        assert_eq!(page.title(), "Audio offset");
+        assert_eq!(page.rows()[page.focus()].label(), "0 ms");
+        assert_eq!(page.rows()[page.focus()].checked(), Some(true));
+        assert_eq!(keys(&mut menu, &[Key::Back]), Output::default());
+        assert_eq!(value_of(&menu, "Audio offset").as_deref(), Some("0 ms"));
+        assert!(!menu.closing());
+    }
+
+    #[test]
+    fn the_display_mode_is_picked_from_its_page() {
+        let mut data = FakeData::new(NOW, 3);
+        data.playback.channel = Some(data.channels[0].key);
+        let settings = Settings::new();
+        let cx = PanelCtx {
+            data: &data,
+            settings: &settings,
+        };
+        let mut menu = ContextMenu::player(&cx);
+        assert_eq!(value_of(&menu, "Display mode").as_deref(), Some("Normal"));
+        choose(&mut menu, "Display mode");
+        let page = menu.panel().page();
+        assert_eq!(labels(&menu), ["Normal", "Fill", "4:3", "16:9"]);
+        assert_eq!(page.rows()[0].checked(), Some(true));
+        assert_eq!(
+            choose(&mut menu, "4:3"),
+            Output::command(set(keys::PLAYER_DISPLAY_MODE, "4:3"))
+        );
+        assert_eq!(menu.panel().depth(), 1, "back on the menu");
+        assert_eq!(value_of(&menu, "Display mode").as_deref(), Some("4:3"));
+    }
+
+    #[test]
+    fn the_sleep_timer_offers_its_choices_and_shows_the_time_left() {
+        let mut data = FakeData::new(NOW, 3);
+        data.playback.channel = Some(data.channels[0].key);
+        let settings = Settings::new();
+        let cx = PanelCtx {
+            data: &data,
+            settings: &settings,
+        };
+        let mut menu = ContextMenu::player(&cx);
+        assert_eq!(value_of(&menu, "Sleep timer").as_deref(), Some("Off"));
+        choose(&mut menu, "Sleep timer");
+        assert_eq!(
+            labels(&menu),
+            ["Off", "15 min", "30 min", "60 min", "90 min", "120 min"]
+        );
+        assert_eq!(menu.panel().page().rows()[0].checked(), Some(true));
+        assert_eq!(
+            choose(&mut menu, "30 min"),
+            done(Command::SleepTimer { minutes: 30 })
+        );
+        data.playback.sleep_left_secs = Some(25 * 60 - 10);
+        let cx = PanelCtx {
+            data: &data,
+            settings: &settings,
+        };
+        let mut menu = ContextMenu::player(&cx);
+        assert_eq!(
+            value_of(&menu, "Sleep timer").as_deref(),
+            Some("25 min left")
+        );
+        choose(&mut menu, "Sleep timer");
+        let page = menu.panel().page();
+        assert!(page.rows().iter().all(|r| r.checked() == Some(false)));
+        assert_eq!(
+            choose(&mut menu, "Off"),
+            done(Command::SleepTimer { minutes: 0 })
+        );
     }
 }

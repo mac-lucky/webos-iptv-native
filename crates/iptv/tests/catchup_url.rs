@@ -279,6 +279,60 @@ fn archive_url_fills_the_channel_id() {
 }
 
 #[test]
+fn archive_url_asks_for_the_programme_minus_the_catchup_correction() {
+    let source = concat!(
+        "catchup=\"default\" catchup-source=\"http://host/a?s={utc}&e={utcend}&n={lutc}",
+        "&o=${offset}&d={duration}&t={Y}{m}{d}{H}{M}\"",
+    );
+    let ch = parsed_channel(
+        &format!("{source} catchup-correction=\"1.5\""),
+        "http://host/live",
+    );
+    // 22:13:20 minus 1.5 h; the request time stays, so the offset grows by the correction.
+    assert_eq!(
+        archive_url(&ch, TIMES, utc).as_deref(),
+        Some("http://host/a?s=1699994600&e=1699998200&n=1700010000&o=15400&d=3600&t=202311142043")
+    );
+    let ch = parsed_channel(source, "http://host/live");
+    assert_eq!(
+        archive_url(&ch, TIMES, utc).as_deref(),
+        Some("http://host/a?s=1700000000&e=1700003600&n=1700010000&o=10000&d=3600&t=202311142213")
+    );
+}
+
+#[test]
+fn a_negative_correction_keeps_the_window_of_an_ended_programme() {
+    // Two hours later the corrected end is past `now`; the programme has still ended.
+    let ch = parsed_channel(
+        "timeshift=\"7\" catchup-correction=\"-2\"",
+        "http://host/ch1/mono.m3u8",
+    );
+    assert_eq!(
+        archive_url(&ch, TIMES, utc).as_deref(),
+        Some("http://host/ch1/mono-1700007200-3600.m3u8")
+    );
+    let on_air = Times {
+        now: 1_700_001_000,
+        ..TIMES
+    };
+    assert_eq!(
+        archive_url(&ch, on_air, utc).as_deref(),
+        Some("http://host/ch1/mono.m3u8?utc=1700007200&lutc=1700001000")
+    );
+}
+
+#[test]
+fn the_correction_does_not_move_the_archive_days() {
+    let ch = parsed_channel(
+        "timeshift=\"1\" catchup-correction=\"-12\"",
+        "http://host/ch1/mono.m3u8",
+    );
+    let (start, now) = (TIMES.start, TIMES.start + 86_400);
+    assert!(in_archive(&ch, &programme(start, start + 3_600), now));
+    assert!(!in_archive(&ch, &programme(start - 1, start + 3_600), now));
+}
+
+#[test]
 fn archive_url_needs_a_template() {
     let ch = parsed_channel(
         "catchup=\"xc\" catchup-days=\"3\"",

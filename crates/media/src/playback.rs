@@ -21,16 +21,24 @@
 //!   programme is played in parts, each requested from where the last one ended; a redirect to
 //!   the "no archive" stub is [`State::NoArchive`]; at the programme's end playback returns to
 //!   live or reports [`Event::ProgrammeEnded`] ([`AtEnd`]). Positions are programme time.
+//! - **VOD** ([`Vod`]). A movie or an episode is one file or VOD playlist: it seeks anywhere, a
+//!   stall or a resume restarts it at its position, and at its end it stays on its last picture
+//!   ([`VodPosition::ended`]); what follows is the shell's call.
 //! - **Suspend.** [`Playback::suspend`] releases the pipeline and keeps what plays (the app in
 //!   the background; done by itself when the TV takes the decoder back, [`Event::DecoderTaken`]);
 //!   [`Playback::resume`] starts it again, live at its edge, catch-up at its position.
 //! - **Preview.** The guide's preview is an ordinary playback in a rectangle
 //!   ([`Playback::set_video_rect`]); going full screen moves the picture without restarting it.
+//! - **The viewer's picture and sound.** [`Playback::set_aspect_mode`] places the picture in its
+//!   rectangle (fit, fill, a forced 4:3 or 16:9) and holds for every start until changed;
+//!   [`Playback::set_audio_offset_ms`] shifts the sound against the picture.
+//! - **Exit.** [`Playback::shutdown`] stops and waits for the decoder's release, so the process
+//!   does not end holding it.
 //!
 //! The URLs carry tokens: nothing here logs one, and [`Catchup`]'s `Debug` prints none.
 
 use crate::headers::RequestHeaders;
-use crate::player::{self, adapter::PlayerAdapter, machine::Player, video_geometry::Viewport, PlaybackState};
+use crate::player::{self, adapter::PlayerAdapter, machine::Player, video_geometry::{AspectMode, Viewport}, PlaybackState};
 use crate::session::{PlaybackSession, PlaybackStart, StartRefusal};
 use crate::stream::{AudioFeed, SoftwareAudio};
 use std::sync::Arc;
@@ -101,6 +109,36 @@ impl std::fmt::Debug for Catchup {
     }
 }
 
+/// A movie or an episode to play: one file or VOD playlist that seeks anywhere.
+#[derive(Clone)]
+pub struct Vod {
+    pub url: String,
+    /// The item's request headers (`#EXTVLCOPT` / `#EXTHTTP`), sent on every request.
+    pub headers: RequestHeaders,
+    /// Where to begin, seconds in.
+    pub offset_secs: i64,
+}
+
+impl std::fmt::Debug for Vod {
+    /// Never a URL.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Vod")
+            .field("headers", &self.headers)
+            .field("offset_secs", &self.offset_secs)
+            .finish()
+    }
+}
+
+/// Where a movie or an episode is.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct VodPosition {
+    pub position_ms: i64,
+    /// 0 until the stream was opened.
+    pub duration_ms: i64,
+    /// Played to its end: the last picture stays and nothing follows.
+    pub ended: bool,
+}
+
 /// What is playing.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Mode {
@@ -108,6 +146,7 @@ pub enum Mode {
     Idle,
     Live,
     Catchup,
+    Vod,
 }
 
 /// The playback's state, as the OSD shows it.
@@ -164,6 +203,8 @@ pub struct Status {
     pub media: MediaInfo,
     /// Catch-up only.
     pub catchup: Option<CatchupPosition>,
+    /// VOD only.
+    pub vod: Option<VodPosition>,
     /// The current start's time to first frame, ms, once it has one.
     pub first_frame_ms: Option<u32>,
 }
@@ -216,6 +257,9 @@ pub struct Playback {
     /// Released by [`Playback::suspend`]; a catch-up programme keeps its position in
     /// [`CatchupPlay::resume_s`].
     suspended: bool,
+    /// The viewer's aspect mode: `begin_playback` puts the engine's back to Auto on every start,
+    /// so each start here sets this one again.
+    aspect: AspectMode,
 }
 
 /// At most this many unread events are kept (the oldest is dropped).
@@ -224,6 +268,16 @@ const EVENTS_CAP: usize = 8;
 enum Current {
     Live { url: String, headers: RequestHeaders },
     Catchup(Box<CatchupPlay>),
+    Vod(Box<VodPlay>),
+}
+
+/// A movie or an episode being played.
+struct VodPlay {
+    req: Vod,
+    /// Where a suspended item resumes, seconds into it.
+    resume_s: i64,
+    /// Its length, ms, kept from the last open (0: not opened yet).
+    duration_ms: i64,
 }
 
 /// A catch-up programme being played.
@@ -266,6 +320,7 @@ impl Playback {
             watchdog: Watchdog::default(),
             events: std::collections::VecDeque::new(),
             suspended: false,
+            aspect: AspectMode::Auto,
         }
     }
 
@@ -280,6 +335,7 @@ impl Playback {
     /// [`Playback::set_video_rect`] before or after; the same channel going full screen is only a
     /// rect change, not another start.
     pub fn play_live(&mut self, url: &str, headers: RequestHeaders) {
+        crate::subtitles::begin();
         self.watchdog = Watchdog::default();
         self.start(url, &headers, None);
         self.current = Some(Current::Live { url: url.to_owned(), headers });
@@ -287,6 +343,7 @@ impl Playback {
 
     /// **Play a programme from the archive** (see [`Catchup`]).
     pub fn play_catchup(&mut self, c: Catchup) {
+        crate::subtitles::begin();
         let duration = (c.end - c.start).max(0);
         let offset = c.offset_secs.clamp(0, duration.saturating_sub(1).max(0));
         player::log(&format!(
@@ -315,10 +372,32 @@ impl Playback {
         self.start(&url, &headers, Some(at));
     }
 
+    /// **Play a movie or an episode** (see [`Vod`]).
+    pub fn play_vod(&mut self, v: Vod) {
+        crate::subtitles::begin();
+        let offset = v.offset_secs.max(0);
+        player::log(&format!("vod: from {offset}s"));
+        self.watchdog = Watchdog::default();
+        self.start(&v.url, &v.headers, Some(offset));
+        self.current = Some(Current::Vod(Box::new(VodPlay { req: v, resume_s: offset, duration_ms: 0 })));
+    }
+
     /// Seek a catch-up programme to `position_ms` from its start (live streams do not seek). Inside
     /// the current part it is a segment seek of the playlist; elsewhere (another 3 h part) a new
-    /// request.
+    /// request. A movie or an episode seeks inside its stream once it is open, and starts again
+    /// from there before.
     pub fn seek(&mut self, position_ms: i64) {
+        if let Some(Current::Vod(vp)) = self.current.as_ref() {
+            let target_ms = position_ms.max(0);
+            let len_ms = player::duration_ns() / 1_000_000;
+            if len_ms > 0 {
+                player::request_seek(target_ms.min(len_ms - 1).saturating_mul(1_000_000));
+            } else {
+                let (url, headers) = (vp.req.url.clone(), vp.req.headers.clone());
+                self.start(&url, &headers, Some(target_ms / 1000));
+            }
+            return;
+        }
         let Some(Current::Catchup(cp)) = self.current.as_mut() else {
             return;
         };
@@ -385,9 +464,40 @@ impl Playback {
         player::request_probed_audio_track(&mut self.pl.session, track)
     }
 
+    /// The playing stream's subtitle tracks this app can show (empty until the demuxer has
+    /// opened it, and on a stream with none).
+    pub fn subtitle_tracks(&self) -> Vec<crate::subtitles::Track> {
+        crate::subtitles::tracks()
+    }
+
+    /// The subtitle track shown, by position in [`Playback::subtitle_tracks`]; `None` while off.
+    pub fn subtitle_track(&self) -> Option<usize> {
+        crate::subtitles::selected()
+    }
+
+    /// Show subtitle track `index` of [`Playback::subtitle_tracks`], or none. Nothing reloads:
+    /// the demuxer switches the stream it reads.
+    pub fn select_subtitle_track(&mut self, index: Option<usize>) {
+        crate::subtitles::select(index);
+    }
+
     /// Move the picture: `None` full screen, else a rectangle of the 1920x1080 plane.
     pub fn set_video_rect(&mut self, rect: Option<Viewport>) {
         player::set_video_rect(rect);
+    }
+
+    /// How the picture fills its rectangle, from now on: the playing stream is re-placed on its
+    /// next tick, and every later start (a zap, a restart, a resume) keeps it.
+    pub fn set_aspect_mode(&mut self, mode: AspectMode) {
+        self.aspect = mode;
+        player::set_aspect_mode(mode);
+    }
+
+    /// The audio sync offset, ms (positive: the sound later), clamped to
+    /// [`player::AUDIO_OFFSET_RANGE_MS`]. Nothing reloads: the audio queued in the sink plays
+    /// out at the old offset and the change is heard after it. Holds until changed.
+    pub fn set_audio_offset_ms(&mut self, offset_ms: i64) {
+        player::set_audio_offset(offset_ms);
     }
 
     /// **Suspend** (the app goes to the background; the TV took the decoder back): the pipeline
@@ -398,6 +508,9 @@ impl Playback {
         }
         if let Some(Current::Catchup(cp)) = self.current.as_mut() {
             cp.resume_s = programme_s(cp, &self.pl.session);
+        }
+        if let Some(Current::Vod(vp)) = self.current.as_mut() {
+            vp.resume_s = vod_s(&self.pl.session);
         }
         self.suspended = true;
         self.first_frame_ms = None;
@@ -421,12 +534,25 @@ impl Playback {
                 let (at, headers) = (cp.resume_s - cp.part_s, cp.req.headers.clone());
                 self.start(&url, &headers, Some(at));
             }
+            Some(Current::Vod(vp)) => {
+                let (url, headers, at) = (vp.req.url.clone(), vp.req.headers.clone(), vp.resume_s);
+                self.start(&url, &headers, Some(at));
+            }
             None => {}
         }
     }
 
+    /// **The app is ending**: stop, and wait for the decoder's `Unload` instead of leaving it to
+    /// the next ticks, which will not come.
+    pub fn shutdown(&mut self) {
+        self.stop();
+        self.pa.finish_release();
+        player::log("playback: released for exit");
+    }
+
     /// Stop playing.
     pub fn stop(&mut self) {
+        crate::subtitles::begin();
         self.current = None;
         self.suspended = false;
         self.first_frame_ms = None;
@@ -485,6 +611,16 @@ impl Playback {
                 let at = CatchupPosition { start: cp.req.start, end: cp.req.end, position_ms: pos_ms, duration_ms: duration_s * 1000 };
                 (Mode::Catchup, Some(at), cp.no_archive)
             }
+            Some(Current::Vod(_)) => (Mode::Vod, None, false),
+        };
+        let vod = match &self.current {
+            Some(Current::Vod(vp)) => {
+                let pos_ms = if self.suspended { vp.resume_s * 1000 } else { player::intended_pos_ns(ps).max(0) / 1_000_000 };
+                let duration_ms = vp.duration_ms.max(player::duration_ns() / 1_000_000);
+                let pos_ms = if duration_ms > 0 { pos_ms.min(duration_ms) } else { pos_ms };
+                Some(VodPosition { position_ms: pos_ms, duration_ms, ended: !self.suspended && player::ended() })
+            }
+            _ => None,
         };
         let paused = player::transport::paused();
         let state = match player::state(ps) {
@@ -499,7 +635,7 @@ impl Playback {
             PlaybackState::Playing if paused => State::Paused,
             PlaybackState::Playing => State::Playing,
         };
-        Status { mode, state, paused, media, catchup, first_frame_ms: self.first_frame_ms }
+        Status { mode, state, paused, media, catchup, vod, first_frame_ms: self.first_frame_ms }
     }
 
     /// The wording of a [`State::Failed`] playback.
@@ -541,6 +677,8 @@ impl Playback {
             }
             Err(r) => player::log(&format!("zap: start refused ({r:?})")),
         }
+        // `begin_playback` put the mode back to Auto: the viewer's holds across starts.
+        player::set_aspect_mode(self.aspect);
     }
 
     fn push(&mut self, e: Event) {
@@ -567,11 +705,19 @@ impl Playback {
         if self.catchup_policy() {
             return;
         }
+        if let Some(Current::Vod(vp)) = self.current.as_mut() {
+            let len_ms = player::duration_ns() / 1_000_000;
+            if len_ms > 0 {
+                vp.duration_ms = len_ms;
+            }
+        }
+        // A finite stream (catch-up, VOD) that played to its end holds its last picture.
+        let finite = matches!(self.current, Some(Current::Catchup(_) | Current::Vod(_)));
         let obs = Observation {
             now,
             failed: st == PlaybackState::Error,
             frame: self.first_frame_ms.is_some(),
-            held: is_hold(player::transport::paused(), player::ended(), matches!(self.current, Some(Current::Catchup(_)))),
+            held: is_hold(player::transport::paused(), player::ended(), finite),
             position_ns: player::intended_pos_ns(&self.pl.session),
         };
         if self.watchdog.observe(obs) == Verdict::Restart {
@@ -671,10 +817,21 @@ impl Playback {
                 player::log(&format!("watchdog: no picture progress; restarting the programme at {pos_s}s"));
                 self.start(&url, &headers, Some(at));
             }
+            Some(Current::Vod(vp)) => {
+                let pos_s = vod_s(&self.pl.session);
+                let (url, headers) = (vp.req.url.clone(), vp.req.headers.clone());
+                player::log(&format!("watchdog: no picture progress; restarting the item at {pos_s}s"));
+                self.start(&url, &headers, Some(pos_s));
+            }
             None => return,
         }
         self.push(Event::Recovered);
     }
+}
+
+/// Where a movie or an episode is, in whole seconds (an in-flight seek's target wins).
+fn vod_s(ps: &PlaybackSession) -> i64 {
+    player::intended_pos_ns(ps).max(0) / 1_000_000_000
 }
 
 // ---- the policies, pure ---------------------------------------------------------------------
@@ -860,3 +1017,7 @@ mod tests;
 #[cfg(all(test, feature = "hostsim"))]
 #[path = "playback_e2e_tests.rs"]
 mod e2e;
+
+#[cfg(test)]
+#[path = "playback_vod_tests.rs"]
+mod vod_tests;

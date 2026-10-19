@@ -12,7 +12,7 @@
 //! **Why a child process, and why only in the simulator.** The host FFmpeg this crate links
 //! (`ci/build-ffmpeg.sh`) is built from the television's ONE component list, which has no video
 //! decoders — the TV decodes in hardware — and growing that list for a Mac would make the two
-//! builds diverge. A system `ffmpeg` binary (`SNATIVE_SIM_FFMPEG`, else `ffmpeg` on `PATH`) keeps
+//! builds diverge. A system `ffmpeg` binary (`WEBOSIPTV_SIM_FFMPEG`, else `ffmpeg` on `PATH`) keeps
 //! the decode entirely outside this process and this crate's link line. `hostsim`-only: the
 //! television build does not contain this file.
 //!
@@ -139,7 +139,7 @@ pub fn feed(au: &[u8], pts: i64) {
 }
 
 fn ffmpeg_path() -> std::ffi::OsString {
-    std::env::var_os("SNATIVE_SIM_FFMPEG").unwrap_or_else(|| "ffmpeg".into())
+    std::env::var_os("WEBOSIPTV_SIM_FFMPEG").unwrap_or_else(|| "ffmpeg".into())
 }
 
 fn spawn() -> Option<Session> {

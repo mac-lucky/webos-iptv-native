@@ -15,13 +15,21 @@
 //! ```
 
 mod field;
+pub mod library;
 pub mod menu;
+pub mod names;
+pub mod pin;
+pub mod reminder;
 pub mod search;
 pub mod settings;
 mod side;
 
 pub use field::TextField;
+pub use library::LibraryPanel;
 pub use menu::{ContextMenu, MenuItem};
+pub use names::NamesPanel;
+pub use pin::PinDialog;
+pub use reminder::ReminderPrompt;
 pub use search::{Hit, Search};
 pub use settings::{keys, Settings, SettingsPanel};
 pub use side::{Edge, Nav, Page, Row, SidePanel};
@@ -117,7 +125,8 @@ pub(crate) mod style {
     pub const FOCUS_INK_SECONDARY: [f32; 4] = theme::TEXT_ON_FOCUS_MUTED;
     pub const FIELD_FILL: [f32; 4] = theme::PANEL_RAISED;
     pub const FIELD_RIM: [f32; 4] = theme::CELL_ROW;
-    /// The rim of a field being typed into or focused.
+    /// The rim of a field being typed into or focused; an accent role, drawn through
+    /// [`theme::ink`].
     pub const FIELD_RIM_HOT: [f32; 4] = theme::ACCENT;
 }
 

@@ -12,6 +12,15 @@ use super::*;
 use crate::input::REMOTE;
 use crate::player::Stream as Open;
 
+mod accent;
+mod backup;
+mod nav;
+mod pip;
+mod playback;
+mod settings;
+mod userfeat;
+mod vod;
+
 /// Every player call, as text; `ends` makes the next poll end the archive programme, as the
 /// player does at its end (it goes live by itself).
 #[derive(Clone, Default)]
@@ -49,6 +58,32 @@ impl Player for Calls {
     }
     fn select_audio_track(&mut self, index: usize) {
         self.0.borrow_mut().push(format!("track {index}"));
+    }
+    fn suspend(&mut self) {
+        self.0.borrow_mut().push("suspend".into());
+    }
+    fn resume(&mut self) {
+        self.0.borrow_mut().push("resume".into());
+    }
+    fn stop(&mut self) {
+        self.0.borrow_mut().push("stop".into());
+    }
+    fn open_vod(&mut self, item: &iptv::vod::VodItem, offset_secs: i64, rect: Option<Rect>) {
+        let line = format!("open vod {} at {offset_secs} {rect:?}", item.label());
+        self.0.borrow_mut().push(line);
+    }
+    fn shutdown(&mut self) {
+        self.0.borrow_mut().push("shutdown".into());
+    }
+    fn set_display_mode(&mut self, mode: tv_screens::playback::DisplayMode) {
+        self.0
+            .borrow_mut()
+            .push(format!("display {}", mode.value()));
+    }
+    fn set_audio_offset(&mut self, offset_ms: i32) {
+        self.0
+            .borrow_mut()
+            .push(format!("audio offset {offset_ms}"));
     }
 }
 
@@ -230,6 +265,12 @@ impl Sim {
         self.shell.store.channels(&Group::All)[i].key
     }
 
+    /// The toast on screen, if any.
+    fn toast(&self) -> Option<String> {
+        let t = self.shell.toast.as_ref()?;
+        Some(t.text.to_string_lossy().into_owned())
+    }
+
     /// Play channel `i` live where the screens put the video.
     fn live(&mut self, i: usize) {
         let stream = Stream::Live(self.key(i));
@@ -274,11 +315,11 @@ fn keys_reach_the_topmost_open_screen_and_messages_the_one_under_it() {
     sliding.0.closing.set(true);
     let over = s.push("over");
     *over.0.reply.borrow_mut() = Output {
-        message: Some(ScreenMessage::ManageFavorites),
+        message: Some(ScreenMessage::SetGroup(Group::All)),
         ..Output::close()
     };
     s.press("OK");
-    assert_eq!(s.seen(), ["over key Ok", "under message ManageFavorites"]);
+    assert_eq!(s.seen(), ["over key Ok", "under message SetGroup(All)"]);
     assert_eq!(
         s.shell.stack.len(),
         3,
@@ -459,7 +500,7 @@ fn catch_up_plays_inside_the_current_rectangle() {
 }
 
 #[test]
-fn the_channel_list_opens_groups_on_left_and_takes_the_picked_group() {
+fn the_channel_list_opens_its_groups_on_left_and_takes_the_picked_group() {
     let mut s = Sim::new();
     s.press("OK");
     s.press("OK");
@@ -470,19 +511,56 @@ fn the_channel_list_opens_groups_on_left_and_takes_the_picked_group() {
         "the list over the picture"
     );
     s.press("Left");
-    assert_eq!(s.open(), 2, "the groups panel");
+    assert_eq!(s.shell.stack.len(), 1, "the groups panel is the list's own");
     // Favorites, All channels, History, News, Sport, Movies: from All down to News.
     s.press("Down");
     s.press("Down");
     s.press("OK");
-    assert_eq!(s.open(), 1, "the list is back in front");
-    s.run(2_000);
-    assert_eq!(s.shell.stack.len(), 1, "the groups panel has slid out");
+    assert_eq!(s.open(), 1);
     // News is channels 1, 4, 7 and 10: the second row is Channel 4.
     s.calls.take();
     s.press("Down");
     s.press("OK");
     assert_eq!(s.calls.take(), ["open live Channel 4 None"]);
+}
+
+#[test]
+fn the_guide_and_the_channel_list_share_the_group_a_panel_shows() {
+    let mut s = Sim::new();
+    // The guide's panel (Back at live) down to Sport, then long Back to the player without
+    // playing anything.
+    s.press("Back");
+    for _ in 0..3 {
+        s.press("Down");
+    }
+    s.long("Back");
+    assert_eq!(s.open(), 0);
+    s.calls.take();
+    // The channel list opens on Sport: channels 2, 5, 8 and 11.
+    s.shell
+        .navigate(Navigate::ChannelList { preview: false }, None);
+    s.shell.settle(s.t);
+    s.press("OK");
+    assert_eq!(s.calls.take(), ["open live Channel 2 None"]);
+    assert_eq!(s.open(), 0);
+    // The list's panel over to Movies (channels 3, 6, 9 and 12) and the list closed: the guide
+    // opens on Movies, focused on its first channel since Channel 2 is not in it.
+    s.press("Left");
+    s.press("Left");
+    s.press("Down");
+    s.press("Back");
+    s.press("Back");
+    assert_eq!(s.open(), 0);
+    s.press("Back");
+    assert_eq!(s.open(), 1, "the guide");
+    let preview = s.shell.rect;
+    s.calls.take();
+    s.press("Down");
+    s.press("OK");
+    assert_eq!(s.calls.take(), [format!("open live Channel 6 {preview:?}")]);
+    // A group the playlist no longer has: the zap group instead.
+    s.shell.group = Some(Group::Playlist("Gone".into()));
+    assert_eq!(&s.shell.shown_group(), s.shell.bottom.screen.group());
 }
 
 #[test]
@@ -513,7 +591,7 @@ fn long_ok_opens_the_context_menu_which_writes_favourites() {
     assert_eq!(s.open(), 2, "the menu over the guide");
     s.press("OK");
     assert!(s.shell.store.is_favorite(s.key(0)));
-    assert!(s.shell.toast.is_some());
+    assert_eq!(s.toast().as_deref(), Some("Added to favorites"));
     assert_eq!(
         (s.open(), s.shell.stack.len()),
         (1, 2),
@@ -522,6 +600,30 @@ fn long_ok_opens_the_context_menu_which_writes_favourites() {
     s.run(4_000);
     assert_eq!(s.shell.stack.len(), 1);
     assert!(s.shell.toast.is_none());
+}
+
+#[test]
+fn long_ok_over_the_player_stars_the_channel_playing_with_a_toast() {
+    let mut s = Sim::new();
+    s.live(1);
+    s.shell.navigate(Navigate::Player, None);
+    s.shell.settle(s.t);
+    // With no panel up: the first row of the channel's menu is the star.
+    s.long("OK");
+    assert_eq!(s.open(), 1, "the menu over the player");
+    s.press("OK");
+    assert!(s.shell.store.is_favorite(s.key(1)));
+    assert_eq!(s.toast().as_deref(), Some("Added to favorites"));
+    s.run(4_000);
+    assert_eq!((s.shell.stack.len(), s.toast()), (0, None));
+    // From the info panel the same long OK takes the star off again.
+    s.press("OK");
+    s.long("OK");
+    assert_eq!(s.open(), 1);
+    s.press("OK");
+    assert!(!s.shell.store.is_favorite(s.key(1)));
+    assert_eq!(s.toast().as_deref(), Some("Removed from favorites"));
+    assert_eq!(s.playing().channel, Some(s.key(1)), "playback goes on");
 }
 
 #[test]
@@ -557,6 +659,41 @@ fn settings_reach_storage_the_remote_and_the_player() {
         "5",
         "fake data keeps none"
     );
+}
+
+/// webOS 25's keyboard keeps the remote's OK for its own keys, so its Enter is the only way to
+/// confirm a field, and it arrives as an auto-repeat edge and a key-up with no key-down
+/// (measured on the C5: `sym=13 wcode=40 Repeat`, then `Up`). The key-up of the OK that raised
+/// the keyboard goes to the keyboard too, never to the app.
+#[test]
+fn the_tv_keyboards_enter_confirms_the_field_like_ok() {
+    let mut s = Sim::new();
+    let probe = s.push("entry");
+    s.edge("OK", Edge::Down);
+    probe.0.editing.set(true);
+    s.shell.settle(s.t);
+    s.run(1_000);
+    assert_eq!(s.shell.take_text_input(), Some(true));
+    assert_eq!(s.seen(), ["entry key Ok"]);
+    s.shell.text("a", s.t);
+    s.edge("OK", Edge::Repeat);
+    s.t += 20;
+    s.edge("OK", Edge::Up);
+    s.run(500);
+    assert_eq!(s.seen(), ["entry text a", "entry key Ok"]);
+    // A held key's own repeats stay repeats, and with the keyboard down a stray repeat edge is
+    // nothing, as before.
+    s.edge("OK", Edge::Down);
+    s.edge("OK", Edge::Repeat);
+    s.edge("OK", Edge::Up);
+    s.run(500);
+    assert_eq!(s.seen(), ["entry key Ok"]);
+    probe.0.editing.set(false);
+    s.shell.settle(s.t);
+    s.edge("OK", Edge::Repeat);
+    s.edge("OK", Edge::Up);
+    s.run(500);
+    assert!(s.seen().is_empty());
 }
 
 #[test]
@@ -665,6 +802,57 @@ fn manage_favorites_over_the_player_opens_the_guide_in_that_mode() {
     s.press("OK");
     assert!(s.shell.store.is_favorite(s.key(0)));
     assert_eq!(s.open(), 1);
+}
+
+#[test]
+fn manage_favorites_over_the_channel_list_opens_the_guide_in_that_mode() {
+    let mut s = Sim::new();
+    s.press("OK");
+    s.press("OK");
+    s.press("Left");
+    assert_eq!(s.open(), 1, "the channel list");
+    // The group menu (long OK in the list's groups panel) answers its Manage favorites row.
+    let menu = s.push("menu");
+    menu.0.slides.set(true);
+    *menu.0.reply.borrow_mut() = Output {
+        message: Some(ScreenMessage::ManageFavorites),
+        ..Output::close()
+    };
+    s.press("OK");
+    assert_eq!(s.open(), 1, "the guide replaced the list");
+    let front: &dyn std::any::Any = &*s.shell.stack[0].screen;
+    assert!(front.is::<GuideScreen>());
+    s.calls.take();
+    s.press("OK");
+    assert!(s.shell.store.is_favorite(s.key(0)), "OK marks the channel");
+    assert!(s.calls.take().is_empty(), "and plays nothing");
+}
+
+#[test]
+fn a_zap_out_of_the_group_a_panel_showed_drops_it() {
+    let mut s = Sim::new();
+    // The guide's panel (Back at live) down to News: channels 1, 4, 7 and 10.
+    s.press("Back");
+    s.press("Down");
+    s.press("Down");
+    let news = Group::Playlist("News".into());
+    assert_eq!(s.shell.group.as_ref(), Some(&news));
+    let play = |s: &mut Sim, i: usize, group: Option<Group>| {
+        let stream = Stream::Live(s.key(i));
+        s.shell.run(Command::Play { stream, group }, s.t);
+    };
+    play(&mut s, 0, Some(news.clone()));
+    assert_eq!(s.shell.shown_group(), news);
+    // Channel 4 from History or Search: still in News, which stays.
+    play(&mut s, 3, None);
+    assert_eq!(s.shell.shown_group(), news);
+    // A number zap to Channel 2 (Sport) zaps through every channel, and the screens follow.
+    play(&mut s, 1, None);
+    assert_eq!(s.shell.bottom.screen.group(), &Group::All);
+    assert_eq!(
+        (s.shell.group.as_ref(), s.shell.shown_group()),
+        (None, Group::All)
+    );
 }
 
 #[test]

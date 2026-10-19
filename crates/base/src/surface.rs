@@ -125,7 +125,7 @@ fn recompute() {
     VY.store((dh - h) / 2, Ordering::Relaxed);
 }
 
-/// **Supersampled rendering for high-resolution simulator captures** — `SNATIVE_RENDER_SCALE=<n>`,
+/// **Supersampled rendering for high-resolution simulator captures** — `WEBOSIPTV_RENDER_SCALE=<n>`,
 /// an integer 1..=4, read once. The simulator only: a television always renders at 1.
 ///
 /// At n > 1 the frame is drawn into an offscreen `n*1920 x n*1080` framebuffer ([`default_fb`])
@@ -137,7 +137,7 @@ fn recompute() {
 pub fn render_scale() -> i32 {
     static S: std::sync::OnceLock<i32> = std::sync::OnceLock::new();
     *S.get_or_init(|| {
-        std::env::var("SNATIVE_RENDER_SCALE")
+        std::env::var("WEBOSIPTV_RENDER_SCALE")
             .ok()
             .and_then(|v| v.trim().parse::<i32>().ok())
             .filter(|n| (1..=4).contains(n))
@@ -398,7 +398,7 @@ pub fn probe(win: *mut c_void) {
                     dh = sh;
                 }
                 None => log(&format!(
-                    "surface: SNATIVE_RENDER_SCALE={n} refused — {sw}x{sh} framebuffer \
+                    "surface: WEBOSIPTV_RENDER_SCALE={n} refused — {sw}x{sh} framebuffer \
                      incomplete; rendering to the window"
                 )),
             }

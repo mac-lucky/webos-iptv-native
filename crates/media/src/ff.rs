@@ -1487,6 +1487,8 @@ pub fn boot() {
     // Whether the software decode -> PCM path bound. Latched before any playback decides its
     // audio feed.
     adec::detect();
+    // Whether the subtitle decoder bound; without it no subtitle track is listed.
+    subdec::detect();
     // Phase A dev trigger: /tmp/webosiptv-ffprobe holds a media URL to open + dump streams,
     // confirming the FFmpeg-3.3 struct offsets against known media before we build on them.
     if let Some(u) = tv_base::devtrig::read("ffprobe") {
@@ -1608,6 +1610,9 @@ pub mod probe;
 /// a PCM-only pipeline) decoded on the CPU over the bundled libavcodec and fed as PCM.
 #[path = "ff_adec.rs"]
 pub mod adec;
+/// DVB subtitles: the streams listed and their packets decoded into `crate::subtitles` cues.
+#[path = "ff_subdec.rs"]
+pub mod subdec;
 
 /// AVIO backing state: wraps the demux transport so libavformat reads through it and can seek by
 /// byte offset. Boxed so its address is stable for the C callbacks.
@@ -4018,6 +4023,8 @@ pub fn demux(
                 for i in 0..(*fmt).nb_streams as c_int {
                     set_stream_discard(*streams.add(i as usize), discard_for(i, vi, ai));
                 }
+                // The subtitle tracks, published, read and decoded (their discard lifted).
+                let mut subs = subdec::Reader::open(fmt);
 
                 // Hand-roll length-prefix -> Annex-B + prepend VPS/SPS/PPS at every keyframe (the
                 // format Starfish decodes). FFmpeg's hevc_mp4toannexb does NOT reliably prepend the
@@ -4159,6 +4166,7 @@ pub fn demux(
                         if let Some(p) = pcm.as_mut() {
                             p.reset();
                         }
+                        subs.seeked();
                     }
                     let r = av_read_frame(fmt, pkt);
                     if frame_read_failed(&mut state, r) {
@@ -4392,6 +4400,9 @@ pub fn demux(
                             break;
                         }
                         audio_pushed(&mut headroom, aq_p, pts);
+                    } else if let Some(track) = subs.track_of(si) {
+                        subs.decode(track, pkt);
+                        av_packet_unref(pkt);
                     } else {
                         av_packet_unref(pkt);
                     }
@@ -4417,6 +4428,7 @@ pub fn demux(
                 headroom.withdraw(aq_p);
 
                 // cleanup this stream (we own pb, so close_input won't free the AVIO)
+                drop(subs);
                 let mut pkt_m = pkt;
                 av_packet_free(&mut pkt_m);
                 avformat_close_input(&mut fmt);
@@ -4512,3 +4524,7 @@ mod hls_tests;
 #[cfg(test)]
 #[path = "ff_adec_tests.rs"]
 mod adec_tests;
+
+#[cfg(test)]
+#[path = "ff_subdec_tests.rs"]
+mod subdec_tests;

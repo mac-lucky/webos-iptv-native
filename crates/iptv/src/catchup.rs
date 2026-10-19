@@ -210,6 +210,10 @@ pub(crate) fn leading_int(s: &str) -> Option<u64> {
 /// programme has ended: Flussonic answers shift with a 3 h window from the start, the window
 /// with exactly the programme. `offset_at` is the device's UTC offset at an instant, as for
 /// [`fill`].
+///
+/// `times` are the programme's; the URL asks for its start and end minus the channel's
+/// `catchup-correction`, with the request time as is (Kodi's `FormatDateTime`). Whether the
+/// programme has ended is decided on the programme's times, as Kodi does.
 pub fn archive_url(
     channel: &Channel,
     times: Times,
@@ -217,7 +221,13 @@ pub fn archive_url(
 ) -> Option<String> {
     let source = channel.catchup.source.as_deref()?;
     let window = window_template(channel, times);
-    let url = fill(window.as_deref().unwrap_or(source), times, offset_at);
+    let correction = i64::from(channel.catchup.correction_secs);
+    let requested = Times {
+        start: times.start.saturating_sub(correction),
+        end: times.end.saturating_sub(correction),
+        ..times
+    };
+    let url = fill(window.as_deref().unwrap_or(source), requested, offset_at);
     if !url.contains("{channel-id}") {
         return Some(url);
     }
@@ -228,7 +238,8 @@ pub fn archive_url(
 /// Whether `programme` can be played from the channel's archive at `now`, the one test the
 /// screens use: the channel offers catch-up and the programme started within the last `days`
 /// days. It counts from the start, so the programme on air is included: the archive already
-/// holds its beginning, and playing it from there is start-over.
+/// holds its beginning, and playing it from there is start-over. The `catchup-correction` does
+/// not move this test (Kodi checks the archive days on the guide's times too).
 pub fn in_archive(channel: &Channel, programme: &Programme, now: Timestamp) -> bool {
     let catchup = &channel.catchup;
     catchup.available()

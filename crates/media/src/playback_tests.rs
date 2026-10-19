@@ -252,3 +252,30 @@ fn the_tick_interval_is_a_frame_while_playing_and_none_when_idle() {
     pb.tick(0);
     assert_eq!(pb.tick_interval_ms(), None);
 }
+
+/// The viewer's aspect mode holds across every start (`begin_playback` resets the engine's to
+/// Auto each time), and so does the audio offset, clamped; the exit stops and leaves nothing
+/// to release. Through the real API with no FFmpeg on the host: the starts are refused, which is
+/// after the reset they must survive.
+#[cfg(feature = "hostsim")]
+#[test]
+fn the_viewers_mode_and_offset_hold_across_starts_and_shutdown_releases() {
+    let _serial = tv_base::testlock::serial();
+    // SAFETY: this test thread is the only one driving the player.
+    let mut pb = Playback::new(unsafe { MainThread::assume() });
+    pb.set_aspect_mode(AspectMode::Ratio4x3);
+    pb.set_audio_offset_ms(250);
+    pb.play_live("http://127.0.0.1:1/ch1/mono.m3u8", RequestHeaders::none());
+    assert_eq!(player::aspect_mode(), AspectMode::Ratio4x3, "a zap keeps the mode");
+    pb.suspend();
+    pb.resume();
+    assert_eq!(player::aspect_mode(), AspectMode::Ratio4x3, "a resume keeps it");
+    assert_eq!(player::audio_offset_ms(), 250);
+    pb.set_audio_offset_ms(-9_000);
+    assert_eq!(player::audio_offset_ms(), -player::AUDIO_OFFSET_RANGE_MS);
+    pb.shutdown();
+    assert_eq!((pb.status().mode, pb.status().state), (Mode::Idle, State::Idle));
+    assert_eq!(pb.tick_interval_ms(), None, "nothing left to release");
+    pb.set_aspect_mode(AspectMode::Auto);
+    pb.set_audio_offset_ms(0);
+}

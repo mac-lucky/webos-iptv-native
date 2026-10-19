@@ -1,0 +1,62 @@
+{
+  "library.add_playlist": "Dodaj playlistę",
+  "library.cancel": "Anuluj",
+  "library.channel_count": {
+    "one": "{count} kanał",
+    "few": "{count} kanały",
+    "many": "{count} kanałów",
+    "other": "{count} kanału"
+  },
+  "library.channels": "Zarządzaj kanałami",
+  "library.copied": {
+    "one": "Skopiowano {count} kanał do {group}",
+    "few": "Skopiowano {count} kanały do {group}",
+    "many": "Skopiowano {count} kanałów do {group}",
+    "other": "Skopiowano {count} kanału do {group}"
+  },
+  "library.copy_to": "Kopiuj do grupy",
+  "library.delete_group": "Usuń grupę",
+  "library.delete_question": "Usunąć tę grupę?",
+  "library.edit_group": "Edytuj grupę",
+  "library.enabled": "Włączona",
+  "library.group_created": "Utworzono grupę",
+  "library.group_deleted": "Usunięto grupę",
+  "library.group_name": "Nazwa grupy",
+  "library.group_renamed": "Zmieniono nazwę grupy",
+  "library.groups": "Zarządzaj grupami",
+  "library.move_down": "Przesuń w dół",
+  "library.move_here": "OK: upuść tutaj",
+  "library.move_to": "Przenieś do grupy",
+  "library.move_up": "Przesuń w górę",
+  "library.moved": {
+    "one": "Przeniesiono {count} kanał do {group}",
+    "few": "Przeniesiono {count} kanały do {group}",
+    "many": "Przeniesiono {count} kanałów do {group}",
+    "other": "Przeniesiono {count} kanału do {group}"
+  },
+  "library.name_taken": "Grupa o tej nazwie już istnieje",
+  "library.new_group": "Nowa grupa",
+  "library.pick_up": "OK: przesuń",
+  "library.playlist_added": "Dodano playlistę",
+  "library.playlist_removed": "Usunięto playlistę",
+  "library.playlists": "Zarządzaj playlistami",
+  "library.remove_from_group": "Usuń z grupy",
+  "library.remove_playlist": "Usuń playlistę",
+  "library.remove_question": "Usunąć tę playlistę?",
+  "library.removed": {
+    "one": "Usunięto {count} kanał z grupy",
+    "few": "Usunięto {count} kanały z grupy",
+    "many": "Usunięto {count} kanałów z grupy",
+    "other": "Usunięto {count} kanału z grupy"
+  },
+  "library.rename_group": "Zmień nazwę grupy",
+  "library.reorder_channels": "Zmień kolejność kanałów",
+  "library.reorder_groups": "Zmień kolejność grup",
+  "library.select_first": "Najpierw zaznacz kanały",
+  "library.selected": {
+    "one": "Zaznaczono {count}",
+    "few": "Zaznaczono {count}",
+    "many": "Zaznaczono {count}",
+    "other": "Zaznaczono {count}"
+  }
+}

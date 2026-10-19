@@ -16,12 +16,20 @@ use Label::{Days, Hours, Millis, Minutes, Seconds};
 
 use super::side::{Page, Row, SidePanel};
 use super::{PanelKey, TextField};
-use crate::data::{Command, Logos, Output, Screen, TvData};
+use crate::data::{Command, Logos, Navigate, Output, Screen, TvData};
 use crate::input::{Action, Hold, Key, Press};
+use crate::theme::Accent;
+
+mod backup;
+pub use backup::BackupRow;
 
 /// Setting keys. Stored as given; renaming one orphans what users saved under the old name.
 pub mod keys {
     pub const LAST_CHANNEL_ON_START: &str = "general.last_channel_on_start";
+    /// The History rules are storage's: it reads these two itself, and re-dates the kept
+    /// entries when the second changes.
+    pub const HISTORY_MIN_SECS: &str = iptv::storage::HISTORY_MIN_SECS;
+    pub const HISTORY_KEEP_DAYS: &str = iptv::storage::HISTORY_DAYS;
     pub const PLAYLIST_URL: &str = "playlist.url";
     pub const PLAYLIST_UPDATE_ON_START: &str = "playlist.update_on_start";
     /// A guide URL that replaces the playlist's own; empty means the playlist's.
@@ -30,6 +38,12 @@ pub mod keys {
     pub const EPG_PAST_DAYS: &str = "epg.past_days";
     pub const PLAYER_INFO_ON_ZAP: &str = "player.info_on_zap";
     pub const PLAYER_INFO_SECS: &str = "player.info_secs";
+    /// A channel starts with subtitles on when it has any.
+    pub const SUBTITLES_SHOW: &str = "subtitles.show";
+    /// `small`, `medium` or `large`.
+    pub const SUBTITLES_SIZE: &str = "subtitles.size";
+    /// How the picture fills the screen ([`crate::playback::DisplayMode::value`]).
+    pub const PLAYER_DISPLAY_MODE: &str = "player.display_mode";
     pub const GROUPS_SHOW_FAVORITES: &str = "groups.show_favorites";
     pub const GROUPS_SHOW_ALL: &str = "groups.show_all";
     pub const GROUPS_SHOW_HISTORY: &str = "groups.show_history";
@@ -39,7 +53,25 @@ pub mod keys {
     pub const GROUPS_CHANNEL_SORT: &str = "groups.channel_sort";
     pub const SKIP_BACK_SECS: &str = "playback.skip_back_secs";
     pub const SKIP_FORWARD_SECS: &str = "playback.skip_forward_secs";
+    /// The audio offset of every channel without one of its own, ms ([`crate::playback`]).
+    pub const AUDIO_OFFSET_MS: &str = "playback.audio_offset_ms";
+    /// The channels' own audio offsets, `<key hex> <ms>` per line, most recently adjusted first;
+    /// set from the player menu ([`crate::playback::with_channel_offset`]).
+    pub const CHANNEL_AUDIO_OFFSETS: &str = "playback.channel_audio_offsets";
     pub const LONG_PRESS_MS: &str = "remote.long_press_ms";
+    /// A [`crate::theme::Accent`] key; the shell paints the accent roles in it.
+    pub const ACCENT_COLOR: &str = "appearance.accent_color";
+    /// The parental PIN's salted verifier ([`crate::parental::hash_pin`]); empty is 0000.
+    pub const PARENTAL_PIN: &str = "parental.pin";
+    /// Blocked channels, one [`iptv::model::ChannelKey::hex`] per line.
+    pub const PARENTAL_CHANNELS: &str = "parental.channels";
+    /// Blocked playlist group names, one per line.
+    pub const PARENTAL_GROUPS: &str = "parental.groups";
+    /// Prefixes and suffixes cut from channel names, one per line ([`crate::names`]).
+    pub const NAMES_PREFIXES: &str = "names.prefixes";
+    pub const NAMES_SUFFIXES: &str = "names.suffixes";
+    /// Programme reminders, one per line ([`crate::reminders`]).
+    pub const REMINDERS: &str = "reminders.list";
 }
 
 /// What a key accepts.
@@ -64,6 +96,8 @@ pub enum Label {
     Minutes(i64),
     Seconds(i64),
     Millis(i64),
+    /// A signed audio offset, ms ([`crate::playback::offset_label`]).
+    Offset(i64),
 }
 
 impl Label {
@@ -77,6 +111,7 @@ impl Label {
             Label::Minutes(n) => msg::core_duration_long_minutes(n),
             Label::Seconds(n) => msg::core_seconds(&cx.number(n)),
             Label::Millis(n) => msg::unit_milliseconds(n),
+            Label::Offset(n) => crate::playback::offset_label(n),
         }
     }
 }
@@ -95,13 +130,26 @@ const HOURS: &[(&str, Label)] = &[
     ("24", Hours(24)),
     ("48", Hours(48)),
 ];
+/// No more than the week of past programmes a guide import keeps ([`iptv::xmltv::WINDOW_SECS`]).
 const PAST_DAYS: &[(&str, Label)] = &[
     ("1", Days(1)),
     ("2", Days(2)),
     ("3", Days(3)),
     ("5", Days(5)),
     ("7", Days(7)),
+];
+const HISTORY_MIN: &[(&str, Label)] = &[
+    ("5", Seconds(5)),
+    ("10", Seconds(10)),
+    ("30", Seconds(30)),
+    ("60", Minutes(1)),
+];
+const HISTORY_KEEP: &[(&str, Label)] = &[
+    ("1", Days(1)),
+    ("3", Days(3)),
+    ("7", Days(7)),
     ("14", Days(14)),
+    ("30", Days(30)),
 ];
 const INFO_SECS: &[(&str, Label)] = &[
     ("3", Seconds(3)),
@@ -128,6 +176,11 @@ const SKIP_FORWARD: &[(&str, Label)] = &[
     ("60", Minutes(1)),
     ("120", Minutes(2)),
 ];
+const SUBTITLE_SIZES: &[(&str, Label)] = &[
+    ("small", Label::Text(msg::subtitles_size_small)),
+    ("medium", Label::Text(msg::subtitles_size_medium)),
+    ("large", Label::Text(msg::subtitles_size_large)),
+];
 const LONG_PRESS: &[(&str, Label)] = &[
     ("300", Millis(300)),
     ("400", Millis(400)),
@@ -135,6 +188,41 @@ const LONG_PRESS: &[(&str, Label)] = &[
     ("600", Millis(600)),
     ("800", Millis(800)),
     ("1000", Seconds(1)),
+];
+/// In [`crate::playback::DisplayMode::ALL`]'s order.
+const DISPLAY_MODES: &[(&str, Label)] = &[
+    ("normal", Label::Text(msg::playback_display_normal)),
+    ("fill", Label::Text(msg::playback_display_fill)),
+    ("4:3", Label::Text(msg::playback_display_4_3)),
+    ("16:9", Label::Text(msg::playback_display_16_9)),
+];
+/// Every step of [`crate::playback::AUDIO_OFFSET_STEP_MS`] across the range; the player menu's
+/// adjuster offers the same.
+#[rustfmt::skip]
+const AUDIO_OFFSETS: &[(&str, Label)] = {
+    use Label::Offset as O;
+    &[
+        ("-1000", O(-1000)), ("-950", O(-950)), ("-900", O(-900)), ("-850", O(-850)),
+        ("-800", O(-800)), ("-750", O(-750)), ("-700", O(-700)), ("-650", O(-650)),
+        ("-600", O(-600)), ("-550", O(-550)), ("-500", O(-500)), ("-450", O(-450)),
+        ("-400", O(-400)), ("-350", O(-350)), ("-300", O(-300)), ("-250", O(-250)),
+        ("-200", O(-200)), ("-150", O(-150)), ("-100", O(-100)), ("-50", O(-50)),
+        ("0", O(0)),
+        ("50", O(50)), ("100", O(100)), ("150", O(150)), ("200", O(200)),
+        ("250", O(250)), ("300", O(300)), ("350", O(350)), ("400", O(400)),
+        ("450", O(450)), ("500", O(500)), ("550", O(550)), ("600", O(600)),
+        ("650", O(650)), ("700", O(700)), ("750", O(750)), ("800", O(800)),
+        ("850", O(850)), ("900", O(900)), ("950", O(950)), ("1000", O(1000)),
+    ]
+};
+/// In [`Accent::ALL`]'s order.
+const ACCENTS: &[(&str, Label)] = &[
+    (Accent::Blue.key(), Label::Text(msg::accent_blue)),
+    (Accent::Green.key(), Label::Text(msg::accent_green)),
+    (Accent::Red.key(), Label::Text(msg::accent_red)),
+    (Accent::Orange.key(), Label::Text(msg::accent_orange)),
+    (Accent::Purple.key(), Label::Text(msg::accent_purple)),
+    (Accent::Teal.key(), Label::Text(msg::accent_teal)),
 ];
 
 /// Every setting, with its default. The single source for keys, defaults and accepted values.
@@ -144,6 +232,18 @@ pub const SPECS: &[Spec] = &[
         label: msg::settings_auto_play,
         default: "true",
         kind: Kind::Toggle,
+    },
+    Spec {
+        key: keys::HISTORY_MIN_SECS,
+        label: msg::settings_history_min,
+        default: "10",
+        kind: Kind::Choice(HISTORY_MIN),
+    },
+    Spec {
+        key: keys::HISTORY_KEEP_DAYS,
+        label: msg::settings_history_keep,
+        default: "7",
+        kind: Kind::Choice(HISTORY_KEEP),
     },
     Spec {
         key: keys::PLAYLIST_URL,
@@ -192,6 +292,12 @@ pub const SPECS: &[Spec] = &[
         kind: Kind::Choice(INFO_SECS),
     },
     Spec {
+        key: keys::PLAYER_DISPLAY_MODE,
+        label: msg::playback_display_mode,
+        default: "normal",
+        kind: Kind::Choice(DISPLAY_MODES),
+    },
+    Spec {
         key: keys::GROUPS_SHOW_FAVORITES,
         label: msg::settings_show_favorites,
         default: "true",
@@ -234,10 +340,79 @@ pub const SPECS: &[Spec] = &[
         kind: Kind::Choice(SKIP_FORWARD),
     },
     Spec {
+        key: keys::SUBTITLES_SHOW,
+        label: msg::subtitles_show,
+        default: "false",
+        kind: Kind::Toggle,
+    },
+    Spec {
+        key: keys::SUBTITLES_SIZE,
+        label: msg::subtitles_size,
+        default: "medium",
+        kind: Kind::Choice(SUBTITLE_SIZES),
+    },
+    Spec {
+        key: keys::AUDIO_OFFSET_MS,
+        label: msg::playback_default_audio_offset,
+        default: "0",
+        kind: Kind::Choice(AUDIO_OFFSETS),
+    },
+    // Set from the player menu, a line per channel.
+    Spec {
+        key: keys::CHANNEL_AUDIO_OFFSETS,
+        label: msg::playback_audio_offset,
+        default: "",
+        kind: Kind::List,
+    },
+    Spec {
         key: keys::LONG_PRESS_MS,
         label: msg::settings_long_press,
         default: "500",
         kind: Kind::Choice(LONG_PRESS),
+    },
+    Spec {
+        key: keys::ACCENT_COLOR,
+        label: msg::accent_color,
+        default: Accent::Blue.key(),
+        kind: Kind::Choice(ACCENTS),
+    },
+    // Edited through the PIN dialog, the long-OK menus, the name editor and the guide, never
+    // as plain rows.
+    Spec {
+        key: keys::PARENTAL_PIN,
+        label: msg::parental_change_pin,
+        default: "",
+        kind: Kind::List,
+    },
+    Spec {
+        key: keys::PARENTAL_CHANNELS,
+        label: msg::parental_locked_channels,
+        default: "",
+        kind: Kind::List,
+    },
+    Spec {
+        key: keys::PARENTAL_GROUPS,
+        label: msg::parental_locked_groups,
+        default: "",
+        kind: Kind::List,
+    },
+    Spec {
+        key: keys::NAMES_PREFIXES,
+        label: msg::names_prefixes,
+        default: "",
+        kind: Kind::List,
+    },
+    Spec {
+        key: keys::NAMES_SUFFIXES,
+        label: msg::names_suffixes,
+        default: "",
+        kind: Kind::List,
+    },
+    Spec {
+        key: keys::REMINDERS,
+        label: msg::reminder_list,
+        default: "",
+        kind: Kind::List,
     },
 ];
 
@@ -291,6 +466,8 @@ impl std::fmt::Debug for Settings {
         for (key, value) in &self.values {
             match spec(key).map(|s| s.kind) {
                 Some(Kind::Url { .. }) => map.entry(key, &redact::url(value)),
+                // Four digits are quick to find from their verifier: it is never printed.
+                _ if *key == keys::PARENTAL_PIN => map.entry(key, &"<set>"),
                 _ => map.entry(key, value),
             };
         }
@@ -423,6 +600,40 @@ pub enum Item {
     /// One option on a choice page.
     Pick(&'static str, &'static str),
     Refresh(Refresh),
+    /// A row of the Backup pages.
+    Backup(BackupRow),
+    /// A row that opens a screen of its own over Settings.
+    Opens(Opens),
+}
+
+/// The Settings rows that open a screen of their own: the PIN dialog, the name editor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Opens {
+    ChangePin,
+    ChannelNames,
+    /// The library panel's playlists and groups.
+    Playlists,
+    Groups,
+}
+
+impl Opens {
+    fn label(self) -> &'static str {
+        match self {
+            Opens::ChangePin => msg::parental_change_pin(),
+            Opens::ChannelNames => msg::names_title(),
+            Opens::Playlists => msg::library_playlists(),
+            Opens::Groups => msg::library_groups(),
+        }
+    }
+
+    fn navigate(self) -> Navigate {
+        match self {
+            Opens::ChangePin => Navigate::Pin(crate::parental::PinTask::Change),
+            Opens::ChannelNames => Navigate::ChannelNames,
+            Opens::Playlists => Navigate::Library(crate::library::LibraryPage::Playlists),
+            Opens::Groups => Navigate::Library(crate::library::LibraryPage::Groups),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -436,6 +647,8 @@ pub enum Section {
     Playback,
     Remote,
     About,
+    Backup,
+    Parental,
 }
 
 impl Section {
@@ -450,17 +663,26 @@ impl Section {
             Section::Playback => msg::settings_playback(),
             Section::Remote => msg::settings_remote(),
             Section::About => msg::settings_about(),
+            Section::Backup => msg::backup_title(),
+            Section::Parental => msg::parental_title(),
         }
     }
 
     fn items(self) -> &'static [Item] {
         use Item::{Open, Refresh as R, Setting};
         match self {
-            Section::General => &[Setting(keys::LAST_CHANNEL_ON_START)],
+            Section::General => &[
+                Setting(keys::LAST_CHANNEL_ON_START),
+                Setting(keys::HISTORY_MIN_SECS),
+                Setting(keys::HISTORY_KEEP_DAYS),
+                Open(Section::Backup),
+            ],
             Section::Playlists => &[
                 Setting(keys::PLAYLIST_URL),
                 Setting(keys::PLAYLIST_UPDATE_ON_START),
                 R(Refresh::Playlist),
+                Item::Opens(Opens::ChannelNames),
+                Item::Opens(Opens::Playlists),
             ],
             Section::Epg => &[
                 Setting(keys::EPG_URL),
@@ -468,23 +690,37 @@ impl Section {
                 Setting(keys::EPG_PAST_DAYS),
                 R(Refresh::Epg),
             ],
-            Section::Appearance => &[Open(Section::Player), Open(Section::Groups)],
+            Section::Appearance => &[
+                Setting(keys::ACCENT_COLOR),
+                Open(Section::Player),
+                Open(Section::Groups),
+            ],
             Section::Player => &[
                 Setting(keys::PLAYER_INFO_ON_ZAP),
                 Setting(keys::PLAYER_INFO_SECS),
+                Setting(keys::PLAYER_DISPLAY_MODE),
             ],
             Section::Groups => &[
                 Setting(keys::GROUPS_SHOW_FAVORITES),
                 Setting(keys::GROUPS_SHOW_ALL),
                 Setting(keys::GROUPS_SHOW_HISTORY),
                 Setting(keys::GROUPS_CHANNEL_SORT),
+                Item::Opens(Opens::Groups),
             ],
             Section::Playback => &[
                 Setting(keys::SKIP_BACK_SECS),
                 Setting(keys::SKIP_FORWARD_SECS),
+                Setting(keys::AUDIO_OFFSET_MS),
+                Setting(keys::SUBTITLES_SHOW),
+                Setting(keys::SUBTITLES_SIZE),
             ],
             Section::Remote => &[Setting(keys::LONG_PRESS_MS)],
             Section::About => &[],
+            Section::Backup => &[
+                Item::Backup(BackupRow::Export),
+                Item::Backup(BackupRow::Import),
+            ],
+            Section::Parental => &[Item::Opens(Opens::ChangePin)],
         }
     }
 }
@@ -496,6 +732,7 @@ const ROOT: &[Section] = &[
     Section::Appearance,
     Section::Playback,
     Section::Remote,
+    Section::Parental,
     Section::About,
 ];
 
@@ -676,6 +913,8 @@ impl Editor {
                 Output::default()
             }
             Item::Setting(key) => self.setting(panel, key),
+            Item::Backup(row) => backup::activate(panel, row),
+            Item::Opens(opens) => Output::navigate(opens.navigate()),
             Item::Pick(key, value) => {
                 let saved = self.settings.change(key, value.to_owned());
                 panel.pop();
@@ -749,6 +988,8 @@ impl Editor {
             Item::Refresh(Refresh::Playlist) => Row::action(item, msg::settings_update_playlist()),
             Item::Refresh(Refresh::Epg) => Row::action(item, msg::settings_update_epg()),
             Item::Pick(_, label) => Row::action(item, label),
+            Item::Backup(row) => backup::row(row),
+            Item::Opens(opens) => Row::submenu(item, opens.label()),
         }
     }
 
@@ -842,6 +1083,61 @@ mod tests {
     }
 
     #[test]
+    fn the_history_rows_default_to_what_storage_applies_without_them() {
+        let storage = iptv::storage::Storage::open_in_memory().unwrap();
+        let s = Settings::new();
+        assert_eq!(
+            s.number(keys::HISTORY_MIN_SECS),
+            storage.history_min_secs().unwrap()
+        );
+        assert_eq!(
+            s.number(keys::HISTORY_KEEP_DAYS),
+            storage.history_days().unwrap()
+        );
+        // Every value the rows offer is one storage takes as it is.
+        for key in [keys::HISTORY_MIN_SECS, keys::HISTORY_KEEP_DAYS] {
+            let Some(Kind::Choice(options)) = spec(key).map(|s| s.kind) else {
+                panic!("{key} is a choice");
+            };
+            for (value, _) in options {
+                storage.set_setting(key, value).unwrap();
+                let read = match key {
+                    keys::HISTORY_MIN_SECS => storage.history_min_secs(),
+                    _ => storage.history_days(),
+                };
+                assert_eq!(read.unwrap().to_string(), *value, "{key}");
+            }
+        }
+    }
+
+    #[test]
+    fn general_holds_the_start_and_history_rows() {
+        let mut panel = SettingsPanel::new(Settings::new(), "1");
+        open(&mut panel, "General");
+        assert_eq!(
+            labels(&panel),
+            [
+                (
+                    "Start with the last channel".to_owned(),
+                    Some("On".to_owned())
+                ),
+                ("Add to History after".to_owned(), Some("10 s".to_owned())),
+                ("Keep History for".to_owned(), Some("7 days".to_owned())),
+                ("Backup".to_owned(), None),
+            ]
+        );
+        assert_eq!(
+            keys(&mut panel, &[Key::Down, Key::Ok, Key::Down, Key::Ok]),
+            set(keys::HISTORY_MIN_SECS, "30")
+        );
+        assert_eq!(
+            keys(&mut panel, &[Key::Down, Key::Ok, Key::Up, Key::Ok]),
+            set(keys::HISTORY_KEEP_DAYS, "3")
+        );
+        assert_eq!(labels(&panel)[2].1.as_deref(), Some("3 days"));
+    }
+
+    #[test]
     fn stored_values_are_validated() {
         let s = Settings::from_stored([
             ("remote.long_press_ms", "250"),
@@ -851,7 +1147,9 @@ mod tests {
             ("playlist.url", "ftp://host.test/list"),
             ("general.last_channel_on_start", "yes"),
             ("groups.hidden", "News\nSport"),
+            ("epg.past_days", "14"),
         ]);
+        assert_eq!(s.number(keys::EPG_PAST_DAYS), 7, "past the kept week");
         assert_eq!(s.number(keys::LONG_PRESS_MS), 500);
         assert_eq!(s.get("guide.rows"), "", "a key no setting has any more");
         assert_eq!(s.number(keys::PLAYER_INFO_SECS), 8);
@@ -932,13 +1230,14 @@ mod tests {
                 "Appearance",
                 "Playback",
                 "Remote control",
+                "Parental control",
                 "About"
             ]
         );
         let mut panel = panel;
         open(&mut panel, "Appearance");
         let subs: Vec<_> = labels(&panel).into_iter().map(|(l, _)| l).collect();
-        assert_eq!(subs, ["Player", "Groups"]);
+        assert_eq!(subs, ["Accent color", "Player", "Groups"]);
         open(&mut panel, "Groups");
         assert_eq!(
             labels(&panel)[0],
@@ -985,6 +1284,66 @@ mod tests {
         assert_eq!(labels(&panel)[0].1.as_deref(), Some("600 ms"));
         // the same pick again changes nothing
         assert_eq!(keys(&mut panel, &[Key::Ok, Key::Ok]), Output::default());
+    }
+
+    #[test]
+    fn the_subtitle_rows_sit_in_playback() {
+        let mut panel = SettingsPanel::new(Settings::new(), "1");
+        open(&mut panel, "Playback");
+        let rows = labels(&panel);
+        let at = rows
+            .iter()
+            .position(|(label, _)| label == "Show subtitles")
+            .unwrap();
+        assert_eq!(rows[at].1.as_deref(), Some("Off"));
+        assert_eq!(
+            rows[at + 1],
+            ("Subtitle size".to_owned(), Some("Medium".to_owned()))
+        );
+        keys(&mut panel, &vec![Key::Down; at]);
+        assert_eq!(
+            keys(&mut panel, &[Key::Ok]),
+            set(keys::SUBTITLES_SHOW, "true")
+        );
+        keys(&mut panel, &[Key::Down, Key::Ok]);
+        assert_eq!(panel.panel().page().title(), "Subtitle size");
+        assert_eq!(
+            keys(&mut panel, &[Key::Down, Key::Ok]),
+            set(keys::SUBTITLES_SIZE, "large")
+        );
+        let s = Settings::from_stored([(keys::SUBTITLES_SIZE, "huge")]);
+        assert_eq!(
+            s.get(keys::SUBTITLES_SIZE),
+            "medium",
+            "an unknown size is refused"
+        );
+    }
+
+    #[test]
+    fn the_accent_color_is_picked_in_appearance() {
+        let mut panel = SettingsPanel::new(Settings::new(), "1");
+        open(&mut panel, "Appearance");
+        assert_eq!(
+            labels(&panel)[0],
+            ("Accent color".to_owned(), Some("Blue".to_owned()))
+        );
+        keys(&mut panel, &[Key::Ok]);
+        let names: Vec<_> = labels(&panel).into_iter().map(|(l, _)| l).collect();
+        assert_eq!(names, ["Blue", "Green", "Red", "Orange", "Purple", "Teal"]);
+        assert_eq!(
+            keys(&mut panel, &[Key::Down, Key::Ok]),
+            set(keys::ACCENT_COLOR, "green")
+        );
+        assert_eq!(labels(&panel)[0].1.as_deref(), Some("Green"));
+        assert_eq!(
+            Accent::from_key(panel.settings().get(keys::ACCENT_COLOR)),
+            Some(Accent::Green)
+        );
+        let stored = Settings::from_stored([(keys::ACCENT_COLOR, "pink")]);
+        assert_eq!(stored.get(keys::ACCENT_COLOR), "blue", "refused");
+        let _pl =
+            tv_platform::i18n::language_on_this_thread_for_test(tv_platform::i18n::Preference::Pl);
+        assert_eq!(panel.settings().display(keys::ACCENT_COLOR), "Zielony");
     }
 
     #[test]

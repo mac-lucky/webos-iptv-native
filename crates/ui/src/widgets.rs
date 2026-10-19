@@ -7305,7 +7305,7 @@ impl ControlPalette {
         let keyed = |l: f32, scale: f32, alpha: f32| {
             oklab_to_srgb([l, ha * chroma * scale, hb * chroma * scale], alpha)
         };
-        // Focus is the fixed ACCENT violet on every page (the Stremio palette sync); the key reaches
+        // Focus is the fixed ACCENT violet on every page (the violet palette sync); the key reaches
         // only the idle face. The body is the same hue and chroma one lightness step down.
         let focus_top = theme::ACCENT;
         let accent = srgb_to_oklab(theme::ACCENT);
@@ -7444,7 +7444,7 @@ struct ControlFace {
 ///
 /// Unconditional on focus, which is the point: the design's rule is that the card constants are not
 /// states and the FILL is what focus owns. On the focused violet `ACCENT` face the same white rim
-/// reads as a faint light edge — the echo of Stremio's white focus outline — and not as a state.
+/// reads as a faint light edge — the echo of the upstream white focus outline — and not as a state.
 ///
 /// **[`ControlGround::Unkeyed`] is the one exception, and it is the ground asking, not the state.**
 /// Over the video plane both states use the 1.25px unkeyed geometry. Idle takes
@@ -7976,7 +7976,7 @@ pub enum BadgeStyle {
     /// [`OverArt`]: BadgeStyle::OverArt
     Link { focused: bool },
     /// NO ground at all: the glyph and the label in `col` — an icon-led FACT LINE (a stream row's
-    /// "🎞 HEVC · HDR10", stremio-web's stream facts) that reads as text, not as a control. Same
+    /// "🎞 HEVC · HDR10", the stream facts) that reads as text, not as a control. Same
     /// box and centring as every other style, so a line mixing it with outlined chips stays even.
     Bare { col: [f32; 4] },
 }

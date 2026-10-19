@@ -18,10 +18,12 @@
 
 use std::ffi::CString;
 
+use iptv::model::ChannelKey;
 use iptv::refresh::{Refresher, Transport};
 use tv_machine::machine::Measure;
 use tv_screens::data::{
     Command, Group, Navigate, Output, Playback, Rect, Screen, ScreenMessage, Stream, TvData,
+    VodPlaying,
 };
 use tv_screens::guide::GuideScreen;
 use tv_screens::input::{Action, Key, Remote};
@@ -29,6 +31,7 @@ use tv_screens::lists::{ChannelList, History, Mode};
 use tv_screens::panels::{keys, ContextMenu, PanelCtx, Search, Settings, SettingsPanel};
 use tv_screens::player::{PlayerScreen, PlayerSettings};
 use tv_screens::theme::{self, size, space};
+use tv_screens::vod::VodScreen;
 use tv_ui::consts::{SCR_H, SCR_W};
 use tv_ui::widgets::LegacyMeasure;
 use tv_ui::Painter;
@@ -37,12 +40,22 @@ use crate::input::{Edge, KeyEvent};
 use crate::logos::{LogoCache, Pixels};
 use crate::logs::log;
 use crate::player::{self, Player};
-use crate::store::{refresh_config, Store};
+use crate::store::Store;
 
-mod groups;
+mod backup;
+mod gate;
+mod remind;
+mod sleep;
 mod watch;
 
-use groups::Groups;
+use gate::Held;
+use remind::Reminders;
+use sleep::{Due, SleepTimer};
+use tv_platform::i18n::msg;
+use tv_screens::data::{Lock, PinTask};
+use tv_screens::panels::{LibraryPanel, NamesPanel, PinDialog, ReminderPrompt};
+use tv_screens::playback::{audio_offset, DisplayMode};
+use tv_screens::reminders as reminder_list;
 use watch::Watch;
 
 /// A toast stays this long.
@@ -97,6 +110,9 @@ pub struct Shell {
     bottom: Layer<PlayerScreen>,
     /// Bottom up.
     stack: Vec<Layer>,
+    /// The group a groups panel showed last, which the guide and the channel list open on;
+    /// until one does, the group the player zaps through.
+    group: Option<Group>,
     /// The video rectangle; `None` is full screen.
     rect: Option<Rect>,
     toast: Option<Toast>,
@@ -111,6 +127,16 @@ pub struct Shell {
     dirty: bool,
     animating: bool,
     exit: bool,
+    /// The subtitles over the full-screen video.
+    subtitles: crate::subtitles::Overlay,
+    /// The sleep timer, while one runs.
+    sleep: Option<SleepTimer>,
+    /// The display mode and the audio offset the player was last given (it starts at these).
+    told: (DisplayMode, i32),
+    /// An output held back for the parental PIN.
+    held: Option<Held>,
+    /// Programme reminders, and when the next one starts.
+    reminders: Reminders,
 }
 
 impl Shell {
@@ -132,6 +158,7 @@ impl Shell {
             settings,
             remote: Remote::default(),
             stack: Vec::new(),
+            group: None,
             rect: None,
             toast: None,
             watch: Watch::default(),
@@ -142,6 +169,11 @@ impl Shell {
             dirty: true,
             animating: false,
             exit: false,
+            subtitles: crate::subtitles::Overlay::default(),
+            sleep: None,
+            told: (DisplayMode::Normal, 0),
+            held: None,
+            reminders: Reminders::default(),
         };
         shell.follow_settings();
         shell
@@ -149,9 +181,17 @@ impl Shell {
 
     /// The first screen: the last channel when the setting asks for it, otherwise the guide.
     pub fn start(&mut self, now: u64) {
+        self.reminders.observe(now, self.store.now());
         if self.settings.flag(keys::LAST_CHANNEL_ON_START) {
             if let Some(&key) = self.store.recent_channels().first() {
-                self.play(Stream::Live(key), None, now);
+                // A locked channel waits for the PIN: the guide opens instead.
+                let locked = self
+                    .store
+                    .channel(key)
+                    .is_some_and(|c| self.store.locked(&c));
+                if !locked {
+                    self.play(Stream::Live(key), None, now);
+                }
             }
         }
         if self.store.playback_mut().channel.is_none() {
@@ -160,7 +200,7 @@ impl Shell {
         self.settle(now);
     }
 
-    /// One key edge from the remote (or the TV keyboard's delete and clear-all keys).
+    /// One key edge from the remote (or the TV keyboard's Enter, delete and clear-all keys).
     pub fn key(&mut self, ev: KeyEvent) {
         // A printable key while the keyboard is up is typing: it arrives as text.
         if self.typing && (0x20..0x7f).contains(&ev.sym) {
@@ -169,7 +209,13 @@ impl Shell {
         let Some(key) = Key::from_sdl(ev.sym, ev.wcode) else {
             return;
         };
-        let action = match ev.edge {
+        // webOS 25's keyboard sends its own keys (Enter: sym 13, wcode 40) flagged as auto-repeat
+        // and then up, never down; while it is up such a press of a key not held is a press.
+        let edge = match ev.edge {
+            Edge::Repeat if self.typing && !self.remote.holds(key) => Edge::Down,
+            edge => edge,
+        };
+        let action = match edge {
             Edge::Down => {
                 let hold = self.screen(self.top()).0.hold(key);
                 self.remote.down(key, ev.at_ms, hold)
@@ -213,6 +259,10 @@ impl Shell {
             self.toast(text, now);
         }
         self.watch.tick(&mut *self.store, now);
+        // A subtitle came or went at the presented position.
+        self.dirty |= self.subtitles.changed(self.rect.is_none());
+        self.tick_sleep(now);
+        self.tick_reminders(now);
         self.tick_screens(now);
         if self.toast.as_ref().is_some_and(|t| now >= t.until) {
             self.toast = None;
@@ -239,6 +289,8 @@ impl Shell {
             self.bottom.wake,
             self.player.next_wake_ms(now),
             self.watch.next_wake(),
+            self.sleep.as_ref().map(SleepTimer::next_wake),
+            self.reminders.next_wake(now),
             self.toast.as_ref().map(|t| t.until),
             self.refresher.as_ref().map(|_| self.refresh_at),
         ]
@@ -263,10 +315,23 @@ impl Shell {
         self.dirty = true;
     }
 
-    /// The app went to the background: keep the archive position, release the player.
+    /// The app went to the background: keep the archive position, release the player. What the
+    /// parental PIN opened locks again, and a locked channel playing stops with the guide up (as
+    /// on a start with nothing to play): with Quick Start+ the app comes back when the TV is
+    /// turned on again, hours later and maybe in front of someone else.
     pub fn suspend(&mut self) {
         self.save_progress();
         self.player.suspend();
+        self.store.relock();
+        let playing = self.store.playback_mut().channel;
+        let locked = playing
+            .and_then(|key| self.store.channel(key))
+            .is_some_and(|c| self.store.locked(&c));
+        if locked {
+            self.stop_playing();
+            self.navigate(Navigate::Guide, None);
+        }
+        self.refresh_screens();
     }
 
     /// Back in the foreground: the player plays on, the frame is drawn again.
@@ -275,9 +340,63 @@ impl Shell {
         self.dirty = true;
     }
 
+    /// The reminders whose programme starts now: the latest gets a prompt (OK switches to its
+    /// channel), and every one that came, fired or long past, leaves the setting.
+    fn tick_reminders(&mut self, now: u64) {
+        self.reminders.observe(now, self.store.now());
+        let Some(fired) = self.reminders.take_due(now) else {
+            return;
+        };
+        let rest = reminder_list::format(self.reminders.list());
+        self.set_setting(keys::REMINDERS, rest);
+        let Some((r, channel)) = fired
+            .iter()
+            .rev()
+            .find_map(|r| Some((r, self.store.channel(r.channel)?)))
+        else {
+            return;
+        };
+        self.dirty = true;
+        // While the keyboard is up a prompt would take it down: a toast says it instead.
+        if self.typing {
+            let text = format!("{} - {}", r.title, msg::reminder_starting(&channel.name));
+            return self.toast(text, now);
+        }
+        let prompt = ReminderPrompt::new(r, &channel.name, now);
+        self.stack.push(Layer::new(Box::new(prompt)));
+    }
+
+    /// Hold `out` back until the PIN opens `key`, and ask for it.
+    fn hold(&mut self, out: Output, from: Option<usize>, key: ChannelKey) {
+        self.dirty = true;
+        // A screen that showed the play as done (the guide's play mark) looks at what plays.
+        self.playback_moved = true;
+        let held = Held::new(out, from, key);
+        let task = PinTask::Open(held.lock.clone());
+        self.held = Some(held);
+        self.navigate(Navigate::Pin(task), None);
+    }
+
+    /// The PIN opened `lock` for the session: the lists show it again, and what was held back
+    /// for it runs once the dialog's output is done ([`apply`](Self::apply)).
+    fn unlock(&mut self, lock: Lock) {
+        if let Some(held) = self.held.as_mut().filter(|h| h.lock == lock) {
+            held.ready = true;
+        }
+        self.store.unlock(lock);
+        self.refresh_screens();
+    }
+
     /// Save where the archive programme playing is, for History (and on the way out).
     pub fn save_progress(&mut self) {
         self.watch.save(&mut *self.store);
+    }
+
+    /// The app is ending (the system quits it, or Exit): keep the archive position, and release
+    /// the decoder before the process ends rather than leaving it to the TV.
+    pub fn shutdown(&mut self) {
+        self.save_progress();
+        self.player.shutdown();
     }
 
     /// Something changed or still moves: draw a frame.
@@ -308,6 +427,8 @@ impl Shell {
         let p = Painter::root();
         self.logos.next_frame();
         tv_gfx::gfx::frame_clear_through();
+        // Over the video, under the HUD and every panel.
+        self.subtitles.paint(p, self.rect.is_none());
         if self.top().is_none() {
             self.bottom.screen.draw(p, &m, &self.logos);
         }
@@ -384,9 +505,22 @@ impl Shell {
     }
 
     /// Carry out what the screen at `from` (`None`: the player) returned. Its message goes to
-    /// the open screen under it, the player when there is none; Manage favorites over the
-    /// player opens the guide for it once the sender's own navigation is done.
+    /// the open screen under it, the player when there is none; Manage favorites over anything
+    /// but the guide (the player, a channel list's groups panel) opens the guide for it once the
+    /// sender's own navigation is done, since only the guide has that mode.
     fn apply(&mut self, out: Output, from: Option<usize>, now: u64) {
+        if let Some(key) = gate::locked_play(&out, &*self.store) {
+            return self.hold(out, from, key);
+        }
+        self.apply_open(out, from, now);
+        // The PIN dialog's own output (it closed) is done: now what it opened.
+        if let Some(held) = self.held.take_if(|h| h.ready) {
+            self.apply(held.out, held.from, now);
+        }
+    }
+
+    /// [`apply`](Self::apply) past the parental gate.
+    fn apply_open(&mut self, out: Output, from: Option<usize>, now: u64) {
         self.dirty |= out.redraw;
         for command in out.commands {
             self.run(command, now);
@@ -394,7 +528,11 @@ impl Shell {
         let mut manage_favorites = false;
         if let (Some(message), Some(i)) = (out.message, from) {
             let under = self.stack[..i].iter().rposition(|l| !l.screen.closing());
-            if under.is_none() && message == ScreenMessage::ManageFavorites {
+            let guide = under.is_some_and(|u| {
+                let screen: &dyn std::any::Any = &*self.stack[u].screen;
+                screen.is::<GuideScreen>()
+            });
+            if !guide && message == ScreenMessage::ManageFavorites {
                 manage_favorites = true;
             } else {
                 let (screen, data) = self.screen(under);
@@ -443,6 +581,10 @@ impl Shell {
         if editing != self.typing {
             self.typing = editing;
             self.text_input = Some(editing);
+            if editing {
+                // The OK that raised the keyboard is released to the keyboard, not to us.
+                self.remote.forget();
+            }
         }
     }
 
@@ -460,9 +602,16 @@ impl Shell {
                 self.clear();
                 return;
             }
-            Navigate::Guide => {
-                let group = self.bottom.screen.group().clone();
-                let guide = GuideScreen::new(&*self.store, group);
+            Navigate::Guide | Navigate::Pip => {
+                // Open on the zap group (long Back gives it back), showing the shared one.
+                let zap = self.bottom.screen.group().clone();
+                let mut guide = GuideScreen::new(&*self.store, zap.clone());
+                let group = self.shown_group();
+                if group != zap {
+                    guide.message(ScreenMessage::SetGroup(group), &*self.store);
+                }
+                // The video follows the guide's rectangle: the corner window while PiP is on.
+                guide.set_pip(nav == Navigate::Pip);
                 return self.replace(Box::new(guide));
             }
             Navigate::ChannelList { preview } => {
@@ -471,17 +620,34 @@ impl Shell {
                 } else {
                     Mode::Overlay
                 };
-                let group = self.bottom.screen.group().clone();
-                let list = ChannelList::new(mode, group, &*self.store);
+                let list = ChannelList::new(mode, self.shown_group(), &*self.store);
                 return self.replace(Box::new(list));
             }
-            Navigate::Groups(group) => Box::new(Groups::open(&*self.store, &group)),
+            Navigate::Vod(section) => {
+                let settings = PlayerSettings::from_settings(&self.settings);
+                let vod = VodScreen::new(section, &*self.store, settings);
+                return self.replace(Box::new(vod));
+            }
             Navigate::History => Box::new(History::open(&*self.store)),
             Navigate::Settings => Box::new(SettingsPanel::new(
                 self.settings.clone(),
                 env!("CARGO_PKG_VERSION"),
             )),
             Navigate::Search => Box::new(Search::new(&*self.store)),
+            Navigate::Pin(task) => {
+                Box::new(PinDialog::new(task, self.settings.get(keys::PARENTAL_PIN)))
+            }
+            Navigate::ChannelNames => Box::new(NamesPanel::new(self.settings.clone())),
+            Navigate::Library(page) => {
+                let cx = PanelCtx {
+                    data: &*self.store,
+                    settings: &self.settings,
+                };
+                match LibraryPanel::open(&page, &cx) {
+                    Some(panel) => Box::new(panel),
+                    None => return,
+                }
+            }
             Navigate::MainMenu
             | Navigate::ContextMenu { .. }
             | Navigate::GroupMenu(_)
@@ -499,6 +665,16 @@ impl Shell {
         self.stack.push(Layer::new(screen));
     }
 
+    /// The group the guide and the channel list open on: the one a groups panel showed last
+    /// while the playlist still has it, else the one the player zaps through.
+    fn shown_group(&self) -> Group {
+        self.group
+            .as_ref()
+            .filter(|g| self.store.groups().contains(g))
+            .unwrap_or_else(|| self.bottom.screen.group())
+            .clone()
+    }
+
     /// Close every screen: the player is in front. Screens already animating out go on doing so.
     fn clear(&mut self) {
         self.stack.retain(Layer::sliding_out);
@@ -513,9 +689,10 @@ impl Shell {
     fn run(&mut self, command: Command, now: u64) {
         match command {
             Command::Play { stream, group } => self.play(stream, group, now),
+            Command::ShowGroup(group) => self.group = Some(group),
             Command::SeekTo { position_secs } => {
                 let pb = self.store.playback_mut();
-                if pb.catchup.is_some() {
+                if pb.catchup.is_some() || pb.vod.is_some() {
                     pb.position_secs = position_secs;
                     self.player.seek(position_secs);
                     self.playback_moved = true;
@@ -535,7 +712,7 @@ impl Shell {
             }
             Command::TogglePause => {
                 let pb = self.store.playback_mut();
-                if pb.catchup.is_some() {
+                if pb.catchup.is_some() || pb.vod.is_some() {
                     pb.paused = !pb.paused;
                     let paused = pb.paused;
                     self.player.set_paused(paused);
@@ -547,6 +724,14 @@ impl Shell {
                 if i < pb.audio_tracks.len() {
                     pb.audio_track = i;
                     self.player.select_audio_track(i);
+                    self.playback_moved = true;
+                }
+            }
+            Command::SelectSubtitleTrack(pick) => {
+                let pb = self.store.playback_mut();
+                if pick.is_none_or(|i| i < pb.subtitle_tracks.len()) {
+                    pb.subtitle_track = pick;
+                    self.player.select_subtitle_track(pick);
                     self.playback_moved = true;
                 }
             }
@@ -563,18 +748,137 @@ impl Shell {
                 None => log("refresh: this build has no network transport"),
             },
             Command::SetSetting { key, value } => self.set_setting(&key, value),
+            Command::Library(edit) => self.edit_library(edit),
+            Command::Backup(op) => self.backup(op, now),
+            Command::SleepTimer { minutes } => self.set_sleep(minutes, now),
+            Command::PlayVod { item, offset_secs } => self.play_vod(item, offset_secs, now),
+            Command::StopVod => self.stop_vod(),
+            Command::Unlock(lock) => self.unlock(lock),
             Command::Exit => self.exit = true,
         }
     }
 
+    /// Play the movie or episode `key` full screen from `offset_secs` in; whatever
+    /// played before is saved as a new stream does it.
+    fn play_vod(&mut self, key: ChannelKey, offset_secs: i64, now: u64) {
+        let Some(item) = self.store.vod().iter().find(|v| v.key == key).cloned() else {
+            log(&format!("play: VOD item {} is gone", key.hex()));
+            return;
+        };
+        // The sections leave such an item out; nothing else asks for one by key.
+        if self.store.vod_locked(&item) {
+            log(&format!("play: VOD item {} is locked", key.hex()));
+            return;
+        }
+        self.watch.begin_vod(key, &mut *self.store, now);
+        // The default audio offset, not the last channel's own, before its first sound is fed.
+        self.tell_player(None);
+        self.player.open_vod(&item, offset_secs, self.rect);
+        *self.store.playback_mut() = Playback {
+            position_secs: offset_secs.max(0),
+            vod: Some(VodPlaying {
+                item: key,
+                title: item.full_title(),
+                ..VodPlaying::default()
+            }),
+            ..Playback::default()
+        };
+        self.playback_moved = true;
+    }
+
+    /// Stop the movie or episode playing, keeping its position, and show the screens the new
+    /// one.
+    fn stop_vod(&mut self) {
+        if self.store.playback_mut().vod.is_none() {
+            return;
+        }
+        self.watch.stop(&mut *self.store);
+        self.player.stop();
+        *self.store.playback_mut() = Playback::default();
+        self.playback_moved = true;
+        self.refresh_screens();
+    }
+
+    /// Run the sleep timer for `minutes` from `now`, replacing any; 0 turns it off.
+    fn set_sleep(&mut self, minutes: u32, now: u64) {
+        self.sleep = SleepTimer::start(now, minutes);
+        log(&format!("sleep timer: {minutes} min"));
+        let text = match minutes {
+            0 => msg::playback_sleep_cancelled().to_owned(),
+            m => msg::playback_sleep_set(i64::from(m)),
+        };
+        self.toast(text, now);
+        self.show_sleep(now);
+    }
+
+    /// The sleep timer at `now`: the warning a minute before, then playback stops, the decoder is
+    /// released and the guide opens (as on a start with nothing to play).
+    fn tick_sleep(&mut self, now: u64) {
+        match self.sleep.as_mut().and_then(|s| s.tick(now)) {
+            Some(Due::Warn) => self.toast(msg::playback_sleep_soon().to_owned(), now),
+            Some(Due::Stop) => {
+                self.sleep = None;
+                log("sleep timer: playback stopped");
+                let pb = self.store.playback_mut();
+                if pb.channel.is_some() || pb.vod.is_some() {
+                    self.stop_playing();
+                    self.navigate(Navigate::Guide, None);
+                }
+                self.toast(msg::playback_sleep_done().to_owned(), now);
+            }
+            None => {}
+        }
+        self.show_sleep(now);
+    }
+
+    /// Stop what plays, keeping an archive programme's or a movie's position, and release the
+    /// decoder.
+    fn stop_playing(&mut self) {
+        self.watch.stop(&mut *self.store);
+        self.player.stop();
+        *self.store.playback_mut() = Playback::default();
+        self.playback_moved = true;
+    }
+
+    /// What the player menu shows of the sleep timer: its time left at `now`.
+    fn show_sleep(&mut self, now: u64) {
+        let left = self.sleep.as_ref().map(|s| s.left_secs(now));
+        self.store.playback_mut().sleep_left_secs = left;
+    }
+
+    /// Give the player the display mode and `channel`'s audio offset, where they changed.
+    fn tell_player(&mut self, channel: Option<ChannelKey>) {
+        let told = (
+            DisplayMode::of(&self.settings),
+            audio_offset(&self.settings, channel),
+        );
+        if told.0 != self.told.0 {
+            self.player.set_display_mode(told.0);
+        }
+        if told.1 != self.told.1 {
+            self.player.set_audio_offset(told.1);
+        }
+        self.told = told;
+    }
+
     /// Play `stream`, picked from `group`, in the current rectangle (the screens move it
     /// after); the live channel already playing is left playing. The player zaps through
-    /// `group` from now on ([`PlayerScreen::zap_through`]).
+    /// `group` from now on ([`PlayerScreen::zap_through`]). A channel outside the group a
+    /// groups panel showed last (a number, Search, History) drops that group, so the guide and
+    /// the channel list open on the zap group again, which holds it.
     fn play(&mut self, stream: Stream, group: Option<Group>, now: u64) {
         let key = stream.channel();
         self.bottom
             .screen
             .zap_through(group, Some(key), &*self.store);
+        let zap = self.bottom.screen.group();
+        if self
+            .group
+            .as_ref()
+            .is_some_and(|g| g != zap && !self.store.channels(g).iter().any(|c| c.key == key))
+        {
+            self.group = None;
+        }
         let pb = self.store.playback_mut();
         if stream == Stream::Live(key) && pb.channel == Some(key) && pb.catchup.is_none() {
             return;
@@ -600,6 +904,8 @@ impl Shell {
             }
         };
         self.watch.begin(&stream, &mut *self.store, now);
+        // The channel's own audio offset, before its first sound is fed.
+        self.tell_player(Some(key));
         self.player.open(&open, self.rect);
         let (catchup, position_secs) = match stream {
             Stream::Live(_) => (None, 0),
@@ -619,15 +925,21 @@ impl Shell {
     }
 
     fn set_setting(&mut self, key: &str, value: String) {
-        let config = refresh_config(&self.settings);
+        let before = self.store.refresh_config();
         if !self.settings.set(key, value) {
             return;
         }
         self.store.save_setting(key, &self.settings);
         self.follow_settings();
-        if refresh_config(&self.settings) != config {
-            self.reconfigure();
-        }
+        self.reconfigure(before);
+        self.refresh_screens();
+    }
+
+    /// A change to the playlists or the viewer's groups; the refresher follows the playlists.
+    fn edit_library(&mut self, edit: tv_screens::library::LibraryEdit) {
+        let before = self.store.refresh_config();
+        self.store.edit_library(edit);
+        self.reconfigure(before);
         self.refresh_screens();
     }
 
@@ -635,19 +947,31 @@ impl Shell {
     fn follow_settings(&mut self) {
         self.bottom.screen.settings = PlayerSettings::from_settings(&self.settings);
         self.remote.long_ms = self.settings.number(keys::LONG_PRESS_MS);
+        self.subtitles.configure(&self.settings);
+        let accent = theme::Accent::from_key(self.settings.get(keys::ACCENT_COLOR));
+        theme::set_accent(accent.unwrap_or_default());
+        self.reminders.set(reminder_list::reminders(&self.settings));
+        let channel = self.store.playback_mut().channel;
+        self.tell_player(channel);
     }
 
-    /// The refresh settings changed: refresh with them, start refreshing once a playlist URL is
-    /// set, stop when it is cleared.
-    fn reconfigure(&mut self) {
-        let config = refresh_config(&self.settings);
-        if config.playlist_url.is_empty() {
-            self.refresher = None;
-        } else if let Some(r) = &self.refresher {
-            r.set_config(config);
-        } else if let Some(net) = &self.net {
-            self.refresher = self.store.refresher(net(), false);
-            self.refreshed = 0;
+    /// What is fetched, when it changed from `before`: refresh with it, start refreshing once a
+    /// playlist has a URL, stop when none has.
+    fn reconfigure(&mut self, before: Option<iptv::refresh::Config>) {
+        let config = self.store.refresh_config();
+        if config == before {
+            return;
+        }
+        match config {
+            None => self.refresher = None,
+            Some(config) => {
+                if let Some(r) = &self.refresher {
+                    r.set_config(config);
+                } else if let Some(net) = &self.net {
+                    self.refresher = self.store.refresher(net(), false);
+                    self.refreshed = 0;
+                }
+            }
         }
     }
 

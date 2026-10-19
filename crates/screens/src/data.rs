@@ -8,11 +8,14 @@
 use std::rc::Rc;
 
 use iptv::model::{fold, Channel, ChannelKey, Programme, Timestamp};
+use iptv::vod::{VodItem, VodProgress};
 use tv_machine::machine::Measure;
 use tv_platform::i18n::msg;
 use tv_ui::Painter;
 
 use crate::input::{Hold, Key, Press};
+pub use crate::parental::{Lock, PinTask};
+use crate::reminders::Reminder;
 use crate::time::{self, When};
 
 /// A row in the groups panel.
@@ -23,6 +26,8 @@ pub enum Group {
     History,
     /// A group declared by the playlist.
     Playlist(String),
+    /// A group the viewer made and filled.
+    Custom(String),
 }
 
 impl Group {
@@ -32,7 +37,7 @@ impl Group {
             Group::Favorites => msg::channel_favorites(),
             Group::All => msg::channel_all(),
             Group::History => msg::channel_history(),
-            Group::Playlist(name) => name,
+            Group::Playlist(name) | Group::Custom(name) => name,
         }
     }
 }
@@ -63,11 +68,31 @@ pub struct Playback {
     /// Set while a past programme plays from the archive.
     pub catchup: Option<Programme>,
     pub paused: bool,
-    /// Position inside the catch-up programme, in seconds.
+    /// Position inside the catch-up programme, or the movie or episode, in seconds.
     pub position_secs: i64,
     pub media: MediaInfo,
     pub audio_tracks: Vec<String>,
     pub audio_track: usize,
+    /// The subtitle tracks the player can show, as the player menu lists them.
+    pub subtitle_tracks: Vec<String>,
+    /// The subtitle track shown; `None` while subtitles are off.
+    pub subtitle_track: Option<usize>,
+    /// Set while a movie or an episode plays; `channel` is `None` then.
+    pub vod: Option<VodPlaying>,
+    /// How long the sleep timer has left, seconds, while one runs ([`Command::SleepTimer`]).
+    pub sleep_left_secs: Option<u32>,
+}
+
+/// The movie or episode playing.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct VodPlaying {
+    pub item: ChannelKey,
+    /// What the player shows: a movie's title, an episode's series and `S01 E02 Title`.
+    pub title: String,
+    /// Its length, 0 until the player knows it.
+    pub duration_secs: i64,
+    /// Played to its end.
+    pub ended: bool,
 }
 
 /// A programme as the guide grid and the lists draw it: no description, no category.
@@ -135,6 +160,50 @@ pub trait TvData {
     /// default this is).
     fn past_days(&self) -> u32 {
         7
+    }
+
+    /// The stored playlists in order, for Settings.
+    fn playlists(&self) -> Vec<crate::library::PlaylistEntry> {
+        Vec::new()
+    }
+
+    /// Every group Manage groups lists, in the order [`groups`](Self::groups) shows them, the
+    /// hidden ones too.
+    fn all_groups(&self) -> Vec<Group> {
+        self.groups()
+    }
+
+    /// The movies and episodes of every enabled playlist, in playlist order, shared as
+    /// [`channels`](Self::channels) are.
+    fn vod(&self) -> Rc<[Rc<VodItem>]> {
+        Rc::new([])
+    }
+
+    /// How far into the movie or episode `item` the viewer got, when that is kept.
+    fn vod_progress(&self, _item: ChannelKey) -> Option<VodProgress> {
+        None
+    }
+
+    /// The parental lock covers the movie or episode `item` as it would the channel it was
+    /// listed as ([`crate::vod::catalog::locked`]): the VOD sections leave it out and the shell
+    /// does not play it.
+    fn vod_locked(&self, _item: &VodItem) -> bool {
+        false
+    }
+
+    /// Playing `channel` takes the parental PIN ([`crate::parental::Parental::locked`]).
+    fn locked(&self, _channel: &Channel) -> bool {
+        false
+    }
+
+    /// `group` is blocked and the PIN has not opened it: its list reads empty until it does.
+    fn group_locked(&self, _group: &Group) -> bool {
+        false
+    }
+
+    /// The programme reminders set, in start order ([`crate::reminders`]).
+    fn reminders(&self) -> Vec<Reminder> {
+        Vec::new()
     }
 
     /// The channel with `key`, wherever it is listed.
@@ -302,13 +371,17 @@ pub enum Command {
         stream: Stream,
         group: Option<Group>,
     },
-    /// Seek inside the current catch-up programme to an absolute position.
+    /// A groups panel showed `group`: the guide and the channel list open on it from now on.
+    ShowGroup(Group),
+    /// Seek inside the current catch-up programme (or movie or episode) to an absolute position.
     SeekTo {
         position_secs: i64,
     },
     ReturnToLive,
     TogglePause,
     SelectAudioTrack(usize),
+    /// Show subtitle track `Some(i)` of [`Playback::subtitle_tracks`], or none.
+    SelectSubtitleTrack(Option<usize>),
     ToggleFavorite(ChannelKey),
     RemoveHistory {
         channel: ChannelKey,
@@ -316,11 +389,38 @@ pub enum Command {
     },
     /// Refresh the playlist and its guides now.
     RefreshNow,
+    /// Change the playlists or the viewer's groups.
+    Library(crate::library::LibraryEdit),
     SetSetting {
         key: String,
         value: String,
     },
+    /// Write the backup file (settings, favourites, the group layout) or restore from it.
+    Backup(BackupOp),
+    /// The parental PIN was entered for this: it plays or opens without the PIN until the app
+    /// exits. Only the PIN dialog ([`crate::panels::pin`]) sends it.
+    Unlock(Lock),
+    /// Play the movie or episode `item` full screen from `offset_secs` in. `SeekTo` and
+    /// `TogglePause` act on it while it plays.
+    PlayVod {
+        item: ChannelKey,
+        offset_secs: i64,
+    },
+    /// Stop the movie or episode playing, keeping where it got to.
+    StopVod,
+    /// Stop playback and release the decoder after `minutes`, warning a minute before; 0 turns
+    /// the timer off. One timer at a time, whatever plays meanwhile.
+    SleepTimer {
+        minutes: u32,
+    },
     Exit,
+}
+
+/// What a [`Command::Backup`] does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BackupOp {
+    Export,
+    Import,
 }
 
 /// Screen changes a screen asks the app shell for. Full-screen playback is always at the
@@ -332,8 +432,9 @@ pub enum Navigate {
     /// Close every screen: the full-screen player is in front.
     Player,
     Guide,
-    /// The groups panel over the channel list, the list's current group focused.
-    Groups(Group),
+    /// Picture in picture: the guide full screen, without its preview, while the video plays on
+    /// in a corner window ([`crate::guide::GuideScreen::set_pip`]).
+    Pip,
     /// TiviMate's main/options menu (Left from the groups panel).
     MainMenu,
     History,
@@ -349,6 +450,21 @@ pub enum Navigate {
     PlayerMenu,
     Settings,
     Search,
+    /// The playlists or the viewer's groups, on this page.
+    Library(crate::library::LibraryPage),
+    /// The parental PIN dialog, doing `PinTask` once the PIN is right.
+    Pin(PinTask),
+    /// The channel name editor (Settings > Playlists > Channel names).
+    ChannelNames,
+    /// TiviMate's Movies or Shows section, in place of every screen over the player.
+    Vod(VodSection),
+}
+
+/// The VOD sections of the main menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VodSection {
+    Movies,
+    Shows,
 }
 
 /// What a screen tells the screen right under it ([`Output::message`], [`Screen::message`]).
@@ -426,8 +542,9 @@ impl Output {
 /// the bottom). Only the top screen gets keys and text; every screen is ticked when its
 /// [`next_wake`](Self::next_wake) is due and drawn bottom up. Nothing here runs on a timer of its
 /// own: `now_ms` is the shell's millisecond clock, and [`crate::time::wake_ms`] converts a
-/// [`Timestamp`] deadline onto it.
-pub trait Screen {
+/// [`Timestamp`] deadline onto it. `Any`, so the app's remote-driven navigation tests can read
+/// the screen in front through its own accessors.
+pub trait Screen: std::any::Any {
     /// How the input layer treats `key` held down in the current state.
     fn hold(&self, key: Key) -> Hold;
 
@@ -513,6 +630,20 @@ pub mod fake {
         pub past_days: u32,
         /// Replaces the generated guide.
         pub schedule: Option<Schedule>,
+        /// [`TvData::locked`] and [`TvData::group_locked`].
+        pub parental: crate::parental::Parental,
+        /// Applied to the names [`TvData::channels`] hands out.
+        pub names: crate::names::NameRules,
+        /// [`TvData::reminders`].
+        pub reminders: Vec<Reminder>,
+        /// [`TvData::vod`]: none unless a test or the simulator adds them.
+        pub vod: Vec<VodItem>,
+        /// [`TvData::vod_progress`].
+        pub vod_progress: Vec<VodProgress>,
+        /// The viewer's groups and their channels, listed after the built-in groups.
+        pub custom_groups: Vec<(String, Vec<ChannelKey>)>,
+        /// [`TvData::playlists`]: the channels' playlist and a second, disabled one.
+        pub playlists: Vec<crate::library::PlaylistEntry>,
     }
 
     impl FakeData {
@@ -540,6 +671,7 @@ pub mod fake {
                                 mode: Some(CatchupMode::Shift),
                                 days: 7,
                                 source: Some(source),
+                                ..Default::default()
                             }
                         },
                         radio: false,
@@ -558,6 +690,13 @@ pub mod fake {
                 utc_offset: 0,
                 past_days: 7,
                 schedule: None,
+                parental: Default::default(),
+                names: Default::default(),
+                reminders: Vec::new(),
+                vod: Vec::new(),
+                vod_progress: Vec::new(),
+                custom_groups: Vec::new(),
+                playlists: fake_playlists(count),
             }
         }
 
@@ -569,6 +708,27 @@ pub mod fake {
             self.schedule = Some(Box::new(schedule));
             self
         }
+    }
+
+    /// The playlist of [`FakeData::new`]'s `count` channels, and a second one, disabled and empty.
+    fn fake_playlists(count: usize) -> Vec<crate::library::PlaylistEntry> {
+        use crate::library::{PlaylistEntry, SecretUrl};
+        vec![
+            PlaylistEntry {
+                id: 1,
+                name: "Playlist".into(),
+                url: SecretUrl("http://host/list.m3u".into()),
+                enabled: true,
+                channels: count,
+            },
+            PlaylistEntry {
+                id: 2,
+                name: "backup.host".into(),
+                url: SecretUrl("http://backup.host/list.m3u".into()),
+                enabled: false,
+                channels: 0,
+            },
+        ]
     }
 
     /// Deterministic programme grid: lengths cycle through 15-90 minutes in a fixed 4-hour cycle
@@ -606,6 +766,11 @@ pub mod fake {
 
         fn groups(&self) -> Vec<Group> {
             let mut out = vec![Group::Favorites, Group::All, Group::History];
+            out.extend(
+                self.custom_groups
+                    .iter()
+                    .map(|(name, _)| Group::Custom(name.clone())),
+            );
             for c in &self.channels {
                 let g = Group::Playlist(c.groups[0].clone());
                 if !out.contains(&g) {
@@ -616,6 +781,9 @@ pub mod fake {
         }
 
         fn channels(&self, group: &Group) -> Rc<[Rc<Channel>]> {
+            if self.parental.group_locked(group) {
+                return Rc::new([]);
+            }
             self.channels
                 .iter()
                 .filter(|c| match group {
@@ -623,8 +791,16 @@ pub mod fake {
                     Group::Favorites => self.favorites.contains(&c.key),
                     Group::History => self.history.iter().any(|h| h.channel == c.key),
                     Group::Playlist(name) => c.groups.contains(name),
+                    Group::Custom(name) => self
+                        .custom_groups
+                        .iter()
+                        .any(|(n, keys)| n == name && keys.contains(&c.key)),
                 })
-                .map(|c| Rc::new(c.clone()))
+                .map(|c| {
+                    let mut c = c.clone();
+                    c.name = self.names.clean(&c.name);
+                    Rc::new(c)
+                })
                 .collect()
         }
 
@@ -665,6 +841,34 @@ pub mod fake {
 
         fn past_days(&self) -> u32 {
             self.past_days
+        }
+
+        fn playlists(&self) -> Vec<crate::library::PlaylistEntry> {
+            self.playlists.clone()
+        }
+
+        fn vod(&self) -> Rc<[Rc<VodItem>]> {
+            self.vod.iter().cloned().map(Rc::new).collect()
+        }
+
+        fn vod_progress(&self, item: ChannelKey) -> Option<VodProgress> {
+            self.vod_progress.iter().find(|p| p.key == item).copied()
+        }
+
+        fn vod_locked(&self, item: &VodItem) -> bool {
+            crate::vod::catalog::locked(&self.parental, item)
+        }
+
+        fn locked(&self, channel: &Channel) -> bool {
+            self.parental.locked(channel)
+        }
+
+        fn group_locked(&self, group: &Group) -> bool {
+            self.parental.group_locked(group)
+        }
+
+        fn reminders(&self) -> Vec<Reminder> {
+            self.reminders.clone()
         }
     }
 

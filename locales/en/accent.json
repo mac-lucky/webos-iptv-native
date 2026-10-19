@@ -1,0 +1,30 @@
+{
+  "accent.blue": {
+    "value": "Blue",
+    "description": "Accent color option"
+  },
+  "accent.color": {
+    "value": "Accent color",
+    "description": "Settings > Appearance row: the color of the playing channel, the clock and the seek bar"
+  },
+  "accent.green": {
+    "value": "Green",
+    "description": "Accent color option"
+  },
+  "accent.orange": {
+    "value": "Orange",
+    "description": "Accent color option"
+  },
+  "accent.purple": {
+    "value": "Purple",
+    "description": "Accent color option"
+  },
+  "accent.red": {
+    "value": "Red",
+    "description": "Accent color option"
+  },
+  "accent.teal": {
+    "value": "Teal",
+    "description": "Accent color option"
+  }
+}

@@ -4,7 +4,9 @@
 //! [`GuideScreen`] is a [`Screen`]: a state machine plus a view. The app feeds it remote keys and
 //! clock ticks with read access to [`TvData`]; it answers with [`Command`]s for the app to run
 //! and [`Navigate`]s for screens outside the guide (the player, the context menu, the main
-//! menu). While it is up the video plays in its preview rectangle ([`Screen::video_rect`]).
+//! menu). While it is up the video plays in its preview rectangle ([`Screen::video_rect`]), or
+//! in picture in picture ([`GuideScreen::set_pip`]) in a corner window over the guide laid out
+//! without the preview.
 //!
 //! Remote behaviour (TiviMate):
 //!
@@ -17,21 +19,24 @@
 //! | long Left | - | top of the list |
 //! | OK | preview, then play full screen; a past programme only from the archive | back to the grid; on History [`Navigate::History`] |
 //! | long OK | [`Navigate::ContextMenu`] | [`Navigate::GroupMenu`] |
-//! | Back | leave Manage favorites, else back to live, else the groups panel | back to the grid |
+//! | Back | leave Manage favorites, else back to live, else leave picture in picture, else the groups panel | back to the grid |
 //! | long Back | [`Navigate::Close`] with what played when the guide opened | same |
 //!
-//! The groups panel covers the left of the guide without moving it; the preview keeps its
-//! rectangle (and keeps playing) under the panel. In Manage favorites mode
+//! The groups panel ([`GroupsPanel`], shared with the channel list) covers the left of the guide
+//! without moving it; the preview keeps its rectangle (and keeps playing) under the panel. A
+//! group it shows is the channel list's too ([`Command::ShowGroup`]). In Manage favorites mode
 //! ([`ScreenMessage::ManageFavorites`]) every row shows a star and OK toggles it.
 //!
 //! [`Command`]: crate::data::Command
+//! [`Command::ShowGroup`]: crate::data::Command::ShowGroup
 
 mod clock;
 mod geom;
 mod grid;
-mod groups;
 mod paint;
 
+#[cfg(test)]
+mod pip_tests;
 #[cfg(test)]
 mod tests;
 
@@ -40,19 +45,32 @@ use tv_ui::Painter;
 
 use tv_platform::i18n::msg;
 
-use crate::data::{self, Group, Logos, Navigate, Output, Screen, ScreenMessage, TvData};
+use crate::data::{self, Command, Group, Logos, Navigate, Output, Screen, ScreenMessage, TvData};
+use crate::groups::{Act, GroupsPanel};
 use crate::input::{Hold, Key, Press};
 use crate::time;
 use grid::{Grid, Mode};
-use groups::Groups;
 use paint::Paint;
 
 /// One 60 Hz frame: how soon a moving scroll wants the next one.
 const FRAME_MS: u64 = 16;
 
+/// [`GuideScreen::focus`].
+#[derive(Debug)]
+pub struct GuideFocus<'a> {
+    pub channel: Option<&'a iptv::model::Channel>,
+    pub programme: Option<iptv::model::Programme>,
+    /// The focus follows the programme on air.
+    pub live: bool,
+    /// The focused group while the groups panel has the focus.
+    pub group: Option<&'a Group>,
+    /// Manage favorites mode.
+    pub managing: bool,
+}
+
 pub struct GuideScreen {
     grid: Grid,
-    groups: Groups,
+    groups: GroupsPanel,
     group: Group,
     /// The group the guide opened on, which is the one the player zapped through then: long
     /// Back gives it back.
@@ -71,7 +89,7 @@ impl GuideScreen {
     pub fn new(data: &dyn TvData, group: Group) -> Self {
         let mut s = GuideScreen {
             grid: Grid::new(data.channels(&group)),
-            groups: Groups::new(data.groups(), &group),
+            groups: GroupsPanel::new(data.groups(), &group, geom::GROUPS),
             zap: group.clone(),
             group,
             panel: false,
@@ -81,6 +99,17 @@ impl GuideScreen {
         s.grid.open(data);
         s.sync(data);
         s
+    }
+
+    /// Where the focus is, for the app's remote-driven navigation tests.
+    pub fn focus(&self) -> GuideFocus<'_> {
+        GuideFocus {
+            channel: self.grid.channel().map(|c| &**c),
+            programme: self.grid.focused_programme(),
+            live: self.grid.at_live(),
+            group: self.panel.then(|| self.groups.focused()).flatten(),
+            managing: self.grid.mode == Mode::ManageFavorites,
+        }
     }
 
     fn grid_key(&mut self, key: Key, long: bool, data: &dyn TvData) -> Output {
@@ -97,7 +126,12 @@ impl GuideScreen {
             }
             (Key::Back, false) => {
                 if self.grid.back(data) {
-                    self.open_panel();
+                    if self.paint.pip {
+                        // The video goes back into the preview.
+                        self.set_pip(false);
+                    } else {
+                        self.open_panel();
+                    }
                 }
             }
             (Key::Ok, false) if !managing && self.grid.out_of_archive() => {
@@ -130,44 +164,43 @@ impl GuideScreen {
     }
 
     fn groups_key(&mut self, key: Key, long: bool, data: &dyn TvData) -> Output {
-        let page = geom::GROUP_ROWS as isize - 1;
-        let moved = match (key, long) {
-            (Key::Up, _) => self.groups.step(-1),
-            (Key::Down, _) => self.groups.step(1),
-            (Key::ChannelUp, _) => self.groups.step(-page),
-            (Key::ChannelDown, _) => self.groups.step(page),
-            (Key::Left, true) => self.groups.first(),
-            (Key::Left, false) => return Output::navigate(Navigate::MainMenu),
-            (Key::Ok, true) => {
-                return match self.groups.focused() {
-                    Some(g) => Output::navigate(Navigate::GroupMenu(g.clone())),
-                    None => Output::default(),
-                }
-            }
-            // History is its own screen, not a filter.
-            (Key::Ok | Key::Right, _) if self.groups.focused() == Some(&Group::History) => {
-                return Output::navigate(Navigate::History)
+        match self.groups.key(key, long) {
+            Act::Moved => return self.show_group(data),
+            // A locked group shows nothing until the PIN opens it.
+            Act::Enter if data.group_locked(&self.group) => {
+                return crate::parental::ask_to_open(&self.group)
             }
             // An empty group keeps the focus in the panel; Back always leaves it.
-            (Key::Ok | Key::Right, _) if self.grid.channels.is_empty() => false,
-            (Key::Ok | Key::Right, _) | (Key::Back, false) => {
-                self.panel = false;
-                return Output::default();
-            }
-            (Key::Back, true) => {
+            Act::Enter if self.grid.channels.is_empty() => {}
+            Act::Enter | Act::Back => self.panel = false,
+            Act::Close => {
                 self.panel = false;
                 return self.close();
             }
-            _ => false,
-        };
-        match self.groups.focused() {
-            Some(g) if moved && *g != Group::History => {
-                self.group = g.clone();
-                self.grid.set_channels(data, data.channels(&self.group));
-            }
-            _ => {}
+            Act::Go(nav) => return Output::navigate(nav),
+            Act::None => {}
         }
         Output::default()
+    }
+
+    /// The panel's focus moved: the guide follows the group it shows, and the app opens the
+    /// channel list on it from now on.
+    fn show_group(&mut self, data: &dyn TvData) -> Output {
+        match self.groups.shown() {
+            Some(g) if *g != self.group => {
+                self.group = g.clone();
+                self.grid.set_channels(data, data.channels(&self.group));
+                Output::command(Command::ShowGroup(self.group.clone()))
+            }
+            _ => Output::default(),
+        }
+    }
+
+    /// Picture in picture ([`Navigate::Pip`]): the guide without its preview, the video in the
+    /// corner window ([`Screen::video_rect`]). OK on the channel in it plays it full screen, as
+    /// the second OK on a preview does; Back at live leaves it.
+    pub fn set_pip(&mut self, on: bool) {
+        self.paint.set_pip(on);
     }
 
     fn open_panel(&mut self) {
@@ -195,10 +228,14 @@ impl GuideScreen {
 
 impl Screen for GuideScreen {
     fn hold(&self, key: Key) -> Hold {
+        if self.panel {
+            return GroupsPanel::hold(key);
+        }
         match key {
-            Key::Up | Key::Down | Key::ChannelUp | Key::ChannelDown => Hold::Repeat,
-            Key::Left | Key::Right if !self.panel => Hold::Repeat,
-            Key::Left | Key::Ok | Key::Back => Hold::Long,
+            Key::Up | Key::Down | Key::ChannelUp | Key::ChannelDown | Key::Left | Key::Right => {
+                Hold::Repeat
+            }
+            Key::Ok | Key::Back => Hold::Long,
             _ => Hold::Once,
         }
     }
@@ -258,12 +295,16 @@ impl Screen for GuideScreen {
     }
 
     fn video_rect(&self) -> Option<data::Rect> {
-        Some(geom::preview_rect())
+        Some(if self.paint.pip {
+            geom::pip_rect()
+        } else {
+            geom::preview_rect()
+        })
     }
 
     fn refresh(&mut self, data: &dyn TvData) {
         self.groups.set(data.groups(), &self.group);
-        if let Some(g) = self.groups.focused() {
+        if let Some(g) = self.groups.shown() {
             self.group = g.clone();
         }
         self.grid.refresh(data, data.channels(&self.group));
@@ -291,8 +332,11 @@ impl Screen for GuideScreen {
     }
 
     fn draw(&mut self, p: Painter, m: &dyn Measure, logos: &dyn Logos) {
-        self.paint.prepare(m, &self.grid, &self.groups);
-        self.paint
-            .draw(p, &self.grid, &self.groups, self.panel, logos);
+        self.paint.prepare(m, &self.grid);
+        self.paint.draw(p, &self.grid, self.panel, logos);
+        if self.panel {
+            self.groups.prepare(m);
+            self.groups.paint(p, logos);
+        }
     }
 }

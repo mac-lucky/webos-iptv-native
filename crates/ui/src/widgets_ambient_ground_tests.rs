@@ -58,9 +58,8 @@ fn a_ground_never_outshines_the_fine_print_that_sits_on_it() {
 }
 
 /// The other end: a ground keyed to near-black key art must not sink below the value a card's
-/// drop shadow needs to read against. Since the Stremio palette sync that floor is Stremio's own
-/// darkest ground, `--primary-background-color` #0c0b11 (stremio-web `src/App/styles.less`), the
-/// bottom of its page gradient: the grey era's rejected (25,25,29) is lighter than the whole
+/// drop shadow needs to read against. Since the violet palette sync that floor is the palette's
+/// darkest ground #0c0b11, the bottom of its page gradient: the grey era's rejected (25,25,29) is lighter than the whole
 /// purple-navy palette. `GROUND_W ≤ 0.26` is what keeps the floor above it, with no floor constant
 /// anywhere.
 #[test]

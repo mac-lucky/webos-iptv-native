@@ -4,11 +4,13 @@
 //! `tar` for the NDK's bzip2 and FFmpeg's xz archives, and the NDK's own compiler and `make` for
 //! FFmpeg. Every download is checked against a pinned sha256 before anything reads it.
 
+mod backup;
 mod elf;
 mod ffmpeg;
 mod ipk;
 mod ndk;
 mod provision;
+mod replay;
 mod verify;
 
 use std::fs;
@@ -32,7 +34,14 @@ const USAGE: &str = "usage: cargo xtask <command>
                                 send the playlist URL in <file> (or $WEBOSIPTV_PLAYLIST_FILE)
                                 and/or the guide URL in the --epg-from file to the TV app over
                                 ssh stdin
-  glibc <elf>                   list an ARM binary's versioned glibc needs (fails above 2.28)
+  backup <ssh-alias> pull|push <file> [--flavor stable|debug|beta]
+                                copy the app's backup (Settings > General > Backup) from the
+                                TV into <file> (0600), or <file> onto the TV, over ssh
+  tv-replay <ssh-alias> <script> [--out <dir>] [--flavor stable|debug|beta]
+                                press the script's remote keys on the TV (only with our app or
+                                the home screen in front), keep screenshots and the event log
+                                in target/tv-replay/
+  glibc <elf>                  list an ARM binary's versioned glibc needs (fails above 2.28)
   check                         rustfmt and clippy -D warnings on our own crates, all host tests";
 
 pub type Result<T = ()> = std::result::Result<T, String>;
@@ -77,6 +86,8 @@ fn dispatch(args: &[String]) -> Result {
             ])
             .args(rest)),
         Some("provision") => provision::run(rest),
+        Some("backup") => backup::run(rest),
+        Some("tv-replay") => replay::run(rest),
         Some("check") => check(),
         _ => Err(USAGE.into()),
     }

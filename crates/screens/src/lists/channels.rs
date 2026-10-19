@@ -5,7 +5,8 @@
 //! channel (shown passively while the channels have focus, entered with Right) and the days
 //! column (Right again). Moving through the days re-slices the programme list; OK on a past
 //! programme inside the channel's archive window plays it as catch-up, OK on the one on air plays
-//! the channel live.
+//! the channel live. Left from the channels opens the groups panel ([`GroupsPanel`], the guide's)
+//! beside them: moving its focus shows that group's channels, OK or Right goes back to them.
 //!
 //! What OK and Back do, by mode:
 //! - overlay: OK plays ([`Command::Play`]) and closes; OK on what already plays only closes.
@@ -24,12 +25,12 @@ use tv_machine::machine::Measure;
 use tv_ui::Painter;
 
 use super::cursor::Cursor;
-use super::view::ChannelListView;
+use super::view::{self, ChannelListView};
 use super::{Clock, Nav};
 use crate::data::{
-    Command, GridProgramme, Group, Logos, Navigate, Output, Rect, Screen, ScreenMessage, Stream,
-    TvData,
+    Command, GridProgramme, Group, Logos, Output, Rect, Screen, ScreenMessage, Stream, TvData,
 };
+use crate::groups::{Act, GroupsPanel};
 use crate::input::{Hold, Key, Press};
 use crate::time::{self, When, DAY};
 
@@ -64,6 +65,8 @@ pub enum Mode {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Column {
+    /// The groups panel left of the channels.
+    Groups,
     Channels,
     Programmes,
     Days,
@@ -277,6 +280,8 @@ pub struct ChannelList {
     epg: Option<Epg>,
     /// While a held key moves the focus: when the focused channel's programmes load.
     epg_due: Option<u64>,
+    /// The groups panel, while it is open.
+    groups: Option<GroupsPanel>,
     /// Bumped on every visible change; the view lays out again when it moves.
     generation: u64,
     view: ChannelListView,
@@ -300,6 +305,7 @@ impl ChannelList {
             rows_first: 0,
             epg: None,
             epg_due: None,
+            groups: None,
             generation: 0,
             view: ChannelListView::default(),
         };
@@ -307,11 +313,17 @@ impl ChannelList {
         list
     }
 
-    /// Show `group`, focused on the channel the video shows when it is in the group.
+    /// Show `group` in the channel column, which takes the focus.
     fn set_group(&mut self, group: Group, data: &dyn TvData) {
+        self.column = Column::Channels;
+        self.groups = None;
+        self.show(group, data);
+    }
+
+    /// Show `group`, focused on the channel the video shows when it is in the group.
+    fn show(&mut self, group: Group, data: &dyn TvData) {
         self.channels = data.channels(&group);
         self.group = group;
-        self.column = Column::Channels;
         let at = self.showing.channel().and_then(|k| self.index_of(k));
         self.cursor = Cursor::default();
         self.cursor
@@ -373,6 +385,11 @@ impl ChannelList {
         self.epg.as_ref()
     }
 
+    /// The groups panel, while it is open.
+    pub fn groups(&self) -> Option<&GroupsPanel> {
+        self.groups.as_ref()
+    }
+
     /// The row of visible channel `index`.
     pub(crate) fn row(&self, index: usize) -> Option<&Row> {
         index
@@ -400,9 +417,11 @@ impl ChannelList {
     }
 
     /// The programme the details panel describes: the focused one in the programme or days
-    /// column, otherwise the focused channel's programme on air.
+    /// column, otherwise the focused channel's programme on air; none while the groups panel
+    /// has the focus.
     pub fn detail(&self) -> Option<&Programme> {
         match self.column {
+            Column::Groups => None,
             Column::Channels => self.on_air(self.cursor.index),
             Column::Programmes | Column::Days => self.epg.as_ref().and_then(Epg::detail),
         }
@@ -430,10 +449,10 @@ impl ChannelList {
 
     /// Load what the view draws: the on-air programme of each channel row that came into view or
     /// went stale, and the focused channel's programmes once the focus rests (`now_ms` on the
-    /// shell's clock).
+    /// shell's clock) and is not in the groups panel, which hides them.
     fn load(&mut self, data: &dyn TvData, now_ms: u64) {
         self.load_rows(data);
-        if self.epg_due.is_some_and(|due| now_ms < due) {
+        if self.column == Column::Groups || self.epg_due.is_some_and(|due| now_ms < due) {
             return;
         }
         self.epg_due = None;
@@ -512,6 +531,8 @@ impl ChannelList {
         let (before, generation) = (self.look(), self.generation);
         let settle = held.then(|| now_ms + SETTLE_MS);
         let out = match self.column {
+            // Keys reach the groups panel whole, long presses too (`Screen::key`).
+            Column::Groups => Output::default(),
             Column::Channels => self.key_channels(nav, settle, data),
             Column::Programmes => self.key_programmes(nav, data),
             Column::Days => self.key_days(nav, data),
@@ -545,7 +566,11 @@ impl ChannelList {
             Nav::PageUp => self.move_channel(-page, false, settle),
             Nav::PageDown => self.move_channel(page, false, settle),
             Nav::Top => self.move_channel(-(self.cursor.index as isize), false, None),
-            Nav::Left => return Output::navigate(Navigate::Groups(self.group.clone())),
+            Nav::Left => {
+                self.groups = Some(GroupsPanel::new(data.groups(), &self.group, view::GROUPS));
+                self.epg_due = None;
+                self.column = Column::Groups;
+            }
             Nav::Right => {
                 if !self.channels.is_empty() {
                     self.epg_due = None;
@@ -559,6 +584,39 @@ impl ChannelList {
                 }
             }
             Nav::Back => return self.close(),
+        }
+        Output::default()
+    }
+
+    /// One key in the groups panel (`long` past the threshold): moving its focus shows that
+    /// group here and, from now on, in the guide.
+    fn key_groups(&mut self, key: Key, long: bool, data: &dyn TvData) -> Output {
+        let Some(panel) = self.groups.as_mut() else {
+            self.column = Column::Channels;
+            return Output::default();
+        };
+        match panel.key(key, long) {
+            Act::Moved => {
+                self.generation += 1;
+                let shown = panel.shown().filter(|g| **g != self.group).cloned();
+                if let Some(group) = shown {
+                    self.show(group.clone(), data);
+                    return Output::command(Command::ShowGroup(group));
+                }
+            }
+            // A locked group shows nothing until the PIN opens it.
+            Act::Enter if data.group_locked(&self.group) => {
+                return crate::parental::ask_to_open(&self.group)
+            }
+            // An empty group keeps the focus in the panel; Back always leaves it.
+            Act::Enter if self.channels.is_empty() => {}
+            Act::Enter | Act::Back => {
+                self.groups = None;
+                self.column = Column::Channels;
+            }
+            Act::Close => return self.close(),
+            Act::Go(nav) => return Output::navigate(nav),
+            Act::None => {}
         }
         Output::default()
     }
@@ -694,32 +752,44 @@ impl ChannelList {
 
 impl Screen for ChannelList {
     fn hold(&self, key: Key) -> Hold {
-        super::hold(key)
+        match self.column {
+            Column::Groups => GroupsPanel::hold(key),
+            _ => super::hold(key),
+        }
     }
 
     fn key(&mut self, key: Key, press: Press, data: &dyn TvData, now_ms: u64) -> Output {
         let generation = self.generation;
         self.advance(data, now_ms);
-        match Nav::of(key, press) {
-            Some(nav) => {
-                let out = self.nav(nav, press == Press::Repeat, now_ms, data);
-                Output {
-                    redraw: self.generation != generation,
-                    ..out
-                }
+        let out = if self.column == Column::Groups {
+            let before = self.look();
+            let out = self.key_groups(key, press == Press::Long, data);
+            self.load(data, now_ms);
+            if self.look() != before {
+                self.generation += 1;
             }
-            None => {
-                self.load(data, now_ms);
-                Output {
-                    redraw: self.generation != generation,
-                    ..Output::default()
-                }
-            }
+            out
+        } else if let Some(nav) = Nav::of(key, press) {
+            self.nav(nav, press == Press::Repeat, now_ms, data)
+        } else {
+            self.load(data, now_ms);
+            Output::default()
+        };
+        Output {
+            redraw: self.generation != generation,
+            ..out
         }
     }
 
     fn tick(&mut self, data: &dyn TvData, now_ms: u64) -> Output {
         let generation = self.generation;
+        // What really plays: a pick the shell held back for the parental PIN did not, and Back
+        // must not commit it.
+        let showing = Showing::of(data);
+        if showing != self.showing {
+            self.showing = showing;
+            self.generation += 1;
+        }
         self.advance(data, now_ms);
         self.load(data, now_ms);
         Output {
@@ -743,10 +813,17 @@ impl Screen for ChannelList {
             .epg
             .as_ref()
             .map(|e| (e.window, e.day, e.focused().map(|p| p.start)));
+        if let Some(panel) = self.groups.as_mut() {
+            panel.set(data.groups(), &self.group);
+            // A group the playlist lost: the one the panel falls back to.
+            if let Some(g) = panel.shown().filter(|g| **g != self.group) {
+                self.group = g.clone();
+            }
+        }
         self.channels = data.channels(&self.group);
         self.utc_offset = data.utc_offset_secs();
         let at = focused.and_then(|k| self.index_of(k));
-        if at.is_none() {
+        if at.is_none() && self.column != Column::Groups {
             self.column = Column::Channels;
         }
         self.cursor
@@ -780,6 +857,10 @@ impl Screen for ChannelList {
         view.prepare(self, m);
         view.draw(p, logos);
         self.view = view;
+        if let Some(panel) = self.groups.as_mut() {
+            panel.prepare(m);
+            panel.paint(p, logos);
+        }
     }
 }
 
@@ -795,7 +876,7 @@ impl ChannelList {
 mod tests {
     use super::*;
     use crate::data::fake::FakeData;
-    use crate::data::Playback;
+    use crate::data::{Navigate, Playback};
     use crate::lists::key_of;
     use std::cell::RefCell;
 
@@ -927,13 +1008,108 @@ mod tests {
         assert_eq!(out.navigate, [Navigate::Close]);
     }
 
+    /// One key with a press, as the remote sends it.
+    fn send(l: &mut ChannelList, d: &FakeData, key: Key, press: Press) -> Output {
+        l.key(key, press, d, 0)
+    }
+
     #[test]
-    fn left_asks_for_the_groups_which_set_the_group() {
+    fn left_opens_the_groups_beside_the_list_which_shows_the_focused_group() {
         let mut d = fake(9);
         playing(&mut d, 4);
         let mut l = open(&d, Mode::Overlay);
         let out = press(&mut l, &d, &[Nav::Left]);
-        assert_eq!(out.navigate, [Navigate::Groups(Group::All)]);
+        assert!(out.navigate.is_empty() && out.commands.is_empty() && out.redraw);
+        assert_eq!(l.column(), Column::Groups);
+        let g = l.groups().expect("the panel is open");
+        assert_eq!(g.focused(), Some(&Group::All), "on the list's group");
+        assert_eq!(l.hold(Key::Ok), Hold::Long, "long OK is the group menu");
+        assert_eq!(
+            l.detail(),
+            None,
+            "no programme while the groups have the focus"
+        );
+        // History shows nothing: the list keeps All.
+        let out = send(&mut l, &d, Key::Down, Press::Short);
+        assert!(out.commands.is_empty() && out.redraw);
+        assert_eq!((l.group(), l.channels().len()), (&Group::All, 9));
+        // News: the list shows it at once and the app opens the guide on it too.
+        let news = Group::Playlist("News".into());
+        let out = send(&mut l, &d, Key::Down, Press::Repeat);
+        assert_eq!(out.commands, [Command::ShowGroup(news.clone())]);
+        assert_eq!((l.group(), l.channels().len()), (&news, 3));
+        assert_eq!(l.column(), Column::Groups);
+        assert!(l.epg().is_none(), "no programme list read beside the panel");
+        // Sport holds channel 4, which plays: the cursor follows it into the group.
+        send(&mut l, &d, Key::Down, Press::Short);
+        assert_eq!(l.focused_channel().unwrap().key, d.channels[4].key);
+        // Right goes back to the channels with the group applied.
+        let out = send(&mut l, &d, Key::Right, Press::Short);
+        assert!(out.commands.is_empty() && out.navigate.is_empty());
+        assert_eq!(l.column(), Column::Channels);
+        assert!(l.groups().is_none());
+        assert_eq!(l.group().name(), "Sport");
+        assert_eq!(l.epg().unwrap().key, d.channels[4].key);
+        let out = press(&mut l, &d, &[Nav::Down, Nav::Ok]);
+        let Command::Play { group, .. } = &out.commands[0] else {
+            panic!("plays");
+        };
+        assert_eq!(group.as_ref(), Some(&Group::Playlist("Sport".into())));
+    }
+
+    #[test]
+    fn the_groups_panel_keys_in_the_list() {
+        let d = fake(9);
+        let mut l = open(&d, Mode::Preview);
+        press(&mut l, &d, &[Nav::Left]);
+        // Favorites is empty: OK keeps the focus in the panel, Back always leaves it.
+        let out = send(&mut l, &d, Key::Left, Press::Long);
+        assert_eq!(out.commands, [Command::ShowGroup(Group::Favorites)]);
+        assert!(l.channels().is_empty());
+        send(&mut l, &d, Key::Ok, Press::Short);
+        assert_eq!(l.column(), Column::Groups);
+        let out = send(&mut l, &d, Key::Ok, Press::Long);
+        assert_eq!(out.navigate, [Navigate::GroupMenu(Group::Favorites)]);
+        let out = send(&mut l, &d, Key::Left, Press::Short);
+        assert_eq!(out.navigate, [Navigate::MainMenu]);
+        send(&mut l, &d, Key::Back, Press::Short);
+        assert_eq!(l.column(), Column::Channels);
+        // History (under All) is a screen of its own.
+        press(&mut l, &d, &[Nav::Left, Nav::Down, Nav::Down]);
+        assert_eq!(l.groups().unwrap().focused(), Some(&Group::History));
+        let out = send(&mut l, &d, Key::Ok, Press::Short);
+        assert_eq!(out.navigate, [Navigate::History]);
+        assert_eq!(l.column(), Column::Groups);
+        // Long Back closes the list.
+        let out = send(&mut l, &d, Key::Back, Press::Long);
+        assert_eq!(out.navigate, [Navigate::Close]);
+    }
+
+    #[test]
+    fn a_group_the_playlist_lost_falls_back_to_all_in_the_open_panel() {
+        let mut d = fake(9);
+        let mut l = open(&d, Mode::Overlay);
+        press(&mut l, &d, &[Nav::Left]);
+        // All channels, History, News, Sport.
+        for _ in 0..3 {
+            send(&mut l, &d, Key::Down, Press::Short);
+        }
+        assert_eq!(l.group().name(), "Sport");
+        for c in &mut d.channels {
+            c.groups = vec!["News".into()];
+        }
+        l.refresh(&d);
+        assert_eq!(l.column(), Column::Groups);
+        assert_eq!(l.group(), &Group::All);
+        assert_eq!(l.channels().len(), 9);
+        assert_eq!(l.groups().unwrap().focused(), Some(&Group::All));
+    }
+
+    #[test]
+    fn a_group_chosen_elsewhere_sets_the_list() {
+        let mut d = fake(9);
+        playing(&mut d, 4);
+        let mut l = open(&d, Mode::Overlay);
         // Channel 4 is in "Sport" (4 % 3 == 1): the cursor follows it into the group.
         l.message(ScreenMessage::SetGroup(Group::Playlist("Sport".into())), &d);
         assert_eq!(l.channels().len(), 3);

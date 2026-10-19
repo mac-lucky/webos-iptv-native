@@ -13,24 +13,24 @@ uniform vec4 u_rect;
 uniform vec2 u_screen;
 uniform vec4 u_atl, u_atr, u_abr, u_abl;
 varying vec4 v_col;
-#ifdef SN_DITHER_NC
+#ifdef WI_DITHER_NC
 // The dither tile's coordinate (`shaders/dither.glsl`, cost rule 4): target px / NOISE_DIM, linear
 // in position, so interpolated exactly and never computed per fragment. Only the programs whose
 // vertex source is built with `gfx::glsl_vs_dithered!` carry it.
 varying highp vec2 v_dither_nc;
 #endif
-#ifdef SN_WASH_INK
+#ifdef WI_WASH_INK
 // THE INK RAMP ON THE WASH (`gfx::draw_ambient_inked`): a vertical scrim ramp of one ink laid over
 // the field — the screen's atmospheric ramp, which used to be one or two more full-width blended
 // passes over the same pixels. Its alpha runs LINEARLY from `u_inka.x` at this rect's top to
 // `u_inka.y` at its bottom (the caller cuts the ramp at its knees, so each rect is one straight
 // segment), which makes it exact per vertex, like the field itself.
-#ifndef SN_ART_WASH
+#ifndef WI_ART_WASH
 uniform vec3 u_ink;
 #endif
 uniform vec2 u_inka;
 #endif
-#ifdef SN_ART_WASH
+#ifdef WI_ART_WASH
 // The ramp goes OVER the art, so the art-wash fragment applies it: hand it the alpha.
 varying float v_inka;
 // The wash with a photograph dissolved INTO it (`fs_art_wash.frag`, `gfx::draw_art_wash`): the
@@ -44,18 +44,18 @@ varying highp vec2 v_cuv;
 void main(){
   v_col = mix(mix(u_atl, u_atr, a_pos.x), mix(u_abl, u_abr, a_pos.x), a_pos.y);
   vec2 px = u_rect.xy + a_pos * u_rect.zw;
-#ifdef SN_DITHER_NC
+#ifdef WI_DITHER_NC
   v_dither_nc = px * (1.0 / 256.0);
 #endif
-#ifdef SN_WASH_INK
+#ifdef WI_WASH_INK
   float inka = mix(u_inka.x, u_inka.y, a_pos.y);
-#ifdef SN_ART_WASH
+#ifdef WI_ART_WASH
   v_inka = inka;
 #else
   v_col.rgb = mix(v_col.rgb, u_ink, inka);
 #endif
 #endif
-#ifdef SN_ART_WASH
+#ifdef WI_ART_WASH
   v_cuv = u_uvrect.xy + (px - u_art.xy) * u_art.zw * u_uvrect.zw;
 #endif
   vec2 ndc = px / u_screen * 2.0 - 1.0;

@@ -345,7 +345,7 @@ impl Search {
             style::PLATE_RADIUS,
             2.0,
             if hot {
-                style::FIELD_RIM_HOT
+                crate::theme::ink(style::FIELD_RIM_HOT)
             } else {
                 style::FIELD_RIM
             },
@@ -523,6 +523,7 @@ mod tests {
                 mode: (days > 0).then_some(CatchupMode::Shift),
                 days,
                 source,
+                ..Default::default()
             },
             radio: false,
             http_headers: vec![],

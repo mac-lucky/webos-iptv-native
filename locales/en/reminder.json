@@ -1,0 +1,37 @@
+{
+  "reminder.added": {
+    "value": "Reminder set",
+    "description": "Toast after setting a programme reminder"
+  },
+  "reminder.cancel": {
+    "value": "Cancel reminder",
+    "description": "Channel menu action on a programme with a reminder"
+  },
+  "reminder.full": {
+    "value": "Too many reminders",
+    "description": "Toast: no room for another reminder"
+  },
+  "reminder.list": {
+    "value": "Reminders",
+    "description": "Setting: the programmes to remind about"
+  },
+  "reminder.removed": {
+    "value": "Reminder cancelled",
+    "description": "Toast after cancelling a programme reminder"
+  },
+  "reminder.set": {
+    "value": "Remind me",
+    "description": "Channel menu action on a future programme"
+  },
+  "reminder.starting": {
+    "value": "Starting now on {channel}",
+    "args": {
+      "channel": "str"
+    },
+    "description": "Reminder prompt: the programme starts on this channel"
+  },
+  "reminder.watch_hint": {
+    "value": "OK to watch, Back to dismiss",
+    "description": "Reminder prompt: the keys it takes"
+  }
+}

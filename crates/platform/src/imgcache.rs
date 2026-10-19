@@ -23,7 +23,7 @@ const TOUCH_AFTER: Duration = Duration::from_secs(3600);
 const MAX_FILE: usize = 4 * 1024 * 1024;
 const MAX_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_ENTRIES: usize = 8192;
-const MAGIC: &[u8; 8] = b"SNIMG002";
+const MAGIC: &[u8; 8] = b"WIIMG002";
 const HEADER_LEN: usize = 24;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -110,7 +110,7 @@ pub fn classify(server_namespace: &str, built_key: &str) -> Option<DiskKey> {
     };
     params.sort();
     let mut identity = Vec::new();
-    for field in std::iter::once("sn-image-v2")
+    for field in std::iter::once("wi-image-v2")
         .chain(std::iter::once(server_namespace))
         .chain(params.iter().flat_map(|(k, v)| [k.as_str(), v.as_str()]))
     {
@@ -142,7 +142,7 @@ pub fn classify_baked(
     }
     let dims = format!("{w}x{h}");
     let mut identity = Vec::new();
-    for field in ["sn-baked-v1", namespace, kind, rating_key, stamp, &dims] {
+    for field in ["wi-baked-v1", namespace, kind, rating_key, stamp, &dims] {
         identity.extend_from_slice(&(field.len() as u64).to_le_bytes());
         identity.extend_from_slice(field.as_bytes());
     }
@@ -163,7 +163,7 @@ pub fn classify_pixels(url: &str, w: u32, h: u32) -> Option<DiskKey> {
     }
     let dims = format!("{w}x{h}");
     let mut identity = Vec::new();
-    for field in ["sn-pixels-v1", url, &dims] {
+    for field in ["wi-pixels-v1", url, &dims] {
         identity.extend_from_slice(&(field.len() as u64).to_le_bytes());
         identity.extend_from_slice(field.as_bytes());
     }

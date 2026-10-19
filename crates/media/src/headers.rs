@@ -1,16 +1,17 @@
 //! **The request headers a stream asks for**, checked once, carried with the playback and applied
 //! by the media transport to every request it makes for that stream.
 //!
-//! Stremio addons attach them as `behaviorHints.proxyHeaders.request` — typically a `User-Agent`
-//! and a `Referer` that a live-TV origin refuses to serve without. They are part of the stream's
-//! address, not of the process: the same television plays the next stream with none.
+//! A playlist attaches them to a channel (`#EXTVLCOPT:http-user-agent`, `http-referrer`,
+//! `#EXTHTTP`): typically a `User-Agent` and a `Referer` that a live-TV origin refuses to serve
+//! without. They are part of the stream's address, not of the process: the same television plays
+//! the next stream with none.
 //!
 //! What a stream may set is what `tv_net::net::headers` lets any caller add, plus `User-Agent`,
 //! which REPLACES the process's installed name for this stream's requests only (that is the whole
 //! point of the hint). Refused, whole: a name that is not an RFC 9110 token, a CR, LF or NUL
 //! anywhere (it would end the header or the C string), `Host`, `Content-Length` and
 //! `Transfer-Encoding` (the transport writes those), and `Range` (the media source owns the byte
-//! range: every seek is its own `Range`, and a fixed one from an addon would corrupt the demuxer's
+//! range: every seek is its own `Range`, and a fixed one from a playlist would corrupt the demuxer's
 //! view of the file).
 //!
 //! **Redirects.** Every hop of a stream's redirect chain gets the headers — a live-TV URL that

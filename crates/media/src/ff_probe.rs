@@ -2,7 +2,7 @@
 //! says about every stream, close it.
 //!
 //! The Starfish Load must declare the video codec, the raster, the frame rate, the Dolby Vision
-//! layering and the audio codec BEFORE the first access unit is fed (`stream.rs`), and Stremio gives
+//! layering and the audio codec BEFORE the first access unit is fed (`stream.rs`), and a playlist gives
 //! none of it. So a start without a caller's declaration is opened here first, on the same
 //! transports the demuxer uses (curl for https or any stream carrying request headers, the socket
 //! with redirects followed otherwise), through the same AVIO callbacks, and `avformat_open_input` +

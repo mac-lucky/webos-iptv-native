@@ -92,8 +92,8 @@
 //! with its own TLS decision; at most five are followed, a TLS request is never redirected to
 //! plaintext, and the original's query is never copied onto a hop.
 //!
-//! **Stream request headers** ([`crate::headers::RequestHeaders`], Stremio's
-//! `behaviorHints.proxyHeaders.request`) ride every request a source makes: the first open, every
+//! **Stream request headers** ([`crate::headers::RequestHeaders`], a playlist's
+//! `#EXTVLCOPT` / `#EXTHTTP` ones) ride every request a source makes: the first open, every
 //! Range seek and reopen, and every redirect hop. A stream `User-Agent` replaces the process's own
 //! for these requests; the credential headers go to the stream's own origin only.
 //!

@@ -190,7 +190,7 @@ void main(){
     // the edge and `rimShape` below is zero this far in, which is what makes skipping it exact.
     vec4 fsc = mix(u_scrim_top, u_scrim_bot, clamp(v_p.y / u_ch.y * 0.5 + 0.5, 0.0, 1.0));
     flat_rgb = mix(flat_rgb, fsc.rgb, fsc.a);
-    gl_FragColor = vec4(sn_dither(flat_rgb), u_tint.a);
+    gl_FragColor = vec4(wi_dither(flat_rgb), u_tint.a);
     return;
   }
   highp float t = clamp(1.0 + d / u_bevel, 0.0, 1.0); // 0 at the bevel's inner edge, 1 at the rim
@@ -263,5 +263,5 @@ void main(){
   // Raising the alpha is what the old second surface did with `a = max(a, rim)`; this is the same
   // rule, now inside the one surface.
   float cov = 1.0 - smoothstep(-1.0, 1.0, d);
-  gl_FragColor = vec4(sn_dither(rgb), max(u_tint.a * cov, clamp(rimw, 0.0, 1.0)));
+  gl_FragColor = vec4(wi_dither(rgb), max(u_tint.a * cov, clamp(rimw, 0.0, 1.0)));
 }

@@ -307,8 +307,16 @@ pub(super) fn force_pause_result_for_test(result: Option<c_int>) {
 /// A trigger rather than a build feature so one binary does both: `make sim` keeps landing on the
 /// failure read-out (which is what the UI work wants to see) unless a session explicitly asks for
 /// a pipeline run.
+///
+/// Unit tests answer from [`FORCE_ENABLED`] alone, so a trigger file a simulator session left in
+/// the runtime dir cannot change their result.
+#[cfg(test)]
 fn enabled() -> bool {
-    #[cfg(any(test, feature = "test-support"))]
+    FORCE_ENABLED.load(Relaxed)
+}
+#[cfg(not(test))]
+fn enabled() -> bool {
+    #[cfg(feature = "test-support")]
     if FORCE_ENABLED.load(Relaxed) {
         return true;
     }

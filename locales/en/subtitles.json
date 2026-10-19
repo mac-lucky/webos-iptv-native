@@ -1,0 +1,44 @@
+{
+  "subtitles.title": {
+    "value": "Subtitles",
+    "description": "Player menu action and its page title: pick the subtitle track or turn subtitles off"
+  },
+  "subtitles.off": {
+    "value": "Off",
+    "description": "Subtitles page row: show no subtitles"
+  },
+  "subtitles.track": {
+    "value": "Track {number}",
+    "args": {
+      "number": "i64"
+    },
+    "description": "Subtitles page row for a track whose stream names no language"
+  },
+  "subtitles.hearing_impaired": {
+    "value": "{name} (SDH)",
+    "args": {
+      "name": "str"
+    },
+    "description": "Subtitles page row for a track for the deaf and hard of hearing; name is the language"
+  },
+  "subtitles.show": {
+    "value": "Show subtitles",
+    "description": "Setting: a channel starts with subtitles on when it has any"
+  },
+  "subtitles.size": {
+    "value": "Subtitle size",
+    "description": "Setting: how large subtitles are drawn"
+  },
+  "subtitles.size_small": {
+    "value": "Small",
+    "description": "Subtitle size option"
+  },
+  "subtitles.size_medium": {
+    "value": "Medium",
+    "description": "Subtitle size option"
+  },
+  "subtitles.size_large": {
+    "value": "Large",
+    "description": "Subtitle size option"
+  }
+}

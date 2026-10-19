@@ -4,7 +4,9 @@
 //! same thing.
 //!
 //! Geometry was measured from TiviMate at 1080p; colours, type and spacing come from
-//! [`crate::theme`].
+//! [`crate::theme`]. Where each column of the channel list stands depends on the focus
+//! ([`layout`]): the groups panel pushes the channels right, and in preview mode the days column
+//! takes the channels' place so the programme list and the days stay left of the video.
 
 use std::os::raw::c_int;
 use std::rc::Rc;
@@ -15,10 +17,11 @@ use tv_machine::machine::Measure;
 use tv_platform::i18n::msg;
 use tv_ui::{Painter, Rect};
 
-use super::channels::{rows, ChannelList, Column, Mode};
+use super::channels::{rows, ChannelList, Column, Mode, PREVIEW_RECT};
 use super::history::{self, History, Line};
 use crate::data::Logos;
 use crate::draw::{self, channel_number, Cached, HAlign, Piece};
+use crate::groups::Frame;
 use crate::icons::Icon;
 use crate::theme::{self, radius, size, space};
 use crate::time::{self, When, DAY};
@@ -45,6 +48,8 @@ mod geom {
     /// The days column, right of the programmes.
     pub const DAYS_X: f32 = 1125.0;
     pub const DAYS_W: f32 = 270.0;
+    /// In preview mode the days column ends where the programme column does, left of the video.
+    pub const PREVIEW_DAYS_X: f32 = PROG_X + PROG_W - DAYS_W;
     /// Details: the card over full-screen video, and the panel under the preview.
     pub const CARD_X: f32 = 1152.0;
     pub const CARD_X_DAYS: f32 = 1410.0;
@@ -71,6 +76,57 @@ mod geom {
     pub const H_CARD_Y: f32 = 160.0;
     pub const H_CARD_H: f32 = 300.0;
     pub const H_BAR_W: f32 = 80.0;
+}
+
+/// The groups panel beside the channel list: as narrow as its pills allow, so the channels right
+/// of it still end left of the preview video.
+pub(super) const GROUPS: Frame = Frame {
+    w: 488.0,
+    pill_x: 24.0,
+};
+
+/// Where the columns of the channel list stand, as `(x, width)` on the 1920x1080 plane; `None`
+/// is a column not drawn.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Layout {
+    pub groups: Option<(f32, f32)>,
+    pub channels: Option<(f32, f32)>,
+    pub programmes: Option<(f32, f32)>,
+    pub days: Option<(f32, f32)>,
+}
+
+/// The columns for `column` focused in `mode`.
+pub(crate) fn layout(mode: Mode, column: Column) -> Layout {
+    let programmes = Some((geom::PROG_X, geom::PROG_W));
+    let list = |x| Some((x, geom::LIST_W));
+    match (mode, column) {
+        // The programme list gives way to the groups panel, which pushes the channels right.
+        (_, Column::Groups) => Layout {
+            groups: Some((0.0, GROUPS.w)),
+            channels: list(GROUPS.w),
+            programmes: None,
+            days: None,
+        },
+        // No room for three columns left of the preview: the channels give way.
+        (Mode::Preview, Column::Days) => Layout {
+            groups: None,
+            channels: None,
+            programmes: Some((0.0, geom::PREVIEW_DAYS_X)),
+            days: Some((geom::PREVIEW_DAYS_X, geom::DAYS_W)),
+        },
+        (Mode::Overlay, Column::Days) => Layout {
+            groups: None,
+            channels: list(0.0),
+            programmes,
+            days: Some((geom::DAYS_X, geom::DAYS_W)),
+        },
+        (_, Column::Channels | Column::Programmes) => Layout {
+            groups: None,
+            channels: list(0.0),
+            programmes,
+            days: None,
+        },
+    }
 }
 
 /// A display list being built, and the measure its text is fitted with.
@@ -177,12 +233,18 @@ fn centred_top(index: usize, len: usize, rows: usize) -> usize {
     index.saturating_sub(rows / 2).min(len.saturating_sub(rows))
 }
 
-/// `p` moved down by `dy`.
-fn shifted(p: &Piece, dy: f32) -> Piece {
+/// `p` moved right by `dx` and down by `dy`.
+fn shifted(p: &Piece, dx: f32, dy: f32) -> Piece {
     let mut p = p.clone();
     match &mut p {
-        Piece::Fill { r, .. } | Piece::Icon { r, .. } | Piece::Logo { r, .. } => r.y += dy,
-        Piece::Text { y, .. } => *y += dy,
+        Piece::Fill { r, .. } | Piece::Icon { r, .. } | Piece::Logo { r, .. } => {
+            r.x += dx;
+            r.y += dy;
+        }
+        Piece::Text { x, y, .. } => {
+            *x += dx;
+            *y += dy;
+        }
     }
     p
 }
@@ -247,10 +309,15 @@ impl ChannelListView {
         let rows = &mut self.rows;
         self.cached.prepare(l.generation(), |pieces| {
             let mut out = Out { m, pieces };
-            channel_column(&mut out, l, rows);
-            programme_column(&mut out, l);
-            if l.column() == Column::Days {
-                days_column(&mut out, l);
+            let at = layout(l.mode(), l.column());
+            if let Some((x, _)) = at.channels {
+                channel_column(&mut out, l, rows, x);
+            }
+            if let Some(column) = at.programmes {
+                programme_column(&mut out, l, column);
+            }
+            if let Some((x, _)) = at.days {
+                days_column(&mut out, l, x);
             }
             details(&mut out, l);
         });
@@ -262,17 +329,18 @@ impl ChannelListView {
     }
 }
 
-fn channel_column(out: &mut Out, l: &ChannelList, cache: &mut RowCache) {
+/// The channel column from `x0`; its rows are laid out at x = 0 and moved there.
+fn channel_column(out: &mut Out, l: &ChannelList, cache: &mut RowCache, x0: f32) {
     let panel = with_a(theme::PANEL, 0.96);
     out.push(Piece::solid(
-        Rect::new(0.0, 0.0, geom::LIST_W, 1080.0),
+        Rect::new(x0, 0.0, geom::LIST_W, 1080.0),
         0.0,
         panel,
     ));
-    let header = Rect::new(0.0, 0.0, geom::LIST_W, geom::HEADER_H);
+    let header = Rect::new(x0, 0.0, geom::LIST_W, geom::HEADER_H);
     out.push(Piece::solid(header, 0.0, theme::PANEL_RAISED));
     let name = Rect::new(
-        space::XL,
+        x0 + space::XL,
         0.0,
         geom::LIST_W - 2.0 * space::XL,
         geom::HEADER_H,
@@ -304,10 +372,10 @@ fn channel_column(out: &mut Out, l: &ChannelList, cache: &mut RowCache) {
         };
         let pieces = cache.take(&key).unwrap_or_else(|| channel_row(out.m, &key));
         let y = geom::HEADER_H + (i - cursor.top) as f32 * geom::ROW_H;
-        out.pieces.extend(pieces.iter().map(|p| shifted(p, y)));
+        out.pieces.extend(pieces.iter().map(|p| shifted(p, x0, y)));
         if let Some(p) = &key.on_air {
             let bar = Rect::new(
-                geom::TEXT_X,
+                x0 + geom::TEXT_X,
                 y + 104.0,
                 geom::TEXT_R - geom::TEXT_X,
                 geom::BAR_H,
@@ -398,13 +466,14 @@ fn channel_row(m: &dyn Measure, k: &RowKey) -> Vec<Piece> {
     pieces
 }
 
-fn programme_column(out: &mut Out, l: &ChannelList) {
+/// The programme column at `(x0, w)`.
+fn programme_column(out: &mut Out, l: &ChannelList, (x0, w): (f32, f32)) {
     let Some(c) = l.focused_channel() else {
         return;
     };
-    let column = Rect::new(geom::PROG_X, 0.0, geom::PROG_W, 1080.0);
+    let column = Rect::new(x0, 0.0, w, 1080.0);
     out.push(Piece::solid(column, 0.0, with_a(theme::BG, 0.88)));
-    let x = geom::PROG_X + 20.0;
+    let x = x0 + 20.0;
     let logo = Rect::new(x, 30.0, 96.0, 60.0);
     out.push(Piece::logo(
         Some(c.clone()),
@@ -413,7 +482,7 @@ fn programme_column(out: &mut Out, l: &ChannelList) {
         theme::CELL_ROW,
     ));
     let tx = x + 96.0 + space::M;
-    let tw = geom::PROG_X + geom::PROG_W - space::M - tx;
+    let tw = x0 + w - space::M - tx;
     let name = format!("{} {}", channel_number(c, l.cursor().index), c.name);
     let r = Rect::new(tx, 18.0, tw, 44.0);
     out.text(&name, r, HAlign::Left, size::BODY, true, theme::TEXT);
@@ -433,7 +502,7 @@ fn programme_column(out: &mut Out, l: &ChannelList) {
     };
     let list = epg.programmes();
     if list.is_empty() {
-        let r = Rect::new(x, geom::PROG_Y, geom::PROG_W - 40.0, geom::PROG_H);
+        let r = Rect::new(x, geom::PROG_Y, w - 40.0, geom::PROG_H);
         let none = msg::epg_no_data();
         out.text(none, r, HAlign::Left, size::LABEL, false, theme::TEXT_MUTED);
         return;
@@ -449,12 +518,7 @@ fn programme_column(out: &mut Out, l: &ChannelList) {
         let y = geom::PROG_Y + (j - top) as f32 * geom::PROG_H;
         let focused = focus && j == epg.cursor.index;
         if focused {
-            let pill = Rect::new(
-                geom::PROG_X + 10.0,
-                y + 4.0,
-                geom::PROG_W - 20.0,
-                geom::PROG_H - 8.0,
-            );
+            let pill = Rect::new(x0 + 10.0, y + 4.0, w - 20.0, geom::PROG_H - 8.0);
             out.push(Piece::solid(pill, radius::PILL, theme::FOCUS));
         }
         let ink = if focused {
@@ -465,10 +529,10 @@ fn programme_column(out: &mut Out, l: &ChannelList) {
             theme::TEXT
         };
         let start = time::hhmm(p.start, l.utc_offset());
-        let r = Rect::new(geom::PROG_X + 30.0, y, geom::TIME_W, geom::PROG_H);
+        let r = Rect::new(x0 + 30.0, y, geom::TIME_W, geom::PROG_H);
         out.text(&start, r, HAlign::Left, size::LABEL, false, ink);
-        let title_x = geom::PROG_X + 30.0 + geom::TIME_W;
-        let title_w = geom::PROG_X + geom::PROG_W - 20.0 - title_x;
+        let title_x = x0 + 30.0 + geom::TIME_W;
+        let title_w = x0 + w - 20.0 - title_x;
         let r = Rect::new(title_x, y, title_w, geom::PROG_H);
         out.text(&p.title, r, HAlign::Left, size::LABEL, false, ink);
     }
@@ -483,11 +547,12 @@ pub fn day_ink(day: i32) -> [f32; 4] {
     }
 }
 
-fn days_column(out: &mut Out, l: &ChannelList) {
+/// The days column from `x0`.
+fn days_column(out: &mut Out, l: &ChannelList, x0: f32) {
     let Some(epg) = l.epg() else {
         return;
     };
-    let column = Rect::new(geom::DAYS_X, 0.0, geom::DAYS_W, 1080.0);
+    let column = Rect::new(x0, 0.0, geom::DAYS_W, 1080.0);
     out.push(Piece::solid(column, 0.0, theme::PANEL));
     let (now, off) = (l.now(), l.utc_offset());
     let today = time::day_start(now, off);
@@ -497,12 +562,7 @@ fn days_column(out: &mut Out, l: &ChannelList) {
         let y = geom::PROG_Y + (k - c.top) as f32 * geom::PROG_H;
         let focused = k == c.index;
         if focused {
-            let pill = Rect::new(
-                geom::DAYS_X + 10.0,
-                y + 4.0,
-                geom::DAYS_W - 20.0,
-                geom::PROG_H - 8.0,
-            );
+            let pill = Rect::new(x0 + 10.0, y + 4.0, geom::DAYS_W - 20.0, geom::PROG_H - 8.0);
             out.push(Piece::solid(pill, radius::PILL, theme::FOCUS));
         }
         let ink = if focused {
@@ -511,7 +571,7 @@ fn days_column(out: &mut Out, l: &ChannelList) {
             day_ink(day)
         };
         let label = time::day_label(today + i64::from(day) * DAY, now, off);
-        let r = Rect::new(geom::DAYS_X + 30.0, y, geom::DAYS_W - 50.0, geom::PROG_H);
+        let r = Rect::new(x0 + 30.0, y, geom::DAYS_W - 50.0, geom::PROG_H);
         out.text(&label, r, HAlign::Left, size::LABEL, false, ink);
     }
 }
@@ -531,7 +591,7 @@ fn details(out: &mut Out, l: &ChannelList) {
             }
         }
         Mode::Preview => {
-            let r = super::PREVIEW_RECT;
+            let r = PREVIEW_RECT;
             let (x, w) = (r.x as f32, r.w as f32);
             let above = Rect::new(x, 0.0, w, r.y as f32);
             let clock = time::clock(now, off);
@@ -909,6 +969,159 @@ mod tests {
             find(&t, "Tue, Aug 27 15:12").is_some(),
             "the clock above the preview"
         );
+    }
+
+    /// The x extent of a piece, its text measured with [`Mono`].
+    fn x_extent(p: &Piece) -> (f32, f32) {
+        match p {
+            Piece::Fill { r, .. } | Piece::Icon { r, .. } | Piece::Logo { r, .. } => {
+                (r.x, r.x + r.w)
+            }
+            Piece::Text {
+                s,
+                x,
+                size,
+                bold,
+                h,
+                ..
+            } => {
+                let w = Mono.width(s, *size, *bold);
+                match h {
+                    HAlign::Left => (*x, x + w),
+                    HAlign::Center => (x - w * 0.5, x + w * 0.5),
+                    HAlign::Right => (x - w, *x),
+                }
+            }
+        }
+    }
+
+    const COLUMNS: [Column; 4] = [
+        Column::Groups,
+        Column::Channels,
+        Column::Programmes,
+        Column::Days,
+    ];
+
+    /// The keys from a freshly opened list to `column`.
+    fn keys_to(column: Column) -> &'static [Nav] {
+        match column {
+            Column::Groups => &[Nav::Left],
+            Column::Channels => &[],
+            Column::Programmes => &[Nav::Right],
+            Column::Days => &[Nav::Right, Nav::Right],
+        }
+    }
+
+    #[test]
+    fn every_column_has_its_own_area() {
+        for mode in [Mode::Overlay, Mode::Preview] {
+            for column in COLUMNS {
+                let at = layout(mode, column);
+                let areas: Vec<(f32, f32)> = [at.groups, at.channels, at.programmes, at.days]
+                    .into_iter()
+                    .flatten()
+                    .collect();
+                for (i, &(x, w)) in areas.iter().enumerate() {
+                    assert!(
+                        x >= 0.0 && w > 0.0 && x + w <= 1920.0,
+                        "{mode:?} {column:?}"
+                    );
+                    for &(x2, w2) in &areas[i + 1..] {
+                        assert!(x + w <= x2 || x2 + w2 <= x, "{mode:?} {column:?} overlap");
+                    }
+                    // Left of the video and the details card under it, or of the overlay's card.
+                    let right = match (mode, column) {
+                        (Mode::Preview, _) => PREVIEW_RECT.x as f32,
+                        (Mode::Overlay, Column::Days) => geom::CARD_X_DAYS,
+                        (Mode::Overlay, _) => geom::CARD_X,
+                    };
+                    assert!(x + w <= right, "{mode:?} {column:?}: {x} + {w} > {right}");
+                }
+            }
+        }
+        // The channels make room for the groups, and in preview mode for the days.
+        assert_eq!(
+            layout(Mode::Overlay, Column::Groups).channels.unwrap().0,
+            GROUPS.w
+        );
+        assert_eq!(layout(Mode::Preview, Column::Days).channels, None);
+        let days = layout(Mode::Preview, Column::Days).days.unwrap();
+        assert_eq!(days.0 + days.1, geom::PROG_X + geom::PROG_W);
+    }
+
+    #[test]
+    fn nothing_drawn_crosses_into_the_video_or_its_details() {
+        let d = Fixture::new(NOW, 10);
+        let video = PREVIEW_RECT.x as f32;
+        for column in COLUMNS {
+            let mut l = list(&d, Mode::Preview, keys_to(column));
+            assert_eq!(l.column(), column);
+            l.draw(Painter::recording(), &Mono, &Wide(false));
+            let groups = l.groups().map_or(&[][..], |g| g.pieces());
+            assert_eq!(groups.is_empty(), column != Column::Groups);
+            // The left columns end before the video; the clock and the card start at it.
+            for p in l.pieces().iter().chain(groups) {
+                let (x0, x1) = x_extent(p);
+                assert!(
+                    x1 <= video || x0 >= video,
+                    "{column:?}: {p:?} crosses x = {video}"
+                );
+            }
+            let card = l.pieces().iter().any(|p| {
+                matches!(p, Piece::Fill { r, .. } if r.x == video && r.y == geom::PREVIEW_DETAIL_Y)
+            });
+            assert_eq!(
+                card,
+                column != Column::Groups,
+                "{column:?}: the details card"
+            );
+        }
+    }
+
+    #[test]
+    fn preview_days_put_the_programmes_and_days_left_of_the_video() {
+        let d = Fixture::new(NOW, 10);
+        let l = list(&d, Mode::Preview, &[Nav::Right, Nav::Right, Nav::Up]);
+        let t = texts(l.pieces());
+        // The days column, the focused day on its pill.
+        let (_, x, ..) = find(&t, "Yesterday").unwrap();
+        assert_eq!(*x, geom::PREVIEW_DAYS_X + 30.0);
+        // The programme list starts at the left edge, no channel rows beside it.
+        let p = l.epg().unwrap().programmes()[0].clone();
+        let hm = time::hhmm(p.start, 0);
+        assert!(t.iter().any(|(s, x, ..)| *s == hm && *x == 30.0));
+        assert!(
+            find(&t, "1 Channel 1").is_some(),
+            "the programme list's header"
+        );
+        assert!(
+            !t.iter().any(|(s, ..)| s.starts_with("2 Channel")),
+            "the channel rows gave way"
+        );
+    }
+
+    #[test]
+    fn the_groups_panel_pushes_the_channels_right() {
+        let d = Fixture::new(NOW, 10);
+        let mut l = list(&d, Mode::Overlay, &[Nav::Left]);
+        l.draw(Painter::recording(), &Mono, &Wide(false));
+        for p in l.pieces() {
+            assert!(x_extent(p).0 >= GROUPS.w, "{p:?} under the groups panel");
+        }
+        let (_, x, ..) = *find(&texts(l.pieces()), "1 Channel 1").unwrap();
+        assert_eq!(x, GROUPS.w + geom::TEXT_X);
+        let g = texts(l.groups().unwrap().pieces());
+        assert_eq!(g[1].0, "All channels");
+        assert_eq!(
+            g[1].3,
+            theme::TEXT_ON_FOCUS,
+            "the focused group on the white pill"
+        );
+        for p in l.groups().unwrap().pieces() {
+            assert!(x_extent(p).1 <= GROUPS.w, "{p:?} out of the panel");
+        }
+        assert_eq!(l.detail(), None, "no details card");
+        assert_eq!(icons(l.pieces(), Icon::Play), 0);
     }
 
     #[test]

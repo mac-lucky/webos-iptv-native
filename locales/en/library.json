@@ -1,0 +1,174 @@
+{
+  "library.add_playlist": {
+    "value": "Add playlist",
+    "description": "Playlists page row: type the URL of another playlist"
+  },
+  "library.cancel": {
+    "value": "Cancel",
+    "description": "Confirmation page row that leaves without removing"
+  },
+  "library.channel_count": {
+    "value": {
+      "one": "{count} channel",
+      "other": "{count} channels"
+    },
+    "args": {
+      "count": "i64"
+    },
+    "description": "Playlist row value: how many channels the playlist holds"
+  },
+  "library.channels": {
+    "value": "Manage channels",
+    "description": "Group menu and group page row: select, copy, move and reorder the group's channels"
+  },
+  "library.copied": {
+    "value": {
+      "one": "{count} channel copied to {group}",
+      "other": "{count} channels copied to {group}"
+    },
+    "args": {
+      "count": "i64",
+      "group": "str"
+    },
+    "description": "Toast after copying the selected channels into a custom group"
+  },
+  "library.copy_to": {
+    "value": "Copy to group",
+    "description": "Manage channels row: put the selected channels into a custom group as well"
+  },
+  "library.delete_group": {
+    "value": "Delete group",
+    "description": "Custom group page row and its confirmation"
+  },
+  "library.delete_question": {
+    "value": "Delete this group?",
+    "description": "Title of the page that confirms deleting a custom group"
+  },
+  "library.edit_group": {
+    "value": "Edit group",
+    "description": "Group menu row of a custom group: its page with rename, delete and its channels"
+  },
+  "library.enabled": {
+    "value": "Enabled",
+    "description": "Playlist page row: whether the playlist is fetched and shown"
+  },
+  "library.group_created": {
+    "value": "Group created",
+    "description": "Toast after making a custom group"
+  },
+  "library.group_deleted": {
+    "value": "Group deleted",
+    "description": "Toast after deleting a custom group"
+  },
+  "library.group_name": {
+    "value": "Group name",
+    "description": "Title of the page where a custom group's name is typed"
+  },
+  "library.group_renamed": {
+    "value": "Group renamed",
+    "description": "Toast after renaming a custom group"
+  },
+  "library.groups": {
+    "value": "Manage groups",
+    "description": "Group menu row and page title: show, hide, reorder and make groups"
+  },
+  "library.move_down": {
+    "value": "Move down",
+    "description": "Playlist page row: one place later in the playlist order"
+  },
+  "library.move_here": {
+    "value": "OK: drop here",
+    "description": "Reorder page: value of the row being moved"
+  },
+  "library.move_to": {
+    "value": "Move to group",
+    "description": "Manage channels row: take the selected channels out of this group into a custom group"
+  },
+  "library.move_up": {
+    "value": "Move up",
+    "description": "Playlist page row: one place earlier in the playlist order"
+  },
+  "library.moved": {
+    "value": {
+      "one": "{count} channel moved to {group}",
+      "other": "{count} channels moved to {group}"
+    },
+    "args": {
+      "count": "i64",
+      "group": "str"
+    },
+    "description": "Toast after moving the selected channels into a custom group"
+  },
+  "library.name_taken": {
+    "value": "A group has this name",
+    "description": "Toast: the typed custom group name is already used"
+  },
+  "library.new_group": {
+    "value": "New group",
+    "description": "Row that makes a custom group"
+  },
+  "library.pick_up": {
+    "value": "OK: move",
+    "description": "Reorder page: value of the focused row while none is being moved"
+  },
+  "library.playlist_added": {
+    "value": "Playlist added",
+    "description": "Toast after adding a playlist"
+  },
+  "library.playlist_removed": {
+    "value": "Playlist removed",
+    "description": "Toast after removing a playlist"
+  },
+  "library.playlists": {
+    "value": "Manage playlists",
+    "description": "Settings row under Playlists: add, enable, sort and remove playlists"
+  },
+  "library.remove_from_group": {
+    "value": "Remove from group",
+    "description": "Manage channels row of a custom group: take the selected channels out of it"
+  },
+  "library.remove_playlist": {
+    "value": "Remove playlist",
+    "description": "Playlist page row and its confirmation"
+  },
+  "library.remove_question": {
+    "value": "Remove this playlist?",
+    "description": "Title of the page that confirms removing a playlist; its channels, favourites and history go too"
+  },
+  "library.removed": {
+    "value": {
+      "one": "{count} channel removed from the group",
+      "other": "{count} channels removed from the group"
+    },
+    "args": {
+      "count": "i64"
+    },
+    "description": "Toast after removing the selected channels from a custom group"
+  },
+  "library.rename_group": {
+    "value": "Rename group",
+    "description": "Custom group page row"
+  },
+  "library.reorder_channels": {
+    "value": "Reorder channels",
+    "description": "Manage channels row: put the group's channels in the viewer's order"
+  },
+  "library.reorder_groups": {
+    "value": "Reorder groups",
+    "description": "Manage groups row: put the groups in the viewer's order"
+  },
+  "library.select_first": {
+    "value": "Select channels first",
+    "description": "Toast: copy, move or remove was asked with no channel selected"
+  },
+  "library.selected": {
+    "value": {
+      "one": "{count} selected",
+      "other": "{count} selected"
+    },
+    "args": {
+      "count": "i64"
+    },
+    "description": "Manage channels row value: how many channels are selected"
+  }
+}

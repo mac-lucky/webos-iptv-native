@@ -26,7 +26,9 @@ const SHA256: &str = "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a9
 /// audio segments, and elementary H.264/HEVC, demuxed with the parsers filling the stream
 /// parameters; plus the IPTV audio decoders and libswresample for the software decode -> PCM
 /// path: the C1 plays nothing for MP2 declared as MP3, and on webOS 10+ (the C5) the pipeline
-/// plays only PCM.
+/// plays only PCM. And DVB subtitles, native and LGPL: the parser that takes the PES data header
+/// off each packet (the decoder refuses it) and the decoder, whose bitmaps the app draws over the
+/// video (crates/media `ff_subdec.rs`). Teletext would need libzvbi, which is not built.
 ///
 /// MPEG audio uses the fixed-point decoders, which have ARM asm: built beside them, the float
 /// twins are dead code for MP2 and, being listed first, what `avcodec_find_decoder` picks for
@@ -50,9 +52,9 @@ const CONFIGURE: &[&str] = &[
     "--enable-swresample",
     "--enable-protocol=file",
     "--enable-demuxer=mpegts,mov,aac,ac3,eac3,mp3,h264,hevc",
-    "--enable-parser=h264,hevc,aac,aac_latm,ac3,mpegaudio",
+    "--enable-parser=h264,hevc,aac,aac_latm,ac3,mpegaudio,dvbsub",
     "--enable-bsf=h264_mp4toannexb,hevc_mp4toannexb,extract_extradata",
-    "--enable-decoder=mp2,mp3,aac,aac_latm,ac3,eac3",
+    "--enable-decoder=mp2,mp3,aac,aac_latm,ac3,eac3,dvbsub",
 ];
 
 /// The prefix the libraries are configured for. A stand-in, so no build path is recorded in them;
@@ -171,7 +173,11 @@ fn cross() -> Result {
 /// commands changed after signing).
 fn host() -> Result {
     if !cfg!(target_os = "macos") {
-        return Err("--host stages macOS dylibs; on another host build FFmpeg yourself and point SN_FFMPEG_DIR at it".into());
+        return Err(
+            "--host stages macOS dylibs; on another host build FFmpeg yourself and point \
+             WEBOSIPTV_FFMPEG_DIR at it"
+                .into(),
+        );
     }
     let installed = compile(
         &dir().join("host-build"),

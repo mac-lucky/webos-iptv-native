@@ -42,7 +42,7 @@ use std::sync::OnceLock;
 /// `main.c` used to name all three by ABSOLUTE LITERAL, and this constant was the whole guarantee
 /// on its own. It cannot be, now that the root varies per install ([`app_id`]): a second literal
 /// in C would be a second definition of a value that moves. So `main.c` calls
-/// [`sn_runtime_path`] instead — one resolver, asked from both languages — and this constant
+/// [`wi_runtime_path`] instead — one resolver, asked from both languages — and this constant
 /// keeps the other half of the promise, that the resolver's answer cannot be steered from outside
 /// on a television.
 ///
@@ -176,7 +176,7 @@ enum AppDirSource {
 pub fn app_dir_line() -> String {
     let (dir, source) = app_dir_resolved();
     match source {
-        AppDirSource::Env => format!("appdir: {} (SNATIVE_APP_DIR)", dir.display()),
+        AppDirSource::Env => format!("appdir: {} (WEBOSIPTV_APP_DIR)", dir.display()),
         AppDirSource::MacosBundle => format!("appdir: {} (macOS bundle)", dir.display()),
         AppDirSource::CurrentExe => format!("appdir: {} (from current_exe)", dir.display()),
         // Not expected on device — worth a line in the log if it ever happens, because everything
@@ -193,7 +193,7 @@ fn app_dir_resolved() -> &'static (PathBuf, AppDirSource) {
         // build, the simulator is told where the payload is. Compile-time gated, so a television
         // build has no such override and resolves exactly as documented above.
         if ENV_STEERABLE {
-            if let Some(d) = std::env::var_os("SNATIVE_APP_DIR") {
+            if let Some(d) = std::env::var_os("WEBOSIPTV_APP_DIR") {
                 let p = PathBuf::from(d);
                 if !p.as_os_str().is_empty() {
                     return (p, AppDirSource::Env);
@@ -263,16 +263,12 @@ fn macos_bundle_resources(_exe: &Path) -> Option<PathBuf> {
 /// signed bundle writing inside `Contents/` invalidates the signature.
 ///
 /// `None` unless this really is a bundle: a plain `make sim-run` keeps taking `/tmp` (or its
-/// `SNATIVE_RUNTIME_DIR` instance root) exactly as before, so no harness recipe moves.
+/// `WEBOSIPTV_RUNTIME_DIR` instance root) exactly as before, so no harness recipe moves.
 #[cfg(target_os = "macos")]
 fn macos_app_support() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     macos_bundle_resources(&exe)?;
-    let home = std::env::var_os("HOME")?;
-    if home.is_empty() {
-        return None;
-    }
-    Some(PathBuf::from(home).join("Library/Application Support/WebosIptv"))
+    user_data_dir("WebosIptv")
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -280,12 +276,46 @@ fn macos_app_support() -> Option<PathBuf> {
     None
 }
 
+/// **The simulator's data dir**: `name` in the user's application-support directory,
+/// `~/Library/Application Support/<name>` on macOS, else `$XDG_DATA_HOME/<name>` or
+/// `~/.local/share/<name>`. `None` without an absolute `HOME`. Never a television answer: those
+/// are [`private_data_candidates`]. Must not log, since [`runtime_dir`] reaches it through
+/// [`macos_app_support`].
+pub fn user_data_dir(name: &str) -> Option<PathBuf> {
+    resolve_user_data_dir(
+        cfg!(target_os = "macos"),
+        std::env::var_os("HOME"),
+        std::env::var_os("XDG_DATA_HOME"),
+        name,
+    )
+}
+
+/// [`user_data_dir`] as a pure function of the platform and the environment, so a test can pin
+/// both. A relative directory is ignored, as the XDG spec says for `XDG_DATA_HOME`.
+fn resolve_user_data_dir(
+    macos: bool,
+    home: Option<std::ffi::OsString>,
+    xdg_data_home: Option<std::ffi::OsString>,
+    name: &str,
+) -> Option<PathBuf> {
+    let absolute = |dir: Option<std::ffi::OsString>| dir.map(PathBuf::from).filter(|p| p.is_absolute());
+    let base = if macos {
+        absolute(home)?.join("Library/Application Support")
+    } else {
+        match absolute(xdg_data_home) {
+            Some(dir) => dir,
+            None => absolute(home)?.join(".local/share"),
+        }
+    };
+    Some(base.join(name))
+}
+
 /// Where this instance's RUNTIME surfaces live — the `webosiptv-*` dev triggers, the remote FIFO,
 /// and the logs Rust itself writes (the event log and the panic hook's crash log). Not the app's
 /// own files; that is [`app_dir`].
 ///
 /// On the television `src/main.c` opens those same logs before any Rust runs, through
-/// [`sn_runtime_path`] — the same resolver, so the two languages cannot disagree — and
+/// [`wi_runtime_path`] — the same resolver, so the two languages cannot disagree — and
 /// [`ENV_STEERABLE`] guarantees that answer is not steerable from outside.
 ///
 /// `/tmp` on the television for the app users install, always; `/tmp/<app id>` for a developer
@@ -293,7 +323,7 @@ fn macos_app_support() -> Option<PathBuf> {
 /// system `/tmp`, and every tool, skill and harness recipe addresses those files by absolute path
 /// — which is why `make -s print-rundir` exists rather than a second copy of the rule.
 ///
-/// `SNATIVE_RUNTIME_DIR` overrides it for exactly one reason: the television serializes the whole
+/// `WEBOSIPTV_RUNTIME_DIR` overrides it for exactly one reason: the television serializes the whole
 /// dev loop. There is one set, one app instance, and `tests/run.py` jobs kill each other's app if
 /// two run at once — so the single global `/tmp/webosiptv-*` namespace has never cost anything. A
 /// host build removes that constraint, and then the namespace becomes the constraint instead: two
@@ -317,7 +347,7 @@ pub fn runtime_dir() -> &'static Path {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
         let d = resolve_runtime_dir(
-            std::env::var_os("SNATIVE_RUNTIME_DIR"),
+            std::env::var_os("WEBOSIPTV_RUNTIME_DIR"),
             macos_app_support(),
             app_id(),
         );
@@ -346,7 +376,7 @@ pub fn runtime_dir() -> &'static Path {
 fn ensure_runtime_dir(d: &Path) {
     // Television builds only, and only for a flavoured root. A host build's root is created by
     // `make sim` and written by exactly one uid, so there is nothing here to solve — and
-    // `SNATIVE_RUNTIME_DIR` can point anywhere, including inside somebody's home directory,
+    // `WEBOSIPTV_RUNTIME_DIR` can point anywhere, including inside somebody's home directory,
     // which is not a thing to silently chmod 1777.
     if ENV_STEERABLE || d == Path::new(DEFAULT_RUNTIME_DIR) {
         return;
@@ -466,7 +496,7 @@ fn resolve_runtime_dir(
 /// `name` must be a valid NUL-terminated C string; `out` must point to at least `cap` writable
 /// bytes. The result is NUL-terminated whenever this returns 1.
 #[no_mangle]
-pub unsafe extern "C" fn sn_runtime_path(
+pub unsafe extern "C" fn wi_runtime_path(
     name: *const std::os::raw::c_char,
     out: *mut std::os::raw::c_char,
     cap: usize,
@@ -867,6 +897,33 @@ mod tests {
         assert!(private[0].starts_with("/media/developer/temp"), "{c:?}");
     }
 
+    /// The simulator keeps its database where a desktop app keeps its data: Application Support
+    /// on macOS, the XDG data dir elsewhere, and nowhere without an absolute home.
+    #[test]
+    fn the_user_data_dir_is_the_platforms_application_support_dir() {
+        use super::resolve_user_data_dir as dir;
+        use std::path::PathBuf;
+        let home = || Some("/Users/a".into());
+        let mac = PathBuf::from("/Users/a/Library/Application Support/webosiptv");
+        assert_eq!(dir(true, home(), None, "webosiptv"), Some(mac.clone()));
+        assert_eq!(dir(true, home(), Some("/data".into()), "webosiptv"), Some(mac), "no XDG on a Mac");
+        assert_eq!(dir(false, home(), None, "w"), Some(PathBuf::from("/Users/a/.local/share/w")));
+        assert_eq!(dir(false, home(), Some("/data".into()), "w"), Some(PathBuf::from("/data/w")));
+        assert_eq!(
+            dir(false, home(), Some("data".into()), "w"),
+            Some(PathBuf::from("/Users/a/.local/share/w")),
+            "a relative XDG_DATA_HOME is ignored"
+        );
+        for bad in [None, Some(""), Some("Users/a")] {
+            assert_eq!(dir(true, bad.map(Into::into), None, "w"), None, "{bad:?}");
+            assert_eq!(dir(false, bad.map(Into::into), None, "w"), None, "{bad:?}");
+        }
+        if cfg!(target_os = "macos") {
+            let real = super::user_data_dir("webosiptv").expect("HOME is set");
+            assert!(real.ends_with("Library/Application Support/webosiptv"), "{real:?}");
+        }
+    }
+
     /// The runtime root is a path in the shared, sticky `/tmp`, and `ensure_runtime_dir` chmods it
     /// 1777 — so what stands at that name decides what gets widened. A co-resident app that can
     /// create names in `/tmp` can plant a SYMLINK there to a directory this app owns (a plain
@@ -876,7 +933,7 @@ mod tests {
     #[test]
     fn the_runtime_root_is_never_chmoded_through_a_symlink_or_when_foreign_owned() {
         use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
-        let base = std::env::temp_dir().join(format!("sn-runtime-root-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("wi-runtime-root-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir(&base).unwrap();
         let euid = unsafe { libc::geteuid() };
@@ -920,7 +977,7 @@ mod tests {
     #[test]
     fn a_private_dir_is_a_real_directory_we_own_made_owner_only() {
         use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
-        let base = std::env::temp_dir().join(format!("sn-private-dir-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("wi-private-dir-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir(&base).unwrap();
         std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o777)).unwrap();
@@ -960,7 +1017,7 @@ mod tests {
     #[test]
     fn a_private_file_is_a_regular_file_we_own_made_0600() {
         use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
-        let base = std::env::temp_dir().join(format!("sn-private-file-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("wi-private-file-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir(&base).unwrap();
         let euid = super::euid();
@@ -1012,7 +1069,7 @@ mod tests {
     #[test]
     fn a_refused_chmod_fails_closed() {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
-        let base = std::env::temp_dir().join(format!("sn-private-chmod-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("wi-private-chmod-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir(&base).unwrap();
         let file = base.join("db");
@@ -1152,7 +1209,7 @@ mod tests {
         }
     }
 
-    /// An absent or empty `SNATIVE_RUNTIME_DIR` must resolve to the television's `/tmp`. Empty
+    /// An absent or empty `WEBOSIPTV_RUNTIME_DIR` must resolve to the television's `/tmp`. Empty
     /// matters on its own: `FOO= cmd` sets the variable to an empty string rather than unsetting
     /// it, and joining a name onto an empty root yields a RELATIVE path — trigger reads would then
     /// silently follow the process's working directory.
@@ -1170,7 +1227,7 @@ mod tests {
 
     /// A macOS app bundle writes under `~/Library/Application Support`, and an explicit instance
     /// root still beats it. Both halves matter: the first is what keeps a friend's sign-in from
-    /// being swept out of `/tmp`, the second is what keeps `make sim-shot`'s `SNATIVE_RUNTIME_DIR`
+    /// being swept out of `/tmp`, the second is what keeps `make sim-shot`'s `WEBOSIPTV_RUNTIME_DIR`
     /// authoritative if the binary is ever run out of a bundle by the harness.
     #[test]
     fn a_bundled_app_writes_to_its_own_support_dir_unless_told_otherwise() {
@@ -1228,7 +1285,7 @@ mod tests {
     }
 
     /// A television build must not be relocatable by the environment at all — `src/main.c` opens
-    /// the logs through [`super::sn_runtime_path`], i.e. through this very function, so an
+    /// the logs through [`super::wi_runtime_path`], i.e. through this very function, so an
     /// environment that could move one half would move only that half's later reads. Compile-time
     /// half of the [`super::ENV_STEERABLE`] guarantee.
     #[test]

@@ -1,0 +1,23 @@
+# The guide Left/Back sequence from the C1 trial, for cargo xtask tv-replay.
+#
+# Start: the app on the guide with the focus at live, as it starts with nothing played (or with
+# Settings > General > Last channel on start off). What each shot should show is beside it. The
+# same sequence runs on the host in crates/app/src/shell/tests/nav.rs
+# (guide_left_walks_into_the_past_and_back_opens_the_groups_panel).
+
+shot start          # the guide at live, the preview top left
+Left x3             # three programmes back in time on the same channel
+shot left           # still the grid: no groups panel, no menu
+hold Left 2000      # held, Left keeps walking into the past
+shot left-held
+Back                # back to the current time
+shot live
+Back                # the groups panel over the left of the guide; the preview stays put
+shot groups
+Back                # the panel closes: focus and time as before it opened
+shot closed
+Left                # Left walks into the past again
+Back                # and Back returns to live
+shot live-again
+long Back           # back to the player (on the C5, webOS 25, this closes the app instead)
+shot player

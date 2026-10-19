@@ -7,7 +7,7 @@
 //! AAC, AAC-LATM, AC-3 and E-AC-3 included - is decoded here by the bundled libavcodec and resampled with libswresample to S16LE 48 kHz stereo (any layout:
 //! 5.1 and 7.1 are downmixed with swr's default matrix, LFE dropped, mono is upmixed), and the Load
 //! declares `"PCM"` with a `pcmInfo` node of exactly that shape. The decode loop is
-//! StremioNative's `native/adec.c` (formerly a C shim, `libsnadec.so`) in Rust, calling the same
+//! StremioNative's `native/adec.c` (a C shim upstream) in Rust, calling the same
 //! libraries as the demuxer by the same absolute paths. Everything goes through FFmpeg calls and
 //! AVOptions except the decoded frame's fields, read from the [`AVFrame`] model below, whose
 //! offsets are pinned for both pointer widths.

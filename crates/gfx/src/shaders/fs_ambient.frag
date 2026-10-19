@@ -36,5 +36,5 @@
 precision mediump float;
 varying vec4 v_col;
 void main(){
-  gl_FragColor = vec4(sn_dither(v_col.rgb), v_col.a);
+  gl_FragColor = vec4(wi_dither(v_col.rgb), v_col.a);
 }

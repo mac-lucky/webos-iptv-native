@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn packaged_app_identity() {
-        let Ok(paths) = std::env::var("SN_TEST_PACKAGED_HELPERS") else {
+        let Ok(paths) = std::env::var("WEBOSIPTV_TEST_PACKAGED_HELPERS") else {
             return;
         };
         for path in paths.lines() {

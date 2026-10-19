@@ -652,7 +652,7 @@ fn groups_panel_filters_as_it_moves() {
     let mut s = opened(&mut data, 0);
     press(&mut s, &data, Key::Back);
     assert!(s.panel);
-    let list = s.groups.list.clone();
+    let list = s.groups.list().to_vec();
     assert_eq!(&list[..3], &[Group::Favorites, Group::All, Group::History]);
     assert_eq!(s.group, Group::All);
 

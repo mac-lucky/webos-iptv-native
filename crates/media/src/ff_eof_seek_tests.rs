@@ -26,8 +26,8 @@
 //!
 //! The FFmpeg tests need the host build of the bundled FFmpeg and the `ffmpeg` / `ffprobe` CLI, so
 //! they are `#[ignore]`d in the plain suite (they skip, loudly, when the CLI is absent):
-//! `cd rust-modules && SN_FFMPEG_DIR=<dir holding libav*-wi.*.dylib> CARGO_INCREMENTAL=0
-//! cargo +nightly test --lib -p tv_media ff::eof_seek_tests -- --ignored`.
+//! `cargo xtask ffmpeg --host` (stages the libraries in `pkg/`, or point `WEBOSIPTV_FFMPEG_DIR`
+//! at another directory), then `cargo test --lib -p tv_media ff::eof_seek_tests -- --ignored`.
 
 use super::*;
 use std::io::{Read, Write};
@@ -511,7 +511,7 @@ struct Scratch(PathBuf);
 
 impl Scratch {
     fn new(tag: &str) -> Scratch {
-        let dir = std::env::temp_dir().join(format!("sn-eof-seek-{}-{tag}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("wi-eof-seek-{}-{tag}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create the scratch directory");
         Scratch(dir)

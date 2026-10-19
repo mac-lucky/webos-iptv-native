@@ -2,15 +2,16 @@
 //!
 //! - **Nothing up**: Up/Down and CH+/- zap through the current group, short Right goes back to
 //!   the last channel, digits type a channel number, OK opens the info panel, long Right the
-//!   programme card, Back the guide, Left the channel list (long Left in preview mode), long Up
-//!   History, long OK the channel menu. A zap shows the info banner (the panel without its tile
-//!   row) for the panel timeout.
+//!   programme card, Back the guide (long Back Settings), Left the channel list (long Left in
+//!   preview mode), long Up History, long OK the channel menu. A zap shows the info banner (the
+//!   panel without its tile row) for the panel timeout.
 //! - **Info panel** (OK): logo, programme, times, progress, channel, media badges, the next
 //!   programme and a tile row (TV guide, History, recent channels); Left/Right move along the
 //!   row, OK opens or plays the tile, Up opens the playback panel, Down the player menu.
 //! - **Playback panel** (Up from the info panel, catch-up or a live channel with an archive): a
 //!   seek bar where Left/Right seek by the skip step (held: faster), sent as one seek once the
-//!   presses stop, and below it prev/rewind/pause/forward/next, restart and Live.
+//!   presses stop, and below it prev/rewind/pause/forward/next, restart and Live. The tile row
+//!   is hidden while it is up; Down from the buttons brings the info panel back.
 //! - **Programme card** (long Right): the programme on screen, top right; Right steps on to the
 //!   next ones, Left back.
 //!
@@ -125,7 +126,8 @@ pub struct PlayerScreen {
     hide_at_ms: Option<u64>,
     transport: Transport,
     number: Option<NumberEntry>,
-    /// The channel just asked for, until playback reports it.
+    /// The channel just asked for, until playback reports it (or the next tick finds it was not
+    /// played).
     pending: Option<ChannelKey>,
     /// The stored data changed: the next sync reads the channel and its guide again.
     reread: bool,
@@ -254,6 +256,7 @@ impl PlayerScreen {
             (Key::Right, Press::Short) => self.last_channel(data, now_ms, out),
             (Key::Right, Press::Long) => self.open_card(data),
             (Key::Back, Press::Short) => out.navigate.push(Navigate::Guide),
+            (Key::Back, Press::Long) => out.navigate.push(Navigate::Settings),
             _ => self.key_common(key, press, data, now_ms, out),
         }
     }
@@ -436,7 +439,8 @@ impl PlayerScreen {
         };
     }
 
-    /// Show a panel with the tile row, reading the row afresh when it was not up.
+    /// Show the info or the playback panel, reading the tile row afresh when neither was up (the
+    /// playback panel hides the row, but Down from it shows the info panel's).
     fn open(&mut self, overlay: Overlay, data: &dyn TvData, now_ms: u64) {
         let had_tiles = matches!(self.overlay, Overlay::Info { .. } | Overlay::Playback);
         self.overlay = overlay;
@@ -496,9 +500,16 @@ impl PlayerScreen {
         let len = list.len() as i32;
         let current = self.current_key();
         let at = current.and_then(|k| list.iter().position(|c| c.key == k));
-        let next = match at {
-            Some(i) => (i as i32 + dir).rem_euclid(len) as usize,
+        let first = match at {
+            Some(i) => i as i32 + dir,
             None => 0,
+        };
+        // Zapping steps over the channels the parental PIN locks.
+        let Some(next) = (0..len)
+            .map(|n| (first + n * dir.signum()).rem_euclid(len) as usize)
+            .find(|&i| !data.locked(&list[i]))
+        else {
+            return;
         };
         if Some(list[next].key) != current {
             self.play(list[next].key, data, now_ms, out);
@@ -639,9 +650,10 @@ impl Screen for PlayerScreen {
         let seek_bar = self.overlay == Overlay::Playback && self.transport.focus == Focus::Seek;
         match (self.overlay, key) {
             (_, Key::FastForward | Key::Rewind) => Hold::Repeat,
-            (Overlay::Hidden | Overlay::Banner, Key::Ok | Key::Up | Key::Left | Key::Right) => {
-                Hold::Long
-            }
+            (
+                Overlay::Hidden | Overlay::Banner,
+                Key::Ok | Key::Up | Key::Left | Key::Right | Key::Back,
+            ) => Hold::Long,
             (Overlay::Info { .. }, Key::Ok) => Hold::Long,
             (Overlay::Info { .. }, Key::Left | Key::Right) => Hold::Repeat,
             (Overlay::Playback, Key::Left | Key::Right) if seek_bar => Hold::Repeat,
@@ -687,6 +699,15 @@ impl Screen for PlayerScreen {
     /// Send a finished seek burst or channel number, hide a timed-out panel, follow what
     /// playback reports. A tick inside the same programme reads no guide.
     fn tick(&mut self, data: &dyn TvData, now_ms: u64) -> Output {
+        // The shell carries out a key's play before any tick: a channel asked for that playback
+        // does not report by now was held back for the parental PIN (or is gone), and the panels
+        // and the channel menu go back to what really plays.
+        if self
+            .pending
+            .is_some_and(|k| data.playback().channel != Some(k))
+        {
+            self.pending = None;
+        }
         let mut out = Output::default();
         if self
             .number
@@ -759,7 +780,12 @@ impl Screen for PlayerScreen {
     }
 
     /// Channel names and numbers and the guide are read again; an open panel shows them now.
+    /// A zap group the data no longer has (a custom group renamed or deleted, a playlist group
+    /// gone) gives way to every channel.
     fn refresh(&mut self, data: &dyn TvData) {
+        if !data.all_groups().contains(&self.group) {
+            self.zap_through(Some(Group::All), None, data);
+        }
         self.reread = true;
         if self.overlay != Overlay::Hidden {
             self.sync(data, true);

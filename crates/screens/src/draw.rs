@@ -137,11 +137,14 @@ impl Piece {
     }
 }
 
-/// Paint a display list, with the channel logos `logos` has loaded.
+/// Paint a display list, with the channel logos `logos` has loaded. Colours go through
+/// [`theme::ink`], so the accent roles paint in the accent picked now.
 pub fn paint(pieces: &[Piece], p: Painter, logos: &dyn Logos) {
     for piece in pieces {
         match piece {
-            Piece::Fill { r, rad, top, bot } => p.rect(*r, *rad, *top, *bot, 0.0),
+            Piece::Fill { r, rad, top, bot } => {
+                p.rect(*r, *rad, theme::ink(*top), theme::ink(*bot), 0.0)
+            }
             Piece::Text {
                 s,
                 x,
@@ -151,7 +154,7 @@ pub fn paint(pieces: &[Piece], p: Painter, logos: &dyn Logos) {
                 color,
                 h,
                 v,
-            } => draw_text(p, s, *x, *y, *size, *bold, *color, *h, *v),
+            } => draw_text(p, s, *x, *y, *size, *bold, theme::ink(*color), *h, *v),
             Piece::Icon { icon, r, tint } => icons::draw(p, *icon, *r, *tint),
             Piece::Logo {
                 channel,
@@ -162,7 +165,7 @@ pub fn paint(pieces: &[Piece], p: Painter, logos: &dyn Logos) {
             } => match channel.as_deref().and_then(|c| logo_fit(logos, c, *r)) {
                 Some((tex, fitted)) => p.tex(tex, fitted, radius::CELL, theme::TEXT),
                 None => {
-                    p.rrect(*r, radius::CELL, radius::CELL, *tile);
+                    p.rrect(*r, radius::CELL, radius::CELL, theme::ink(*tile));
                     let (x, y) = (r.x + r.w * 0.5, r.y + r.h * 0.5);
                     let (h, v) = (HAlign::Center, VAlign::Middle);
                     draw_text(p, fallback, x, y, *size, true, theme::TEXT_MUTED, h, v);

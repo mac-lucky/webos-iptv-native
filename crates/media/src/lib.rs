@@ -21,9 +21,10 @@ pub mod curlio; // the HTTPS media plane: a remote file pulled by byte range ove
 #[macro_use]
 pub mod ff; // THE demuxer -- the FFmpeg 9.0 this app BUNDLES and pins (majors 63/63/61), dlopen'd by absolute path beside the binary, never the television's
 pub mod hls; // HLS in Rust (the bundled FFmpeg has no hls demuxer): playlists, variant choice, live reload, AES-128, one byte stream for the demuxer
-pub mod headers; // a stream's request headers (Stremio `behaviorHints.proxyHeaders.request`), checked once
+pub mod headers; // a stream's request headers (the playlist's `#EXTVLCOPT` / `#EXTHTTP`), checked once
 pub mod player; // buffer-feed video engine
 pub mod playback; // IPTV playback: the API the application shell drives (live, catch-up, watchdog)
 pub mod prefs; // the viewer's playback preferences, as the player reads them
 pub mod session; // PlaybackStart / PlaybackSession / PlaybackObserver: the seam to the layer above
 pub mod stream; // the stream declaration, Dolby Vision presentation and the audio-feed policy
+pub mod subtitles; // the subtitle tracks, the viewer's pick and the decoded cues waiting for their time

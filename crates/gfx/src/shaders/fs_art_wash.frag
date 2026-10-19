@@ -18,7 +18,7 @@
 // and the wash takes its noise BEFORE the photograph is laid over it, as it did as a layer. What
 // differs is 8-bit rounding: one quantisation where the layers made three.
 //
-// Pairs with vs_ambient.vert built with SN_ART_WASH (and SN_DITHER_NC): v_col IS the wash's
+// Pairs with vs_ambient.vert built with WI_ART_WASH (and WI_DITHER_NC): v_col IS the wash's
 // per-vertex field over the same mesh, and v_cuv the art quad's own texture coordinate.
 precision mediump float;
 varying vec4 v_col;
@@ -29,6 +29,6 @@ varying float v_inka;  // the ink ramp's alpha here (0 where the screen has no r
 uniform vec3 u_ink;    // the ramp's ink, carrying the painter's rgb gain
 void main(){
   vec4 c = texture2D(u_tex, v_cuv);
-  vec3 g = mix(sn_dither(v_col.rgb), c.rgb * u_tint.rgb, c.a * u_tint.a);
+  vec3 g = mix(wi_dither(v_col.rgb), c.rgb * u_tint.rgb, c.a * u_tint.a);
   gl_FragColor = vec4(mix(g, u_ink, v_inka), 1.0);
 }

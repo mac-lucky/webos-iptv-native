@@ -255,6 +255,71 @@ fn inherits_a_header_catchup_source_only_for_the_header_mode() {
     );
 }
 
+fn correction_secs(text: &str) -> Vec<i32> {
+    channels(text)
+        .iter()
+        .map(|c| c.catchup.correction_secs)
+        .collect()
+}
+
+#[test]
+fn reads_catchup_correction_hours_from_the_entry_else_the_header() {
+    let chs = channels(concat!(
+        "#EXTM3U catchup-correction=\"-2.5\"\n",
+        "#EXTINF:0 catchup=\"shift\" catchup-correction=\"1.5\",Entry\n",
+        "http://host/a.m3u8\n",
+        "#EXTINF:0 catchup=\"shift\",Header\n",
+        "http://host/b.m3u8\n",
+        "#EXTINF:0 catchup-correction=\"\",Empty\n",
+        "http://host/c.m3u8\n",
+        // Declared but not a number: 0, as Kodi's atof reads it, and the header does not apply.
+        "#EXTINF:0 catchup-correction=\"soon\",Malformed\n",
+        "http://host/d.m3u8\n",
+    ));
+    let secs: Vec<i32> = chs.iter().map(|c| c.catchup.correction_secs).collect();
+    assert_eq!(secs, [5_400, -9_000, -9_000, 0]);
+    assert!(chs[0].extra.is_empty(), "{:?}", chs[0].extra);
+}
+
+#[test]
+fn catchup_correction_is_zero_when_absent() {
+    assert_eq!(
+        correction_secs("#EXTM3U\n#EXTINF:0 catchup=\"shift\",Alpha\nhttp://host/a.m3u8"),
+        [0]
+    );
+    assert_eq!(
+        correction_secs("#EXTINF:0 catchup=\"shift\",Alpha\nhttp://host/a.m3u8"),
+        [0]
+    );
+}
+
+#[test]
+fn reads_catchup_correction_like_atof_within_a_day() {
+    for (value, secs) in [
+        ("-2", -7_200),
+        ("+1", 3_600),
+        ("-4.0", -14_400),
+        ("0.25", 900),
+        ("-.5", -1_800),
+        ("2.", 7_200),
+        (" 3", 10_800),
+        ("1.5h", 5_400),
+        ("1.2.3", 4_320),
+        // A second's fraction is truncated, as Kodi casts to int.
+        ("0.0001", 0),
+        ("-0.0001", 0),
+        ("24", 86_400),
+        ("-24", -86_400),
+        ("24.5", 0),
+        ("99999999999999999999", 0),
+        ("-", 0),
+        (".", 0),
+    ] {
+        let text = format!("#EXTM3U\n#EXTINF:0 catchup-correction=\"{value}\",A\nhttp://host/a");
+        assert_eq!(correction_secs(&text), [secs], "{value:?}");
+    }
+}
+
 #[test]
 fn matches_attribute_names_without_regard_to_case() {
     let (playlist, _) = parsed(concat!(

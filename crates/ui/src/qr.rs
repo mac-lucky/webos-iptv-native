@@ -155,7 +155,7 @@ mod tests {
         fn line_h(&self, _: i32) -> f32 { LINK_LINE_H }
     }
 
-    const ADDRESS: &str = "github.com/example/sn-app\n/blob/main/docs/localization.md";
+    const ADDRESS: &str = "github.com/example/wi-app\n/blob/main/docs/localization.md";
 
     #[test]
     fn qr_link_preserves_code_size_and_centres_text_within_its_width() {

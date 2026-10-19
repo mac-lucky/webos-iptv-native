@@ -1,12 +1,12 @@
 //! **The seam between the media layer and whoever decides what to play.**
 //!
 //! Everything a playback needs from above arrives here as plain data, at start, in one
-//! [`PlaybackStart`]: the stream URL and the request headers its addon names, where to start, which
+//! [`PlaybackStart`]: the stream URL and the request headers its playlist names, where to start, which
 //! audio track, and - optionally - what the stream is ([`StreamDeclaration`]). Left
 //! out, the player probes the stream itself before it builds the Load (`player::probe`, then
-//! [`PlaybackSession::resolve`]); Stremio describes a stream, never its codecs. The device's own
+//! [`PlaybackSession::resolve`]); a playlist describes a stream, never its codecs. The device's own
 //! capabilities are read from `tv_platform` (`devcaps`, `tv::sandbox`), never passed. Everything the media layer reports back leaves through one
-//! [`PlaybackObserver`] the start carries — nothing here knows what an addon, a library or a
+//! [`PlaybackObserver`] the start carries — nothing here knows what a playlist, a guide or a
 //! watch-history is.
 //!
 //! [`PlaybackSession`] is the main-thread value the player machine owns
@@ -45,7 +45,7 @@ pub struct PlaybackStart {
     /// derive_declaration`). `None`: the file's audio choice.
     pub tracks: Option<tv_base::tracks::TrackPrefs>,
     /// What the stream is, as the Load must declare it — an OVERRIDE. `None` (the default, and
-    /// what a Stremio stream has): the player probes the stream with the bundled demuxer before
+    /// what a playlist channel has): the player probes the stream with the bundled demuxer before
     /// it builds the Load, and derives this from what the container says.
     pub stream: Option<StreamDeclaration>,
     /// A background preview (the detail page's trailer), not a playback: no observer reports and

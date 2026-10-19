@@ -1,0 +1,22 @@
+{
+  "parental.change_pin": "Zmień PIN",
+  "parental.channel_locked": "Kanał zablokowany",
+  "parental.channel_unlocked": "Kanał odblokowany",
+  "parental.confirm_pin": "Wpisz nowy PIN jeszcze raz",
+  "parental.enter_pin": "Wpisz PIN",
+  "parental.full": "Za dużo zablokowanych pozycji",
+  "parental.group_locked": "Grupa zablokowana",
+  "parental.group_unlocked": "Grupa odblokowana",
+  "parental.hint": "Klawisze numeryczne albo Góra i Dół, potem OK",
+  "parental.lock_channel": "Zablokuj kanał",
+  "parental.lock_group": "Zablokuj grupę",
+  "parental.locked_channels": "Zablokowane kanały",
+  "parental.locked_groups": "Zablokowane grupy",
+  "parental.mismatch": "Kody PIN się różnią",
+  "parental.new_pin": "Wpisz nowy PIN",
+  "parental.pin_changed": "Zmieniono PIN",
+  "parental.title": "Kontrola rodzicielska",
+  "parental.unlock_channel": "Odblokuj kanał",
+  "parental.unlock_group": "Odblokuj grupę",
+  "parental.wrong_pin": "Błędny PIN, spróbuj ponownie"
+}

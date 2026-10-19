@@ -123,7 +123,7 @@ pub enum Role {
 /// A value rather than four branches inside `draw`, because the one property that must not drift
 /// is unobservable from a host test the moment it is expressed as GL calls: at `weight == 0`, and
 /// on an unlatched field, this surface is the flat scrim the app already drew, to the last bit.
-/// A field tinted to `[0,0,0,a]` is NOT that — `sn_dither` would add its ±1 LSB of noise to a
+/// A field tinted to `[0,0,0,a]` is NOT that — `wi_dither` would add its ±1 LSB of noise to a
 /// surface whose whole content is one code — so the flat path is a different draw, not a special
 /// case of the same one.
 #[derive(Clone, Copy, PartialEq, Debug)]

@@ -47,6 +47,14 @@
     "value": "Hidden groups",
     "description": "Setting: playlist groups hidden from the groups panel"
   },
+  "settings.history_keep": {
+    "value": "Keep History for",
+    "description": "Setting: how long a History entry is kept after its programme ends"
+  },
+  "settings.history_min": {
+    "value": "Add to History after",
+    "description": "Setting: how long a catch-up programme plays before it is added to History"
+  },
   "settings.info_on_zap": {
     "value": "Show info on channel change",
     "description": "Setting: show the info banner after switching channels"

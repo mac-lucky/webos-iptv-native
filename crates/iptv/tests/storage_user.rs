@@ -5,7 +5,7 @@ mod common;
 
 use common::TempDir;
 use iptv::model::{ChannelKey, Timestamp};
-use iptv::storage::{HistoryEntry, Storage, DB_FILE, HISTORY_DAYS, RECENT_CAP};
+use iptv::storage::{HistoryEntry, Storage, DB_FILE, HISTORY_DAYS, HISTORY_MIN_SECS, RECENT_CAP};
 
 const HOUR: i64 = 3600;
 const DAY: i64 = 86_400;
@@ -57,6 +57,20 @@ fn favourites_keep_the_order_they_were_added_in() {
     s.toggle_favourite(key(1)).unwrap();
     s.toggle_favourite(key(1)).unwrap();
     assert_eq!(s.favourites().unwrap(), [key(3), key(2), key(1)]);
+}
+
+#[test]
+fn set_favourites_replaces_them_in_the_order_given() {
+    let s = storage();
+    for n in [1, 2, 3] {
+        s.toggle_favourite(key(n)).unwrap();
+    }
+    s.set_favourites(&[key(5), key(2), key(5), key(4)]).unwrap();
+    assert_eq!(s.favourites().unwrap(), [key(5), key(2), key(4)]);
+    s.toggle_favourite(key(1)).unwrap();
+    assert_eq!(s.favourites().unwrap(), [key(5), key(2), key(4), key(1)]);
+    s.set_favourites(&[]).unwrap();
+    assert_eq!(s.favourites().unwrap(), []);
 }
 
 // --- recent channels ---------------------------------------------------------------------
@@ -308,21 +322,65 @@ fn the_database_files_are_private() {
 
 #[test]
 fn does_not_keep_a_position_under_the_resume_minimum() {
-    // ported (two cases)
+    // ported (two cases; the web app's minimum was 15 s, ours is the history setting, 10 s)
     let s = storage();
+    assert_eq!(s.history_min_secs().unwrap(), 10);
     let early = HistoryEntry {
-        position_secs: 14,
+        position_secs: 9,
         ..entry(1)
     };
     s.save_progress(&early, NOW).unwrap();
     assert_eq!(s.progress(key(1), NOW - HOUR, NOW).unwrap(), None);
-    s.save_progress(&entry(1), NOW).unwrap();
+    let ten = HistoryEntry {
+        position_secs: 10,
+        ..entry(1)
+    };
+    s.save_progress(&ten, NOW).unwrap();
+    assert!(s.progress(key(1), NOW - HOUR, NOW).unwrap().is_some());
     let restarted = HistoryEntry {
         position_secs: 5,
         ..entry(1)
     };
     s.save_progress(&restarted, NOW).unwrap();
     assert_eq!(s.progress(key(1), NOW - HOUR, NOW).unwrap(), None);
+}
+
+#[test]
+fn the_resume_minimum_follows_its_setting() {
+    let s = storage();
+    s.set_setting(HISTORY_MIN_SECS, "30").unwrap();
+    s.save_progress(&entry(1), NOW).unwrap();
+    let short = HistoryEntry {
+        position_secs: 29,
+        ..entry(2)
+    };
+    s.save_progress(&short, NOW).unwrap();
+    let keys: Vec<_> = s.history(NOW).unwrap().iter().map(|e| e.key).collect();
+    assert_eq!(keys, [key(1)], "60 s in is kept, 29 s is not");
+    // Out of range reads clamp; garbage reads as the default.
+    s.set_setting(HISTORY_MIN_SECS, "0").unwrap();
+    assert_eq!(s.history_min_secs().unwrap(), 1);
+    s.set_setting(HISTORY_MIN_SECS, "lots").unwrap();
+    assert_eq!(s.history_min_secs().unwrap(), 10);
+}
+
+#[test]
+fn a_new_keep_days_redates_the_stored_history_at_once() {
+    let s = storage();
+    s.save_progress(&entry(1), NOW).unwrap();
+    let stop = NOW + HOUR;
+    let kept_at = |at| s.progress(key(1), NOW - HOUR, at).unwrap().is_some();
+    assert!(kept_at(stop + 6 * DAY));
+    s.set_setting(HISTORY_DAYS, "1").unwrap();
+    assert!(kept_at(stop + DAY - 1));
+    assert!(!kept_at(stop + 2 * DAY), "a shorter keep drops it at once");
+    s.set_setting(HISTORY_DAYS, "14").unwrap();
+    assert!(kept_at(stop + 13 * DAY), "a longer one brings it back");
+    s.remove_setting(HISTORY_DAYS).unwrap();
+    assert!(
+        kept_at(stop + 6 * DAY) && !kept_at(stop + 7 * DAY),
+        "the default again"
+    );
 }
 
 #[test]

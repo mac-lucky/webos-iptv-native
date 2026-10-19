@@ -12,7 +12,7 @@
 //! **What is real here and what is not.** Real: the file (written by the `ffmpeg` CLI, then read
 //! back with `ffprobe` to prove the fixture has the shape it claims), the HTTP transport (a
 //! loopback server honouring `Range`, as the AVIO's `seek_cb` needs), the bundled FFmpeg that
-//! `ff.rs` ships (the host build `make check-ffmpeg` stages - see `ff_test_support.rs`),
+//! `ff.rs` ships (the host build `cargo xtask ffmpeg --host` stages - see `ff_test_support.rs`),
 //! `ff::demux` itself, and `AuQueue` with the production video cap. Not real: the consumer. Nothing
 //! pops the video lane, exactly as on the television before the clock starts, and the test pops the
 //! AUDIO lane itself. The second stall the fix addresses (`feed_audio_lane` dropping the late AU as
@@ -36,9 +36,9 @@
 //! Like every real-demux `ff` test, it needs the host FFmpeg libraries, so it is `#[ignore]`d in the
 //! plain suite. It skips (returns, loudly) when the `ffmpeg` / `ffprobe` command line tools are
 //! absent. Run it with:
-//! `cd rust-modules && SN_FFMPEG_DIR=<dir holding libav*-wi.*.dylib> CARGO_INCREMENTAL=0
-//! cargo +nightly test --lib -p tv_media ff::late_audio_tests -- --ignored`
-//! (`make check-ffmpeg` stages the libraries into `pkg/`, which is the default directory).
+//! `cargo test --lib -p tv_media ff::late_audio_tests -- --ignored` after `cargo xtask ffmpeg
+//! --host`, which stages the libraries into `pkg/`, the default directory (`WEBOSIPTV_FFMPEG_DIR`
+//! names another).
 
 use super::*;
 use super::test_support::bind_host_ffmpeg;
@@ -78,7 +78,7 @@ pub(super) struct Scratch(pub(super) PathBuf);
 
 impl Scratch {
     pub(super) fn new(tag: &str) -> Scratch {
-        let dir = std::env::temp_dir().join(format!("sn-late-audio-{}-{tag}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("wi-late-audio-{}-{tag}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create the scratch directory");
         Scratch(dir)

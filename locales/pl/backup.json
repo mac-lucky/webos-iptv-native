@@ -1,0 +1,13 @@
+{
+  "backup.title": "Kopia zapasowa",
+  "backup.export": "Eksportuj ustawienia",
+  "backup.import": "Importuj ustawienia",
+  "backup.import_question": "Zastąpić ustawienia i ulubione?",
+  "backup.import_confirm": "Importuj i zastąp",
+  "backup.exported": "Ustawienia wyeksportowane",
+  "backup.export_failed": "Nie udało się wyeksportować ustawień",
+  "backup.imported": "Ustawienia zaimportowane",
+  "backup.none": "Brak kopii zapasowej na tym telewizorze",
+  "backup.newer": "Kopia pochodzi z nowszej wersji aplikacji",
+  "backup.invalid": "Plik kopii zapasowej jest nieprawidłowy"
+}

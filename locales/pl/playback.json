@@ -1,0 +1,21 @@
+{
+  "playback.audio_offset": "Przesunięcie dźwięku",
+  "playback.default_audio_offset": "Domyślne przesunięcie dźwięku",
+  "playback.display_16_9": "16:9",
+  "playback.display_4_3": "4:3",
+  "playback.display_fill": "Wypełnienie",
+  "playback.display_mode": "Tryb wyświetlania",
+  "playback.display_normal": "Normalny",
+  "playback.sleep_cancelled": "Wyłącznik czasowy wyłączony",
+  "playback.sleep_done": "Wyłącznik czasowy zatrzymał odtwarzanie",
+  "playback.sleep_left": {
+    "one": "Została {count} min",
+    "few": "Zostały {count} min",
+    "many": "Zostało {count} min",
+    "other": "Zostało {count} min"
+  },
+  "playback.sleep_off": "Wyłączony",
+  "playback.sleep_set": "Odtwarzanie zatrzyma się za {minutes} min",
+  "playback.sleep_soon": "Odtwarzanie zatrzyma się za minutę",
+  "playback.sleep_timer": "Wyłącznik czasowy"
+}

@@ -1,7 +1,7 @@
 //! The software decode -> PCM path through the FFmpeg the app SHIPS, built for this machine with
-//! the same component list (`cargo xtask ffmpeg --host`, which stages it in `pkg/`; `SN_FFMPEG_DIR`
-//! names another directory). The tests skip, loudly, when it is not staged, and the demux tests
-//! also without the `ffmpeg` CLI that writes their fixtures. Run alone with
+//! the same component list (`cargo xtask ffmpeg --host`, which stages it in `pkg/`;
+//! `WEBOSIPTV_FFMPEG_DIR` names another directory). The tests skip, loudly, when it is not staged,
+//! and the demux tests also without the `ffmpeg` CLI that writes their fixtures. Run alone with
 //! `cargo test -p tv_media --lib ff::adec_tests -- --nocapture`.
 
 use super::adec::{self, PcmFeed};
@@ -407,14 +407,14 @@ fn a_packet_that_decodes_to_minutes_of_pcm_is_cut_at_a_second() {
 }
 
 /// **The CPU budget, measured through the shipping path** (the bundled FFmpeg): decode +
-/// resample cost per second of audio, single-threaded, for each file in `SN_ADEC_BENCH` (a
+/// resample cost per second of audio, single-threaded, for each file in `WEBOSIPTV_ADEC_BENCH` (a
 /// `:`-separated list of `path=channels`). Prints, asserts nothing but that it decoded.
 #[test]
-#[ignore = "a measurement: set SN_ADEC_BENCH and run with --nocapture"]
+#[ignore = "a measurement: set WEBOSIPTV_ADEC_BENCH and run with --nocapture"]
 fn soft_decode_cost_per_second_of_audio() {
     let _g = tv_base::testlock::serial();
-    let Ok(list) = std::env::var("SN_ADEC_BENCH") else {
-        eprintln!("SKIP: SN_ADEC_BENCH not set");
+    let Ok(list) = std::env::var("WEBOSIPTV_ADEC_BENCH") else {
+        eprintln!("SKIP: WEBOSIPTV_ADEC_BENCH not set");
         return;
     };
     let Some(_b) = Bound::new() else { return };

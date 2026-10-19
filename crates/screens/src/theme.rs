@@ -5,6 +5,7 @@
 //! literal; colours are `[f32; 4]` RGBA and sizes are the `c_int` pixel sizes `Painter::text`
 //! takes, with [`REGULAR`] or [`BOLD`] for its `bold` argument. The bundled face is Inter.
 
+use std::cell::Cell;
 use std::os::raw::c_int;
 use tv_gfx::gfx::tokens::{rgb8, with_a};
 
@@ -36,10 +37,100 @@ pub const TEXT_ON_FOCUS_MUTED: [f32; 4] = rgb8(0x33, 0x32, 0x37);
 // Accent.
 
 /// The playing channel's number, name and play mark, and the catch-up seek bar.
+///
+/// The value is [`Accent::Blue`]'s. A screen names the role and [`ink`] paints it in the accent
+/// picked in Settings, so a display list built before a change paints the new accent.
 pub const ACCENT: [f32; 4] = rgb8(0x30, 0x99, 0xf0);
 /// The accent as text on the dark ground: the clock, the programme on now in lists, the guide's
-/// now dot.
+/// now dot. Painted through [`ink`] like [`ACCENT`].
 pub const ACCENT_TEXT: [f32; 4] = rgb8(0xae, 0xd0, 0xf8);
+
+/// The accent colours Settings offers, as TiviMate's tones; blue by default.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Accent {
+    #[default]
+    Blue,
+    Green,
+    Red,
+    Orange,
+    Purple,
+    Teal,
+}
+
+impl Accent {
+    pub const ALL: [Accent; 6] = [
+        Accent::Blue,
+        Accent::Green,
+        Accent::Red,
+        Accent::Orange,
+        Accent::Purple,
+        Accent::Teal,
+    ];
+
+    /// The value the setting stores.
+    pub const fn key(self) -> &'static str {
+        match self {
+            Accent::Blue => "blue",
+            Accent::Green => "green",
+            Accent::Red => "red",
+            Accent::Orange => "orange",
+            Accent::Purple => "purple",
+            Accent::Teal => "teal",
+        }
+    }
+
+    /// The accent stored as `key`; `None` for anything else.
+    pub fn from_key(key: &str) -> Option<Accent> {
+        Self::ALL.into_iter().find(|a| a.key() == key)
+    }
+
+    /// The fill ([`ACCENT`]'s role) and the text tone on the dark ground ([`ACCENT_TEXT`]'s).
+    pub const fn colors(self) -> ([f32; 4], [f32; 4]) {
+        match self {
+            Accent::Blue => (ACCENT, ACCENT_TEXT),
+            Accent::Green => (rgb8(0x3f, 0xb7, 0x6a), rgb8(0xb2, 0xe3, 0xc2)),
+            Accent::Red => (rgb8(0xef, 0x53, 0x50), rgb8(0xf8, 0xb9, 0xb7)),
+            Accent::Orange => (rgb8(0xf2, 0x89, 0x2e), rgb8(0xf9, 0xcf, 0xa6)),
+            Accent::Purple => (rgb8(0xa4, 0x77, 0xf2), rgb8(0xd6, 0xc5, 0xf9)),
+            Accent::Teal => (rgb8(0x22, 0xaa, 0xa0), rgb8(0xa6, 0xde, 0xd9)),
+        }
+    }
+}
+
+thread_local! {
+    /// The accent picked in Settings. Per thread: the shell and the painter share the main
+    /// thread, and each host test picks its own.
+    static PICKED: Cell<Accent> = const { Cell::new(Accent::Blue) };
+}
+
+/// Paint the accent roles in `accent` from the next frame on (the shell, from the setting).
+pub fn set_accent(accent: Accent) {
+    PICKED.with(|p| p.set(accent));
+}
+
+/// The accent the roles are painted in.
+pub fn accent() -> Accent {
+    PICKED.with(Cell::get)
+}
+
+/// `c` as painted: [`ACCENT`] and [`ACCENT_TEXT`] in the picked accent, keeping `c`'s alpha;
+/// every other colour as it is. The display-list and icon painters call it, so screens name
+/// the roles and never resolve them; a direct `Painter` call with an accent role wraps it.
+pub fn ink(c: [f32; 4]) -> [f32; 4] {
+    let picked = accent();
+    if picked == Accent::Blue {
+        return c;
+    }
+    let (fill, text) = picked.colors();
+    let rgb = |x: [f32; 4]| [x[0], x[1], x[2]];
+    if rgb(c) == rgb(ACCENT) {
+        with_a(fill, c[3])
+    } else if rgb(c) == rgb(ACCENT_TEXT) {
+        with_a(text, c[3])
+    } else {
+        c
+    }
+}
 
 // Bars and badges.
 
@@ -151,6 +242,73 @@ mod tests {
             let c = contrast(fg, bg);
             assert!(c >= floor, "{fg:?} on {bg:?}: {c:.2} < {floor}");
         }
+    }
+
+    #[test]
+    fn every_accent_reads_on_the_ground_and_the_panels() {
+        for accent in Accent::ALL {
+            let (fill, text) = accent.colors();
+            for (fg, bg, floor) in [(fill, BG, 4.5), (text, BG, 7.0), (text, PANEL, 4.5)] {
+                let c = contrast(fg, bg);
+                assert!(c >= floor, "{accent:?} {fg:?} on {bg:?}: {c:.2} < {floor}");
+            }
+        }
+    }
+
+    #[test]
+    fn accents_round_trip_through_their_stored_keys() {
+        for accent in Accent::ALL {
+            assert_eq!(Accent::from_key(accent.key()), Some(accent));
+        }
+        assert_eq!(Accent::from_key("pink"), None);
+        assert_eq!(Accent::default(), Accent::Blue);
+    }
+
+    #[test]
+    fn ink_paints_the_accent_roles_in_the_picked_accent() {
+        let muted = with_a(ACCENT, 0.5);
+        assert_eq!(accent(), Accent::Blue, "a thread starts on blue");
+        assert_eq!(ink(ACCENT), ACCENT);
+        set_accent(Accent::Green);
+        let (fill, text) = Accent::Green.colors();
+        assert_eq!(ink(ACCENT), fill);
+        assert_eq!(ink(ACCENT_TEXT), text);
+        assert_eq!(ink(muted), with_a(fill, 0.5), "alpha kept");
+        for other in [TEXT, BG, FOCUS, PROGRESS, SEEK_TRACK] {
+            assert_eq!(ink(other), other);
+        }
+        set_accent(Accent::Blue);
+        assert_eq!(ink(ACCENT_TEXT), ACCENT_TEXT);
+    }
+
+    #[test]
+    fn a_display_list_built_before_a_change_paints_the_new_accent() {
+        use crate::data::fake::Mono;
+        use crate::data::Group;
+        use crate::draw::Piece;
+        use crate::groups::{Frame, GroupsPanel};
+        let frame = Frame {
+            w: 615.0,
+            pill_x: 144.0,
+        };
+        let groups = vec![Group::Favorites, Group::All, Group::History];
+        let mut panel = GroupsPanel::new(groups, &Group::All, frame);
+        panel.key(crate::input::Key::Down, false);
+        panel.prepare(&Mono);
+        let painted = || -> Vec<(String, [f32; 4])> {
+            let texts = panel.pieces().iter().filter_map(|p| match p {
+                Piece::Text { s, color, .. } => Some((s.to_string_lossy().into(), ink(*color))),
+                _ => None,
+            });
+            texts.collect()
+        };
+        let shown = |t: &[(String, [f32; 4])]| t.iter().find(|t| t.0 == "All channels").unwrap().1;
+        assert_eq!(shown(&painted()), ACCENT_TEXT, "built and painted in blue");
+        set_accent(Accent::Purple);
+        let after = painted();
+        assert_eq!(shown(&after), Accent::Purple.colors().1, "the same list");
+        assert!(after.iter().any(|t| t.1 == TEXT), "the rest as it was");
+        set_accent(Accent::Blue);
     }
 
     #[test]

@@ -36,7 +36,6 @@ mod geom {
     /// The catch-up position line of the info panel.
     pub const LINE_Y: f32 = 770.0;
     pub const TILES_Y: f32 = 822.0;
-    pub const TILES_Y_PLAYBACK: f32 = 975.0;
     pub const TILE_W: f32 = 248.0;
     pub const TILE_H: f32 = 168.0;
     pub const TILE_PITCH: f32 = 264.0;
@@ -174,7 +173,7 @@ pub fn build(s: &PlayerScreen, m: &dyn Measure, out: &mut Vec<Piece>) {
                     theme::SEEK_TRACK,
                 ));
             }
-            tiles(out, s, Some(tile), geom::TILES_Y, m);
+            tiles(out, s, tile, m);
             let c = SCR_W * 0.5;
             out.push(Piece::Icon {
                 icon: Icon::ChevronDown,
@@ -182,12 +181,12 @@ pub fn build(s: &PlayerScreen, m: &dyn Measure, out: &mut Vec<Piece>) {
                 tint: theme::TEXT_MUTED,
             });
         }
+        // TiviMate hides the tile row while the seek bar and its buttons are up.
         Overlay::Playback => {
             top_bar(out, &s.header, m);
             scrim(out, geom::PANEL_TOP - 160.0);
             header(out, &s.header, geom::PANEL_TOP, false, m);
             transport(out, s, m);
-            tiles(out, s, None, geom::TILES_Y_PLAYBACK, m);
         }
         Overlay::Card { .. } => card(out, s, m),
     }
@@ -330,18 +329,18 @@ fn header(out: &mut Vec<Piece>, h: &Header, top: f32, with_desc: bool, m: &dyn M
     row.fitted(&h.next_title, size::LABEL, false, theme::TEXT, 0.0);
 }
 
-/// The tile row; `focus` is the focused tile (none while the playback panel has the focus).
-fn tiles(out: &mut Vec<Piece>, s: &PlayerScreen, focus: Option<usize>, top: f32, m: &dyn Measure) {
+/// The info panel's tile row; `focus` is the focused tile.
+fn tiles(out: &mut Vec<Piece>, s: &PlayerScreen, focus: usize, m: &dyn Measure) {
     let tiles = &s.tiles;
     let fits = ((SCR_W - geom::X - geom::TILE_W) / geom::TILE_PITCH) as usize + 1;
-    let first = focus
-        .map_or(0, |f| (f + 2).saturating_sub(fits))
+    let first = (focus + 2)
+        .saturating_sub(fits)
         .min(tiles.len().saturating_sub(fits));
     for (slot, (i, t)) in tiles.iter().enumerate().skip(first).take(fits).enumerate() {
-        let focused = focus == Some(i);
+        let focused = focus == i;
         let base = Rect::new(
             geom::X + slot as f32 * geom::TILE_PITCH,
-            top,
+            geom::TILES_Y,
             geom::TILE_W,
             geom::TILE_H,
         );

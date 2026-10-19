@@ -6,11 +6,15 @@
 |---|---|---|
 | Layer crates `base`, `machine`, `net`, `platform`, `gfx`, `ui`, `media`, `storage`, `build_support` | StremioNative, https://github.com/Morpheus235/stremio-native, commit `008c6ac` | GPL-3.0-or-later |
 | The same crates, upstream of StremioNative | PlxNative, https://github.com/GLinnik21/plx-native | GPL-3.0-or-later |
+| `crates/starfish`, a Rust port of StremioNative's `native/starfish.c` (the LG Starfish, ACB and exported-window seam) | StremioNative, commit `008c6ac`, derived from PlxNative's `src/starfish.c` | GPL-3.0-or-later |
 | Polish UI translations in `locales/pl` reused from its message catalog (`src/i18n/pl.ts`), some modified | webos-iptv-player, Copyright 2026 lennylxx, https://github.com/lennylxx/webos-iptv-player, commit `7d8fd30` | Apache-2.0 (`licenses/Apache-2.0.txt`) |
 
-Crate names were changed from `sn_*` to `tv_*` and product names and app ids were replaced.
-The upstream C sources (boot shim, Starfish seam, nanosvg rasterizer, software audio decoder)
-were not imported; their roles move to Rust. The SVG rasterizer is now resvg (`crates/gfx/src/svg.rs`).
+Crate names were changed from `sn_*` to `tv_*`, the `SNATIVE_*` and `SN_*` environment variables
+to `WEBOSIPTV_*`, the remaining `sn_`/`SN_`/`sn-` symbol, shader and file-name prefixes to
+`wi_`/`WI_`/`wi-`, and product names and app ids were replaced. The upstream C sources (boot
+shim, Starfish seam, nanosvg rasterizer, software audio decoder) were not imported: the Starfish
+seam is ported to Rust in `crates/starfish`, the audio decoder in `crates/media/src/ff_adec.rs`,
+the boot shim in `crates/app`, and the SVG rasterizer is now resvg (`crates/gfx/src/svg.rs`).
 
 ## Assets
 

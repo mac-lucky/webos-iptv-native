@@ -27,11 +27,11 @@ use std::collections::BTreeMap;
 /// ```
 ///
 /// `{"url":"…","probe":true}` declares nothing instead: the stream is probed and decided exactly
-/// as a Stremio stream is. A debug build opens the player on the trigger at boot
+/// as a playlist channel is. A debug build opens the player on the trigger at boot
 /// (`app::boot`), so relaunching the app with the file in place starts the case.
 ///
 /// Deliberately **not** `Debug`: `url` and `headers` are free strings, and a derived `Debug` is how
-/// a credential in either reaches a log the day someone points this trigger at a real addon.
+/// a credential in either reaches a log the day someone points this trigger at a real stream.
 #[derive(serde::Deserialize, Clone)]
 pub struct PlayUrl {
     /// `http(s)://…`.
@@ -63,11 +63,11 @@ pub struct PlayUrl {
     /// The coded raster `[w, h]`, for the H.264 sink envelope. Absent = unknown.
     #[serde(default)]
     pub raster: Option<[u16; 2]>,
-    /// The stream's request headers (`behaviorHints.proxyHeaders.request`).
+    /// The stream's request headers (a playlist's `#EXTVLCOPT` / `#EXTHTTP` ones).
     #[serde(default)]
     pub headers: BTreeMap<String, String>,
     /// Declare nothing and let the player probe the stream (`player::probe` -> `session::resolve`),
-    /// as a Stremio stream does; the codec fields above are then ignored.
+    /// as a playlist channel does; the codec fields above are then ignored.
     #[serde(default)]
     pub probe: bool,
 }
@@ -209,7 +209,7 @@ mod tests {
     }
 
     /// `"probe": true` declares NOTHING: the start is installed unresolved and the real probe ->
-    /// decide path runs, the path every Stremio stream takes. The codec fields are ignored then.
+    /// decide path runs, the path every playlist channel takes. The codec fields are ignored then.
     #[test]
     fn probe_leaves_the_declaration_to_the_probe() {
         let p = super::parse_playurl(r#"{"url":"http://192.0.2.10:8020/a.avi","probe":true,"vcodec":"h264"}"#).unwrap();

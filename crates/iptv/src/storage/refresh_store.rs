@@ -1,5 +1,6 @@
-//! The refresher's [`Store`] on top of [`Storage`]: one playlist, the guides it serves, and the
-//! HTTP validators that let a restart send a conditional GET instead of downloading again.
+//! The refresher's [`Store`] on top of [`Storage`]: the enabled playlists, the guides they serve,
+//! and the HTTP validators that let a restart send a conditional GET instead of downloading
+//! again. A guide is imported with the channels of every enabled playlist it serves.
 
 use std::collections::{HashMap, HashSet};
 use std::io::{BufReader, Read};
@@ -14,14 +15,13 @@ use crate::xmltv::{self, Options};
 
 pub struct RefreshStore {
     storage: Storage,
-    playlist: PlaylistId,
     now: fn() -> Timestamp,
-    /// The stored playlist's channel filter, computed on first use and dropped when a new
-    /// playlist is stored.
-    filter: Option<Filter>,
+    /// The channel filter of each set of enabled playlists a guide serves, computed on first use
+    /// and dropped when a new playlist is stored.
+    filters: HashMap<Vec<PlaylistId>, Filter>,
 }
 
-/// The XMLTV filter the stored playlist gives every guide that serves it (no overrides yet).
+/// The XMLTV filter the stored playlists give a guide that serves them (no overrides yet).
 struct Filter {
     ids: HashSet<String>,
     names: HashSet<String>,
@@ -30,12 +30,11 @@ struct Filter {
 }
 
 impl RefreshStore {
-    pub fn new(storage: Storage, playlist: PlaylistId) -> Self {
+    pub fn new(storage: Storage) -> Self {
         RefreshStore {
             storage,
-            playlist,
             now: unix_now,
-            filter: None,
+            filters: HashMap::new(),
         }
     }
 
@@ -56,14 +55,31 @@ impl RefreshStore {
         Ok(info.map(|info| info.into_source(Vec::new())))
     }
 
-    /// The playlist's filter, taken out of the cache or made for `source` (one that serves the
-    /// playlist); the caller puts it back in `self.filter`.
-    fn take_filter(&mut self, source: &GuideSource) -> Result<Filter> {
-        if let Some(filter) = self.filter.take() {
+    /// The enabled playlists `source` serves, in playlist order.
+    fn served(&self, source: &GuideSource) -> Result<Vec<PlaylistId>> {
+        let playlists = self.storage.playlists()?;
+        Ok(playlists
+            .iter()
+            .filter(|p| p.enabled && source.serves(p.id))
+            .map(|p| p.id)
+            .collect())
+    }
+
+    /// The filter of the `served` playlists, taken out of the cache or made for `source` (one
+    /// that serves them); the caller puts it back with [`RefreshStore::keep_filter`].
+    fn take_filter(&mut self, served: &[PlaylistId], source: &GuideSource) -> Result<Filter> {
+        if let Some(filter) = self.filters.remove(served) {
             return Ok(filter);
         }
-        let channels = self.storage.guide_names(self.playlist)?;
-        let (ids, names) = epg::filter(source, &[(self.playlist, &channels)], &HashMap::new());
+        let channels = served
+            .iter()
+            .map(|&id| Ok((id, self.storage.guide_names(id)?)))
+            .collect::<Result<Vec<_>>>()?;
+        let playlists: Vec<(PlaylistId, &[Channel])> = channels
+            .iter()
+            .map(|(id, list)| (*id, list.as_slice()))
+            .collect();
+        let (ids, names) = epg::filter(source, &playlists, &HashMap::new());
         let fingerprint = fingerprint(&ids, &names);
         Ok(Filter {
             ids,
@@ -72,17 +88,22 @@ impl RefreshStore {
         })
     }
 
+    fn keep_filter(&mut self, served: Vec<PlaylistId>, filter: Filter) {
+        self.filters.insert(served, filter);
+    }
+
     /// The filter fingerprint of the guide at `url`; `None` for a URL that is not a guide.
     fn fingerprint(&mut self, url: &str) -> Result<Option<i64>> {
         let Some(source) = self.guide(url)? else {
             return Ok(None);
         };
-        if !source.serves(self.playlist) {
+        let served = self.served(&source)?;
+        if served.is_empty() {
             return Ok(Some(fingerprint(&HashSet::new(), &HashSet::new())));
         }
-        let filter = self.take_filter(&source)?;
+        let filter = self.take_filter(&served, &source)?;
         let fingerprint = filter.fingerprint;
-        self.filter = Some(filter);
+        self.keep_filter(served, filter);
         Ok(Some(fingerprint))
     }
 
@@ -131,25 +152,35 @@ impl RefreshStore {
         Ok(())
     }
 
+    /// The guides the enabled playlists' headers name, in playlist order, each once.
     fn header_guides(&self) -> Result<Vec<String>> {
         let mut stmt = self.storage.conn.prepare_cached(
             "SELECT s.url FROM guide_source s
              JOIN guide_source_playlist l ON l.source_id = s.id
              WHERE l.playlist_id = ?1 AND s.manual = 0 ORDER BY l.position",
         )?;
-        let urls = stmt.query_map([self.playlist], |row| row.get(0))?;
-        urls.collect()
+        let mut urls: Vec<String> = Vec::new();
+        for playlist in self.storage.playlists()?.iter().filter(|p| p.enabled) {
+            for url in stmt.query_map([playlist.id], |row| row.get::<_, String>(0))? {
+                let url = url?;
+                if !urls.contains(&url) {
+                    urls.push(url);
+                }
+            }
+        }
+        Ok(urls)
     }
 
-    /// Imports the guide of `source` (one serving the playlist) with the playlist's filter.
+    /// Imports the guide of `source` with the filter of the `served` playlists.
     fn import(
         &mut self,
+        served: Vec<PlaylistId>,
         source: &GuideSource,
         body: &mut dyn Read,
     ) -> std::result::Result<Stored, StoreError> {
-        let filter = self.take_filter(source).map_err(StoreError::new)?;
+        let filter = self.take_filter(&served, source).map_err(StoreError::new)?;
         if filter.ids.is_empty() && filter.names.is_empty() {
-            self.filter = Some(filter);
+            self.keep_filter(served, filter);
             return Ok(Stored::Same);
         }
         // Guide ids the stored catalog names like a wanted channel: with them a guide that lists
@@ -157,7 +188,7 @@ impl RefreshStore {
         let named = match self.storage.catalog_ids_named(source.id, &filter.names) {
             Ok(named) => named,
             Err(e) => {
-                self.filter = Some(filter);
+                self.keep_filter(served, filter);
                 return Err(StoreError::new(e));
             }
         };
@@ -166,7 +197,7 @@ impl RefreshStore {
             names,
             fingerprint,
         } = filter;
-        // Taken out of the playlist's ids again below.
+        // Taken out of the playlists' ids again below.
         let added: Vec<String> = named
             .into_iter()
             .filter(|id| ids.insert(id.clone()))
@@ -182,11 +213,14 @@ impl RefreshStore {
         for id in &added {
             ids.remove(id);
         }
-        self.filter = Some(Filter {
-            ids,
-            names,
-            fingerprint,
-        });
+        self.keep_filter(
+            served,
+            Filter {
+                ids,
+                names,
+                fingerprint,
+            },
+        );
         let imported = imported.map_err(|e| match e {
             xmltv::Error::Sink(e) if e.sqlite_error_code() == Some(ErrorCode::DiskFull) => {
                 StoreError::new("the guide does not fit in storage")
@@ -258,17 +292,27 @@ impl Store for RefreshStore {
         let _ = self.store_validators(url, validators);
     }
 
-    fn save_playlist(&mut self, playlist: Playlist) -> std::result::Result<Stored, StoreError> {
+    /// The playlist's movies and episodes ([`crate::vod`]) are stored apart from its channels.
+    fn save_playlist(
+        &mut self,
+        id: PlaylistId,
+        mut playlist: Playlist,
+    ) -> std::result::Result<Stored, StoreError> {
+        let vod = crate::vod::split(&mut playlist.channels);
         let changed = self
             .storage
-            .save_playlist(self.playlist, &playlist, (self.now)())
+            .save_playlist(id, &playlist, (self.now)())
             .map_err(StoreError::new)?;
-        if !changed {
-            return Ok(Stored::Same);
+        let vod_changed = self.storage.save_vod(id, &vod).map_err(StoreError::new)?;
+        if changed {
+            self.filters.clear();
         }
-        self.filter = None;
-        Ok(Stored::New {
-            cache_validators: true,
+        Ok(if changed || vod_changed {
+            Stored::New {
+                cache_validators: true,
+            }
+        } else {
+            Stored::Same
         })
     }
 
@@ -281,7 +325,7 @@ impl Store for RefreshStore {
     }
 
     /// A guide storage does not know yet (one the user added) becomes a manual guide for every
-    /// playlist. A guide that serves no channel of the playlist is not read at all.
+    /// playlist. A guide that serves no enabled playlist is not read at all.
     fn import_guide(
         &mut self,
         url: &str,
@@ -298,10 +342,11 @@ impl Store for RefreshStore {
                     .ok_or_else(|| StoreError::new("the guide could not be added"))?
             }
         };
-        if !source.serves(self.playlist) {
+        let served = self.served(&source).map_err(StoreError::new)?;
+        if served.is_empty() {
             return Ok(Stored::Same);
         }
-        self.import(&source, body)
+        self.import(served, &source, body)
     }
 }
 

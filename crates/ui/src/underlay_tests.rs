@@ -315,7 +315,7 @@ fn the_field_samples_greener_where_the_green_is() {
 
 /// **A dim at weight zero is the scrim the app already draws, to the bit.**
 ///
-/// Not "close enough": a field tinted to black still runs `sn_dither`, which would put ±1 LSB of
+/// Not "close enough": a field tinted to black still runs `wi_dither`, which would put ±1 LSB of
 /// noise on a surface whose entire content is one code — visible as grain on a full-screen scrim,
 /// and bought for nothing. So weight 0 is a different DRAW, and so is an unlatched field, which is
 /// what every one of these surfaces is on its first frame.

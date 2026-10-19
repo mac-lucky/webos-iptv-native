@@ -16,8 +16,8 @@
 //!
 //! Like `ff_eof_seek_tests.rs`, these need the host build of the bundled FFmpeg and the `ffmpeg`
 //! CLI, so they are `#[ignore]`d in the plain suite:
-//! `SN_FFMPEG_DIR=<dir holding libav*-wi.*.dylib> CARGO_INCREMENTAL=0 cargo test -p tv_media --lib
-//! ff::open_seek_tests -- --ignored`.
+//! `WEBOSIPTV_FFMPEG_DIR=<dir holding libav*-wi.*.dylib> cargo test -p tv_media --lib
+//! ff::open_seek_tests -- --ignored` (the default directory is `pkg/`).
 
 use super::*;
 use std::io::{Read, Write};
@@ -187,7 +187,7 @@ struct Scratch(PathBuf);
 
 impl Scratch {
     fn new(tag: &str) -> Scratch {
-        let dir = std::env::temp_dir().join(format!("sn-open-seek-{}-{tag}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("wi-open-seek-{}-{tag}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create the scratch directory");
         Scratch(dir)

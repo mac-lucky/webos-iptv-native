@@ -278,10 +278,10 @@ pub(super) fn opened_curl_with_aborted_lane(port: u16) -> (Box<crate::curlio::Cu
 // real demux load the host build of the same FFmpeg (`cargo xtask ffmpeg --host`, staged
 // into `pkg/`) and are `#[ignore]`d everywhere else.
 
-/// Where the host FFmpeg was staged: `SN_FFMPEG_DIR`, else the
+/// Where the host FFmpeg was staged: `WEBOSIPTV_FFMPEG_DIR`, else the
 /// checkout's own `pkg/`.
 pub(super) fn host_ffmpeg_dir() -> std::path::PathBuf {
-    std::env::var_os("SN_FFMPEG_DIR")
+    std::env::var_os("WEBOSIPTV_FFMPEG_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../pkg"))
 }

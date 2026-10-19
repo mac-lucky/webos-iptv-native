@@ -10,11 +10,18 @@
 //! The data dir is the first of the app's private data dirs (`tv_base::paths::
 //! private_data_candidates` on the TV) that holds its database, so the file lands where the app
 //! actually keeps its data; a TV where the app has never run is refused. ssh runs as root in a
-//! dir the app can write, so nothing there is trusted: a dir or database that is a link, or a dir
-//! not owned like its database, is refused, the file is created by `mktemp` (exclusive, 0600),
-//! handed to the dir's owner with `chown -h`, and renamed into place (a rename replaces a link at
-//! the destination instead of following it). Candidates under a world-writable parent (`/tmp`,
-//! `/media/developer/temp`) are left out: any user on the TV could plant a database there.
+//! dir the app can write, so nothing there is trusted, and the app's uid may race the script:
+//! - a dir or database that is a link, a dir not owned like its database, and candidates whose
+//!   databases have different owners (another uid's plant in an earlier candidate) are refused;
+//! - the script then enters the data dir (`cd -P`) and names files there relatively, so a dir
+//!   swapped for a link after the checks cannot steer it;
+//! - the file is written in a fresh dir only root can enter (`mktemp -d`), and only once that dir
+//!   is checked to be ours, empty and inside the data dir; it is given to the dir's owner there
+//!   and hard-linked into place with `ln -nf`, which replaces a link at the name instead of
+//!   following it. Root never opens or chowns a path the app's uid can change.
+//!
+//! Candidates under a world-writable parent (`/tmp`, `/media/developer/temp`) are left out: any
+//! user on the TV could plant a database there.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -24,13 +31,13 @@ use crate::ipk::app_id;
 use crate::Result;
 
 /// The database file the app keeps in its data dir (`iptv::storage::DB_FILE`).
-const DB_FILE: &str = "iptv.sqlite3";
+pub(crate) const DB_FILE: &str = "iptv.sqlite3";
 /// What the app imports at start (`crates/app/src/store.rs`).
 const PROVISION_FILE: &str = "provision.url";
 /// The remote script's exit status when no candidate holds the database.
-const NO_DATA_DIR: i32 = 3;
+pub(crate) const NO_DATA_DIR: i32 = 3;
 /// The remote script's exit status for a data dir it does not trust.
-const UNTRUSTED: i32 = 4;
+pub(crate) const UNTRUSTED: i32 = 4;
 /// The environment variable naming the playlist file when `--from` does not.
 const FILE_ENV: &str = "WEBOSIPTV_PLAYLIST_FILE";
 /// Longest playlist URL accepted, as the app's settings accept.
@@ -76,11 +83,7 @@ fn parse(args: &[String]) -> Result<Opts> {
     // An ssh destination, never an option: a leading `-` would be read as one.
     let alias = it
         .next()
-        .filter(|a| {
-            !a.starts_with('-')
-                && a.chars()
-                    .all(|c| c.is_ascii_alphanumeric() || "._-@".contains(c))
-        })
+        .filter(|a| destination(a))
         .ok_or("provision takes an ssh destination (alias or user@host) first")?;
     let mut opts = Opts {
         alias: alias.clone(),
@@ -99,6 +102,14 @@ fn parse(args: &[String]) -> Result<Opts> {
         }
     }
     Ok(opts)
+}
+
+/// An ssh destination (alias or user@host), never an option: a leading `-` would be read as one.
+pub(crate) fn destination(a: &str) -> bool {
+    !a.starts_with('-')
+        && !a.is_empty()
+        && a.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._-@".contains(c))
 }
 
 /// Send the URLs in the `playlist` and `epg` files to `alias` through `ssh`; returns the data dir
@@ -135,7 +146,8 @@ fn provision(
              (one under /tmp or /media/developer/temp is never used; enter the URL in Settings)"
         )),
         Some(UNTRUSTED) => Err(format!(
-            "{alias}: the data dir is a link or not owned like its database; nothing written"
+            "{alias}: a data dir is a link or not owned like its database, or two are owned \
+             differently; nothing written"
         )),
         _ => Err(format!("ssh {alias}: {}", out.status)),
     }
@@ -170,7 +182,7 @@ const SHARED: [&str; 2] = ["/tmp", "/media/developer/temp"];
 /// The app's private data dirs on the television, best first, as
 /// `tv_base::paths::private_data_candidates` resolves them for an app installed either way,
 /// without those under a [`SHARED`] dir.
-fn candidates(id: &str) -> Vec<PathBuf> {
+pub(crate) fn candidates(id: &str) -> Vec<PathBuf> {
     let dirs = INSTALL_ROOTS.map(|root| Path::new(root).join(id));
     let dirs = dirs.each_ref().map(PathBuf::as_path);
     let runtime = tv_base::paths::installed_runtime_dir(id);
@@ -179,23 +191,59 @@ fn candidates(id: &str) -> Vec<PathBuf> {
     all
 }
 
-/// The command the TV runs: refuse an untrusted data dir, write stdin to an exclusive temp file
-/// in the first candidate holding the database, give it to the dir's owner and rename it into
-/// place; print the dir. Only paths built from the app id appear in it.
+/// The command the TV runs: find and check the data dir, write stdin into `provision.url` there
+/// for its owner ([`stdin_into`]) and print the dir. Only paths built from the app id appear in
+/// it.
 fn remote_script(dirs: &[PathBuf]) -> String {
+    in_data_dir(dirs, &stdin_into(PROVISION_FILE, ".provision"))
+}
+
+/// A command for the TV that runs `then` in the data dir: the first of `dirs` holding the
+/// database, with `$d` its path, `$o` its owner (`uid:gid`) and the working directory in it
+/// (`cd -P`), so `then` names files there relatively. Refused ([`UNTRUSTED`]) when a candidate
+/// holding a database is a link, holds a link or is owned unlike its database, when two such
+/// candidates have different owners (the app's own data dir is never told from another uid's
+/// plant by position alone), or when the dir entered is not the one checked; [`NO_DATA_DIR`]
+/// when none holds one. `then` ends with an `exit`. Files it makes are 0600 (`umask 077`).
+pub(crate) fn in_data_dir(dirs: &[PathBuf], then: &str) -> String {
     let dirs: Vec<String> = dirs.iter().map(|d| format!("'{}'", d.display())).collect();
     format!(
-        "umask 077; for d in {dirs}; do \
+        "umask 077; w=; for d in {dirs}; do \
          if [ -f \"$d/{DB_FILE}\" ]; then \
          if [ -L \"$d\" ] || [ -L \"$d/{DB_FILE}\" ]; then exit {UNTRUSTED}; fi; \
          o=$(ls -ldn \"$d\" | awk '{{print $3\":\"$4}}'); \
          db=$(ls -ln \"$d/{DB_FILE}\" | awk '{{print $3\":\"$4}}'); \
          if [ -z \"$o\" ] || [ \"$o\" != \"$db\" ]; then exit {UNTRUSTED}; fi; \
-         t=$(mktemp \"$d/.provision.XXXXXX\") || exit 1; \
-         if cat > \"$t\" && chown -h \"$o\" \"$t\" && mv -f \"$t\" \"$d/{PROVISION_FILE}\"; \
-         then echo \"$d\"; exit 0; fi; \
-         rm -f \"$t\"; exit 1; fi; done; exit {NO_DATA_DIR}",
+         if [ -z \"$w\" ]; then w=$d; wo=$o; \
+         elif [ \"$o\" != \"$wo\" ]; then exit {UNTRUSTED}; fi; \
+         fi; done; \
+         if [ -z \"$w\" ]; then exit {NO_DATA_DIR}; fi; \
+         d=$w; cd -P \"$d\" || exit {UNTRUSTED}; \
+         o=$(ls -ldn . | awk '{{print $3\":\"$4}}'); \
+         db=$(ls -ln {DB_FILE} | awk '{{print $3\":\"$4}}'); \
+         if [ -L {DB_FILE} ] || [ ! -f {DB_FILE} ] || [ \"$o\" != \"$wo\" ] \
+         || [ \"$db\" != \"$wo\" ]; then exit {UNTRUSTED}; fi; \
+         {then}",
         dirs = dirs.join(" ")
+    )
+}
+
+/// For [`in_data_dir`]: stdin into `<name>` in the data dir for its owner, then print the dir.
+/// The file is written in a fresh root-only dir (`<temp>.XXXXXX`, `mktemp -d`) entered with
+/// `cd -P` and refused ([`UNTRUSTED`]) unless it is this uid's, empty and inside the data dir
+/// (its parent's inode), so the app's uid cannot swap a link in for it; given to `$o` there; and
+/// hard-linked into place with `ln -nf`, which replaces a link or a file at the name and never
+/// follows one (`mv` would move into a dir a link at the name points to).
+pub(crate) fn stdin_into(name: &str, temp: &str) -> String {
+    format!(
+        "p=$(ls -di . | awk '{{print $1}}'); \
+         t=$(mktemp -d \"./{temp}.XXXXXX\") || exit 1; \
+         cd -P \"$t\" || exit 1; \
+         if [ ! -O . ] || [ -n \"$(ls -A)\" ] \
+         || [ \"$(ls -di .. | awk '{{print $1}}')\" != \"$p\" ]; then exit {UNTRUSTED}; fi; \
+         if cat > f && chown -h \"$o\" f && ln -nf f \"../{name}\"; then r=0; else r=1; fi; \
+         rm -f f; cd -P .. && rmdir \"$t\"; \
+         if [ $r = 0 ]; then echo \"$d\"; fi; exit $r;"
     )
 }
 
@@ -287,9 +335,15 @@ mod tests {
 
     /// Run the remote script locally over `dirs` with `url` on stdin: (exit status, stdout).
     fn remote(dirs: &[PathBuf], url: &[u8]) -> (Option<i32>, String) {
+        remote_in(dirs, url, &[])
+    }
+
+    /// [`remote`] with `env` set for the script.
+    fn remote_in(dirs: &[PathBuf], url: &[u8], env: &[(&str, String)]) -> (Option<i32>, String) {
         let mut sh = Command::new("sh")
             .arg("-c")
             .arg(remote_script(dirs))
+            .envs(env.iter().map(|(k, v)| (k, v)))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
@@ -343,6 +397,92 @@ mod tests {
             .unwrap()
             .file_type()
             .is_symlink());
+        // Nor is one pointing at a dir entered: `mv` would have moved the file in there.
+        let elsewhere = root.join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::remove_file(&written).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, &written).unwrap();
+        assert_eq!(
+            remote(std::slice::from_ref(&live), b"http://h/z\n").0,
+            Some(0)
+        );
+        assert_eq!(std::fs::read_dir(&elsewhere).unwrap().count(), 0);
+        assert_eq!(std::fs::read_to_string(&written).unwrap(), "http://h/z\n");
+        assert_eq!(leftovers(&live), 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The app's uid wins the race after `mktemp`: the temp dir's name now holds a link to a dir
+    /// elsewhere (a `mktemp` on PATH does the swap). Nothing is written through it.
+    #[test]
+    fn a_temp_dir_swapped_for_a_link_is_refused() {
+        let root =
+            std::env::temp_dir().join(format!("xtask-provision-race-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (live, attack, bin) = (root.join("data"), root.join("attack"), root.join("bin"));
+        for d in [&live, &attack, &bin] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::write(live.join(DB_FILE), "").unwrap();
+        let shim = bin.join("mktemp");
+        std::fs::write(
+            &shim,
+            format!(
+                "#!/bin/sh\np=$(/usr/bin/mktemp \"$@\") || exit 1\nmv \"$p\" \"$p.kept\"\n\
+                 ln -s '{}' \"$p\"\necho \"$p\"\n",
+                attack.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+        let (code, out) = remote_in(
+            std::slice::from_ref(&live),
+            b"http://h/x\n",
+            &[("PATH", path)],
+        );
+        assert_eq!((code, out.as_str()), (Some(UNTRUSTED), ""));
+        assert_eq!(std::fs::read_dir(&attack).unwrap().count(), 0);
+        assert!(!live.join(PROVISION_FILE).exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A database in an earlier candidate owned unlike the one in a later candidate: one of them
+    /// is another uid's plant, so neither is written to. (Owners differ here by group, which a
+    /// test can set without root.)
+    #[test]
+    fn data_dirs_owned_differently_are_refused() {
+        use std::os::unix::fs::MetadataExt;
+        let root = std::env::temp_dir().join(format!("xtask-provision-own-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (planted, live) = (root.join("first"), root.join("second"));
+        for d in [&planted, &live] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join(DB_FILE), "").unwrap();
+        }
+        let dirs = [planted.clone(), live.clone()];
+        let gid = std::fs::metadata(&live).unwrap().gid();
+        let groups = Command::new("id").arg("-G").output().unwrap().stdout;
+        let other = String::from_utf8_lossy(&groups)
+            .split_whitespace()
+            .filter_map(|g| g.parse::<u32>().ok())
+            .find(|&g| g != gid);
+        let Some(other) = other else {
+            eprintln!("skipped: this user is in one group only");
+            return;
+        };
+        for p in [planted.clone(), planted.join(DB_FILE)] {
+            std::os::unix::fs::chown(&p, None, Some(other)).unwrap();
+        }
+        assert_eq!(remote(&dirs, b"http://h/x\n").0, Some(UNTRUSTED));
+        assert!(!planted.join(PROVISION_FILE).exists());
+        assert!(!live.join(PROVISION_FILE).exists());
+        // Alike again, the first is the data dir.
+        for p in [planted.clone(), planted.join(DB_FILE)] {
+            std::os::unix::fs::chown(&p, None, Some(gid)).unwrap();
+        }
+        let (code, out) = remote(&dirs, b"http://h/x\n");
+        assert_eq!((code, out.as_str()), (Some(0), planted.to_str().unwrap()));
         let _ = std::fs::remove_dir_all(&root);
     }
 

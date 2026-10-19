@@ -69,7 +69,7 @@ impl Chip {
     pub fn new(text: impl Into<String>) -> Self {
         Self { text: text.into(), quiet: false, origin: Origin::App, icon: None }
     }
-    /// Lead the chip with `i` (stremio-web's stream facts: 🎞 the picture, ♫ the sound, …).
+    /// Lead the chip with `i` (the stream facts: 🎞 the picture, ♫ the sound, …).
     pub fn icon(mut self, i: crate::icons::Icon) -> Self {
         self.icon = Some(i);
         self
@@ -2443,7 +2443,7 @@ fn row_value_ink(row: &Row, focused: bool) -> [f32; 4] {
 #[cfg(test)]
 mod tests {
     /// The focused row's pill: its primary ink clears 4.5:1 with margin and its secondary ink 3:1
-    /// (the stream row's source column, a list row's sub-line), on the violet that keeps Stremio's
+    /// (the stream row's source column, a list row's sub-line), on the violet that keeps the app's
     /// identity.
     #[test]
     fn the_focus_pills_inks_clear_their_contrast() {

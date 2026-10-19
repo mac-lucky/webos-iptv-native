@@ -6,19 +6,22 @@
 //! `tv_media` uses for the parts of a long programme and as the fallback. The player is ticked as
 //! often as it asks (every frame while anything plays); its status is folded into the screens'
 //! `Playback` a few times a second and on every event, and a programme without an archive or a
-//! failed playback becomes a toast.
+//! failed playback becomes a toast. A movie or an episode plays as `tv_media`'s [`Vod`]:
+//! its own URL, seekable anywhere, holding its last picture at its end.
 
 use std::sync::Arc;
 
 use iptv::catchup::{archive_url, Times};
 use iptv::model::{CatchupMode, Channel, Programme};
+use iptv::vod::VodItem;
 use tv_base::task::MainThread;
 use tv_machine::present::PresentEvent;
 use tv_media::headers::RequestHeaders;
-use tv_media::playback::{self as media, AtEnd, Catchup, Event, State};
-use tv_media::player::video_geometry::Viewport;
+use tv_media::playback::{self as media, AtEnd, Catchup, Event, State, Vod};
+use tv_media::player::video_geometry::{AspectMode, Viewport};
 use tv_platform::i18n::msg;
 use tv_screens::data::{MediaInfo, Playback, Rect};
+use tv_screens::playback::DisplayMode;
 
 use crate::logs::log;
 use crate::player::{Player, Stream};
@@ -38,6 +41,8 @@ pub struct MediaPlayer {
     tracks: Vec<usize>,
     /// Read the audio tracks again at the next status (a new stream, or a switch).
     tracks_stale: bool,
+    /// The subtitle tracks' generation last folded in (`tv_media::subtitles`).
+    subtitles_seen: Option<u64>,
     notice: Option<String>,
     /// The TV took the decoder back while we were in front: the next key resumes.
     taken: bool,
@@ -53,6 +58,7 @@ impl MediaPlayer {
             state: State::Idle,
             tracks: Vec::new(),
             tracks_stale: true,
+            subtitles_seen: None,
             notice: None,
             taken: false,
         }
@@ -73,6 +79,11 @@ impl MediaPlayer {
         if let Some(c) = st.catchup {
             changed |= set(&mut playback.position_secs, c.position_ms / 1000);
         }
+        if let (Some(at), Some(vod)) = (st.vod, playback.vod.as_mut()) {
+            changed |= set(&mut vod.duration_secs, at.duration_ms / 1000);
+            changed |= set(&mut vod.ended, at.ended);
+            changed |= set(&mut playback.position_secs, at.position_ms / 1000);
+        }
         if st.state != self.state {
             match st.state {
                 State::NoArchive => self.notice = Some(msg::epg_catchup_unavailable().to_owned()),
@@ -90,18 +101,45 @@ impl MediaPlayer {
             changed |= set(&mut playback.audio_tracks, names);
             changed |= set(&mut playback.audio_track, selected);
         }
+        let generation = tv_media::subtitles::tracks_generation();
+        if self.subtitles_seen != Some(generation) {
+            self.subtitles_seen = Some(generation);
+            let names = self
+                .pb
+                .subtitle_tracks()
+                .iter()
+                .enumerate()
+                .map(|(i, t)| subtitle_name(i, t))
+                .collect();
+            changed |= set(&mut playback.subtitle_tracks, names);
+            changed |= set(&mut playback.subtitle_track, self.pb.subtitle_track());
+        }
         changed
+    }
+}
+
+/// How subtitle track `i` reads in the player menu: its language in its own name, else its
+/// number, marked when it is for the hard of hearing.
+fn subtitle_name(i: usize, t: &tv_media::subtitles::Track) -> String {
+    let name = tv_base::tracks::language_name(&t.language)
+        .unwrap_or_else(|| msg::subtitles_track(i64::try_from(i + 1).unwrap_or(i64::MAX)));
+    if t.hearing_impaired {
+        msg::subtitles_hearing_impaired(&name)
+    } else {
+        name
     }
 }
 
 /// The request headers the playlist gave `channel` (user agent, referrer), or none when they do
 /// not pass `tv_media`'s checks; the refusal names the kind and position, never a value.
 fn headers(channel: &Channel) -> RequestHeaders {
-    RequestHeaders::from_pairs(&channel.http_headers).unwrap_or_else(|why| {
-        log(&format!(
-            "player: {:?} stream headers refused: {why}",
-            channel.name
-        ));
+    headers_of(&channel.name, &channel.http_headers)
+}
+
+/// [`headers`] of the stream `name` with `pairs`.
+fn headers_of(name: &str, pairs: &[(String, String)]) -> RequestHeaders {
+    RequestHeaders::from_pairs(pairs).unwrap_or_else(|why| {
+        log(&format!("player: {name:?} stream headers refused: {why}"));
         RequestHeaders::none()
     })
 }
@@ -122,6 +160,16 @@ fn track_name(t: &media::AudioTrack) -> String {
         .cloned()
         .unwrap_or_else(|| (t.index + 1).to_string());
     format!("{label} ({} {}ch)", t.codec, t.channels)
+}
+
+/// How `tv_media` places the picture for `mode`.
+fn aspect(mode: DisplayMode) -> AspectMode {
+    match mode {
+        DisplayMode::Normal => AspectMode::Auto,
+        DisplayMode::Fill => AspectMode::Fill,
+        DisplayMode::Ratio4x3 => AspectMode::Ratio4x3,
+        DisplayMode::Ratio16x9 => AspectMode::Ratio16x9,
+    }
 }
 
 fn viewport(rect: Option<Rect>) -> Option<Viewport> {
@@ -188,6 +236,17 @@ impl Player for MediaPlayer {
         self.status_at = 0;
     }
 
+    fn open_vod(&mut self, item: &VodItem, offset_secs: i64, rect: Option<Rect>) {
+        self.pb.set_video_rect(viewport(rect));
+        self.pb.play_vod(Vod {
+            url: item.url.clone(),
+            headers: headers_of(&item.title, &item.http_headers),
+            offset_secs,
+        });
+        self.tracks_stale = true;
+        self.status_at = 0;
+    }
+
     fn set_rect(&mut self, rect: Option<Rect>) {
         self.pb.set_video_rect(viewport(rect));
     }
@@ -219,6 +278,11 @@ impl Player for MediaPlayer {
             ));
         }
         self.tracks_stale = true;
+        self.status_at = 0;
+    }
+
+    fn select_subtitle_track(&mut self, index: Option<usize>) {
+        self.pb.select_subtitle_track(index);
         self.status_at = 0;
     }
 
@@ -276,6 +340,28 @@ impl Player for MediaPlayer {
             self.resume();
         }
     }
+
+    fn set_display_mode(&mut self, mode: DisplayMode) {
+        log(&format!("player: display mode {}", mode.value()));
+        self.pb.set_aspect_mode(aspect(mode));
+    }
+
+    fn set_audio_offset(&mut self, offset_ms: i32) {
+        log(&format!("player: audio offset {offset_ms} ms"));
+        self.pb.set_audio_offset_ms(i64::from(offset_ms));
+    }
+
+    fn stop(&mut self) {
+        self.pb.stop();
+        self.taken = false;
+        self.state = State::Idle;
+        self.tracks.clear();
+        self.status_at = 0;
+    }
+
+    fn shutdown(&mut self) {
+        self.pb.shutdown();
+    }
 }
 
 #[cfg(test)]
@@ -292,6 +378,7 @@ mod tests {
             mode: Some(mode),
             days: 7,
             source: source.map(str::to_owned),
+            ..Default::default()
         };
         c
     }
@@ -348,6 +435,20 @@ mod tests {
         assert!(cu.shift.is_none());
         let none = channel("http://h.example/live/1.ts", CatchupMode::Default, None);
         assert!(catchup(&none, &programme(0, 60), 0).is_none());
+    }
+
+    #[test]
+    fn every_display_mode_places_the_picture_its_own_way() {
+        let modes: Vec<_> = DisplayMode::ALL.into_iter().map(aspect).collect();
+        assert_eq!(
+            modes,
+            [
+                AspectMode::Auto,
+                AspectMode::Fill,
+                AspectMode::Ratio4x3,
+                AspectMode::Ratio16x9
+            ]
+        );
     }
 
     #[test]

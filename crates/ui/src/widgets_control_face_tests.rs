@@ -4,7 +4,7 @@ use super::*;
 #[allow(unused_imports)]
 use super::test_support::*;
 
-/// Focus is Stremio's violet on EVERY page: blue artwork and amber artwork light the same
+/// Focus is the accent violet on EVERY page: blue artwork and amber artwork light the same
 /// [`theme::ACCENT`] top, with a body one OKLCH lightness step below it at the same hue. The page's
 /// key still reaches the IDLE face, which is what keeps a control on a keyed hero part of it.
 #[test]
@@ -31,7 +31,7 @@ fn focus_is_the_accent_violet_whatever_the_page_key() {
 
 /// **The focus ink clears WCAG 4.5:1 on every fill focus can paint**: the flat [`theme::ACCENT`]
 /// (unkeyed, rows, tabs), a keyed face's lit top AND its shaded body, and the countdown's spent
-/// half. Stremio's violet leaves almost no headroom for white (4.51:1), which is why the ink is pure
+/// half. The accent violet leaves almost no headroom for white (4.51:1), which is why the ink is pure
 /// `WHITE` and not `TEXT_PRIMARY`; a retuned accent that loses the floor fails here.
 #[test]
 fn focus_ink_clears_4_5_on_every_focus_fill() {

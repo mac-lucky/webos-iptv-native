@@ -327,6 +327,7 @@ struct HeaderDefaults {
     source: Option<String>,
     days: u16,
     tvg_shift_minutes: i32,
+    correction_secs: i32,
 }
 
 type Attrs = Vec<(String, String)>;
@@ -420,6 +421,7 @@ impl Parser {
             source: attr("catchup-source").map(str::to_owned),
             days: positive_days(attr("catchup-days")).unwrap_or(archive_days),
             tvg_shift_minutes: attr("tvg-shift").map_or(0, shift_minutes),
+            correction_secs: attr("catchup-correction").map_or(0, correction_secs),
         };
         let mut urls = Vec::new();
         for key in ["url-tvg", "x-tvg-url", "tvg-url"] {
@@ -475,7 +477,7 @@ const HLS_TAGS: [&str; 6] = [
 ];
 
 /// Attributes the parser maps; the rest go to `Channel::extra`.
-const KNOWN_ATTRS: [&str; 16] = [
+const KNOWN_ATTRS: [&str; 17] = [
     "tvg-id",
     "tvg-name",
     "tvg-logo",
@@ -485,6 +487,7 @@ const KNOWN_ATTRS: [&str; 16] = [
     "catchup-type",
     "catchup-source",
     "catchup-days",
+    "catchup-correction",
     "tvg-rec",
     "tvg-chno",
     "channel-number",
@@ -534,12 +537,13 @@ fn entry(body: &str, defaults: &HeaderDefaults) -> Channel {
     }
 }
 
-/// Mode, source and days per Kodi. The entry's `catchup` tag wins; the header's mode applies
-/// only when the entry has none, so an unknown tag (`disabled`) means no mode. SIPTV's
+/// Mode, source, days and correction per Kodi. The entry's `catchup` tag wins; the header's mode
+/// applies only when the entry has none, so an unknown tag (`disabled`) means no mode. SIPTV's
 /// `timeshift="<days>"` (or `tvg-rec`) predates the catch-up tags and implies shift when no mode
 /// results; it is not an EPG shift (that is `tvg-shift`). A mode with no day count anywhere gets
 /// [`DEFAULT_CATCHUP_DAYS`]. The source stays as declared until the stream URL turns it into a
-/// template.
+/// template. The entry's `catchup-correction` wins over the header's whenever it is declared, a
+/// value that is not a number included (0, as Kodi's `atof` reads it).
 fn catchup_of(attrs: &[(&str, &str)], defaults: &HeaderDefaults) -> Catchup {
     let attr = |key| attr(attrs, key);
     let declared = match attr("catchup").or(attr("catchup-type")) {
@@ -561,7 +565,13 @@ fn catchup_of(attrs: &[(&str, &str)], defaults: &HeaderDefaults) -> Catchup {
         } else {
             0
         });
-    Catchup { mode, days, source }
+    Catchup {
+        mode,
+        days,
+        source,
+        correction_secs: attr("catchup-correction")
+            .map_or(defaults.correction_secs, correction_secs),
+    }
 }
 
 /// `tvg-shift` hours as minutes; 0 when it is not a number within a day.
@@ -572,6 +582,22 @@ fn shift_minutes(hours: &str) -> i32 {
         .ok()
         .filter(|h| h.abs() <= 24.0)
         .map_or(0, |h| (h * 60.0).round() as i32)
+}
+
+/// `catchup-correction` hours as seconds, read like Kodi's `atof`: the leading decimal (`-2.5`,
+/// `1.5h`), else 0, truncated to whole seconds; 0 when it is not within a day.
+fn correction_secs(hours: &str) -> i32 {
+    let s = hours.trim_start();
+    let sign = usize::from(s.starts_with(['+', '-']));
+    let mut end = sign + s[sign..].bytes().take_while(u8::is_ascii_digit).count();
+    if s[end..].starts_with('.') {
+        end += 1 + s[end + 1..].bytes().take_while(u8::is_ascii_digit).count();
+    }
+    s[..end]
+        .parse::<f64>()
+        .ok()
+        .filter(|h| h.abs() <= 24.0)
+        .map_or(0, |h| (h * 3_600.0) as i32)
 }
 
 /// `key=value` pairs of an `#EXTINF` or `#EXTM3U` body (keys compared in any case, the last of a

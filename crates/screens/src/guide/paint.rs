@@ -6,19 +6,19 @@
 //! scroll animation). A row whose channel and window are unchanged keeps its layout: a one-row
 //! move lays out one row.
 
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use iptv::model::{ChannelKey, Timestamp};
 use tv_machine::machine::Measure;
 use tv_platform::i18n::msg;
-use tv_ui::label::{HAlign, Label, VAlign};
+use tv_ui::label::{HAlign, Label};
 use tv_ui::{Painter, Rect, Spring};
 
 use super::clock;
 use super::geom::{self, CellGeom};
 use super::grid::{Grid, Mode, Row, Shown};
-use super::groups::Groups;
-use crate::data::{Group, Logos};
+use crate::data::Logos;
 use crate::draw::{self, Piece, Run};
 use crate::icons::{self, Icon};
 use crate::theme::{self, radius, size};
@@ -28,12 +28,16 @@ use crate::time::{self, MINUTE};
 const SCROLL_K: f32 = tv_ui::consts::K_SCROLL;
 /// A jump of more rows than this (a wrap, a page, a group change) snaps instead of scrolling.
 const SCROLL_SNAP_ROWS: usize = 2;
+/// The reminder mark at the end of a programme cell.
+const BELL: f32 = 24.0;
 
 pub struct CellSlot {
     /// `None` for the stand-in cell of a row with no guide data in the window.
     pub(super) start: Option<Timestamp>,
     pub(super) geom: CellGeom,
     text: Option<Run>,
+    /// A reminder is set for the programme.
+    bell: bool,
 }
 
 pub struct RowSlot {
@@ -69,11 +73,21 @@ pub struct Paint {
     pub(super) ruler: Vec<Piece>,
     /// The window, the minute and the UTC offset the ruler shows.
     ruler_key: Option<(Timestamp, i64, i32)>,
-    groups: Vec<Run>,
-    groups_of: Vec<Group>,
+    /// Picture in picture: no preview, the details from the left margin, the video in the
+    /// [`geom::PIP`] window.
+    pub(super) pip: bool,
 }
 
 impl Paint {
+    /// Picture in picture on or off: the details are laid out again for it.
+    pub fn set_pip(&mut self, on: bool) {
+        if self.pip != on {
+            self.pip = on;
+            self.details_key = None;
+            self.stale = true;
+        }
+    }
+
     /// The state changed: scroll towards row `top` and lay out again before the next frame.
     pub fn follow(&mut self, top: usize) {
         let target = top as f32 * geom::ROW_H;
@@ -89,12 +103,11 @@ impl Paint {
         self.rows.clear();
         self.details_key = None;
         self.ruler_key = None;
-        self.groups_of.clear();
         self.stale = true;
     }
 
     /// Bring every layout in line with the state. Nothing to do when the state is unchanged.
-    pub fn prepare(&mut self, m: &dyn Measure, grid: &Grid, groups: &Groups) {
+    pub fn prepare(&mut self, m: &dyn Measure, grid: &Grid) {
         if !self.stale {
             return;
         }
@@ -108,7 +121,7 @@ impl Paint {
                     .position(|s| s.key == row.channel.key && s.window == row.window);
                 match kept {
                     Some(i) => old.swap_remove(i),
-                    None => row_slot(m, row),
+                    None => row_slot(m, row, &grid.reminders),
                 }
             })
             .collect();
@@ -121,7 +134,7 @@ impl Paint {
         };
         if self.details_key.as_ref() != Some(&key) {
             self.details.clear();
-            details(m, grid, key.favorite, &mut self.details);
+            details(m, grid, key.favorite, self.pip, &mut self.details);
             self.details_key = Some(key);
         }
 
@@ -130,16 +143,6 @@ impl Paint {
             self.ruler.clear();
             ruler(grid, &mut self.ruler);
             self.ruler_key = Some(key);
-        }
-
-        if self.groups_of != groups.list {
-            let w = geom::GROUP_PILL_W - 2.0 * geom::GROUP_TEXT_PAD;
-            self.groups = groups
-                .list
-                .iter()
-                .map(|g| m.fit_line(g.name(), w, size::BODY, false))
-                .collect();
-            self.groups_of = groups.list.clone();
         }
         self.stale = false;
     }
@@ -157,9 +160,11 @@ impl Paint {
         !tv_machine::idle::settled(self.scroll.pos, self.scroll_target, self.scroll.vel)
     }
 
-    pub fn draw(&self, p: Painter, grid: &Grid, groups: &Groups, panel: bool, logos: &dyn Logos) {
+    /// The guide; `panel` while the groups panel covers its left (the screen draws the panel).
+    pub fn draw(&self, p: Painter, grid: &Grid, panel: bool, logos: &dyn Logos) {
         // The panel hides the preview with the rest of the left side; the video plays on.
-        ground(p, !panel);
+        // Picture in picture has no preview: its window is cut over the rows at the end.
+        ground(p, !panel && !self.pip);
         draw::paint(&self.details, p, logos);
         draw::paint(&self.ruler, p, logos);
         let clip = geom::rows_clip();
@@ -182,56 +187,39 @@ impl Paint {
         }
         p.clip_clear();
         draw_now_line(p, grid);
-        if panel {
-            self.draw_groups(p, groups);
-        }
-    }
-
-    fn draw_groups(&self, p: Painter, groups: &Groups) {
-        p.rrect(
-            Rect::new(0.0, 0.0, geom::GROUPS_W, geom::SCREEN_H),
-            0.0,
-            0.0,
-            theme::PANEL,
-        );
-        let top = groups.cursor.top;
-        let end = (top + geom::GROUP_ROWS + 1).min(self.groups.len());
-        for i in top..end {
-            let y = geom::GROUPS_Y + (i - top) as f32 * geom::GROUP_ROW_H;
-            let pill = Rect::new(
-                geom::GROUP_PILL_X,
-                y,
-                geom::GROUP_PILL_W,
-                geom::GROUP_PILL_H,
-            );
-            let focused = i == groups.cursor.index;
-            if focused {
-                p.rrect(pill, radius::PILL, radius::PILL, theme::FOCUS);
-            }
-            let ink = if focused {
-                theme::TEXT_ON_FOCUS
-            } else {
-                theme::TEXT
-            };
-            let text = Rect::new(pill.x + geom::GROUP_TEXT_PAD, pill.y, pill.w, pill.h);
-            Label::new(self.groups[i].as_ptr(), size::BODY, ink)
-                .v(VAlign::Middle)
-                .draw(p, text);
+        if self.pip {
+            pip_window(p);
         }
     }
 }
 
-fn row_slot(m: &dyn Measure, row: &Row) -> RowSlot {
+/// The picture-in-picture window over the rows: a frame, and inside it a hole through to the
+/// video plane: the transparent clear every frame starts with, scissored to the window.
+fn pip_window(p: Painter) {
+    let (v, f) = (geom::PIP, geom::PIP_FRAME);
+    let frame = Rect::new(v.x - f, v.y - f, v.w + 2.0 * f, v.h + 2.0 * f);
+    p.rrect(frame, radius::PILL, radius::PILL, theme::PANEL_RAISED);
+    if p.is_recording() {
+        return;
+    }
+    p.clip(v);
+    tv_gfx::gfx::frame_clear_through();
+    p.clip_clear();
+}
+
+fn row_slot(m: &dyn Measure, row: &Row, reminders: &HashSet<(ChannelKey, Timestamp)>) -> RowSlot {
     let channel = &row.channel;
     let mut cells: Vec<CellSlot> = row
         .programmes
         .iter()
         .filter_map(|p| {
             let geom = geom::cell(p.start, p.stop, row.window)?;
+            let bell = reminders.contains(&(channel.key, p.start));
             Some(CellSlot {
                 start: Some(p.start),
-                text: cell_text(m, &p.title, &geom),
+                text: cell_text(m, &p.title, &geom, bell),
                 geom,
+                bell,
             })
         })
         .collect();
@@ -244,8 +232,9 @@ fn row_slot(m: &dyn Measure, row: &Row) -> RowSlot {
         };
         cells.push(CellSlot {
             start: None,
-            text: cell_text(m, &channel.name, &geom),
+            text: cell_text(m, &channel.name, &geom, false),
             geom,
+            bell: false,
         });
     }
     let number = channel.number.map(|n| n.to_string()).unwrap_or_default();
@@ -266,21 +255,28 @@ fn row_slot(m: &dyn Measure, row: &Row) -> RowSlot {
 }
 
 /// The details panel: the focused programme's title, times, progress and description, or the
-/// channel's name on a row without guide data.
-fn details(m: &dyn Measure, grid: &Grid, favorite: bool, out: &mut Vec<Piece>) {
+/// channel's name on a row without guide data. Without the preview (`pip`) it starts at the left
+/// margin and shows more of the description.
+fn details(m: &dyn Measure, grid: &Grid, favorite: bool, pip: bool, out: &mut Vec<Piece>) {
     let Some(channel) = grid.channel() else {
         return;
     };
     let text =
         |s: Run, r: Rect, h: draw::HAlign, sz, color| Piece::text_in(s, r, h, sz, false, color);
     let left = draw::HAlign::Left;
-    let title_w = geom::STAR.x - geom::DETAILS_X - theme::space::L;
+    let (x0, desc_lines) = if pip {
+        (geom::PIP_DETAILS_X, geom::PIP_DESC_LINES)
+    } else {
+        (geom::DETAILS_X, geom::DESC_LINES)
+    };
+    let title_w = geom::STAR.x - x0 - theme::space::L;
     let title = match grid.details() {
         Some(p) => &p.title,
         None => &channel.name,
     };
     let title = m.fit_line(title, title_w, size::TITLE, false);
-    out.push(text(title, geom::TITLE, left, size::TITLE, theme::TEXT));
+    let title_band = Rect::new(x0, geom::TITLE.y, geom::TITLE.w, geom::TITLE.h);
+    out.push(text(title, title_band, left, size::TITLE, theme::TEXT));
     let star = if favorite {
         Icon::StarFilled
     } else {
@@ -294,7 +290,7 @@ fn details(m: &dyn Measure, grid: &Grid, favorite: bool, out: &mut Vec<Piece>) {
 
     let band = |x: f32, w: f32| Rect::new(x, geom::META_Y, w, geom::META_H);
     if let Some(p) = grid.details() {
-        let mut x = geom::DETAILS_X;
+        let mut x = x0;
         let times = time::span(p.start, p.stop, grid.offset);
         let times_w = m.width_str(&times, size::LABEL, false);
         let r = band(x, times_w);
@@ -335,17 +331,17 @@ fn details(m: &dyn Measure, grid: &Grid, favorite: bool, out: &mut Vec<Piece>) {
         ));
     }
     if let Some(g) = channel.groups.first() {
-        let w = geom::DETAILS_RIGHT - geom::DETAILS_X;
+        let w = geom::DETAILS_RIGHT - x0;
         let name = m.fit_line(g, w * 0.4, size::LABEL, false);
-        let r = band(geom::DETAILS_X, w);
+        let r = band(x0, w);
         out.push(text(name, r, draw::HAlign::Right, size::LABEL, theme::TEXT));
     }
     if let Some(description) = grid.details().and_then(|p| p.description.as_deref()) {
-        let w = geom::DETAILS_RIGHT - geom::DETAILS_X;
-        let lines = draw::wrap(m, description, w, size::LABEL, false, geom::DESC_LINES);
+        let w = geom::DETAILS_RIGHT - x0;
+        let lines = draw::wrap(m, description, w, size::LABEL, false, desc_lines);
         for (i, line) in lines.into_iter().enumerate() {
             let y = geom::DESC_Y + i as f32 * geom::DESC_LINE_H;
-            let r = Rect::new(geom::DETAILS_X, y, 0.0, geom::DESC_LINE_H);
+            let r = Rect::new(x0, y, 0.0, geom::DESC_LINE_H);
             out.push(text(line, r, left, size::LABEL, theme::TEXT_MUTED));
         }
     }
@@ -430,7 +426,7 @@ fn draw_row(
     let ink = if head_focus {
         theme::TEXT_ON_FOCUS
     } else if playing {
-        theme::ACCENT_TEXT
+        theme::ink(theme::ACCENT_TEXT)
     } else {
         theme::TEXT
     };
@@ -503,6 +499,11 @@ fn draw_row(
             );
             Label::new(t.as_ptr(), size::LABEL, text).draw(p, inner);
         }
+        if cell.bell && r.w >= BELL + 2.0 * geom::CELL_PAD_X {
+            let x = r.x + r.w - geom::CELL_PAD_X - BELL;
+            let mark = Rect::new(x, r.y + (r.h - BELL) * 0.5, BELL, BELL);
+            icons::draw(p, Icon::Bell, mark, text);
+        }
     }
 }
 
@@ -524,7 +525,7 @@ fn draw_now_line(p: Painter, grid: &Grid) {
         Rect::new(x - r, top - r, 2.0 * r, 2.0 * r),
         r,
         r,
-        theme::ACCENT_TEXT,
+        theme::ink(theme::ACCENT_TEXT),
     );
 }
 
@@ -554,8 +555,53 @@ fn icon_box(column: Rect) -> Rect {
     Rect::new(column.x, column.y + (column.h - s) * 0.5, s, s)
 }
 
-/// A cell's title fitted to its visible width, or nothing when the cell is too thin.
-fn cell_text(m: &dyn Measure, title: &str, geom: &CellGeom) -> Option<Run> {
-    let w = geom.w() - 2.0 * geom::CELL_PAD_X;
+/// A cell's title fitted to its visible width (less the bell's, when it has one), or nothing
+/// when the cell is too thin.
+fn cell_text(m: &dyn Measure, title: &str, geom: &CellGeom, bell: bool) -> Option<Run> {
+    let bell_w = if bell { BELL + geom::CELL_PAD_X } else { 0.0 };
+    let w = geom.w() - 2.0 * geom::CELL_PAD_X - bell_w;
     (geom.w() >= geom::CELL_TEXT_MIN_W).then(|| m.fit_line(title, w, size::LABEL, false))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::fake::{FakeData, Mono};
+    use crate::data::TvData;
+    use crate::reminders::Reminder;
+
+    #[test]
+    fn a_reminded_programme_carries_the_bell() {
+        let mut data = FakeData::new(1_700_000_000, 3);
+        let key = data.channels[0].key;
+        let next = data
+            .now_next(key, data.now)
+            .1
+            .expect("a programme after this one");
+        data.reminders = vec![Reminder {
+            channel: key,
+            start: next.start,
+            title: next.title.clone(),
+        }];
+        let mut grid = Grid::new(data.channels(&crate::data::Group::All));
+        grid.open(&data);
+        let mut paint = Paint::default();
+        paint.follow(grid.cursor.top);
+        paint.prepare(&Mono, &grid);
+        let bells: Vec<(ChannelKey, Option<Timestamp>)> = paint
+            .rows
+            .iter()
+            .flat_map(|r| r.cells.iter().filter(|c| c.bell).map(|c| (r.key, c.start)))
+            .collect();
+        assert_eq!(bells, [(key, Some(next.start))]);
+        paint.draw(Painter::recording(), &grid, false, &NoLogos);
+    }
+
+    struct NoLogos;
+
+    impl Logos for NoLogos {
+        fn logo(&self, _: &iptv::model::Channel) -> Option<(u32, f32, f32)> {
+            None
+        }
+    }
 }

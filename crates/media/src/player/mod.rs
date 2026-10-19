@@ -1376,7 +1376,7 @@ pub fn request_audio_track(
 }
 
 /// [`request_audio_track`] by the track's position alone, reading its codec, channel count and
-/// Atmos flag off the probe — what a track menu over a probed (Stremio) stream has. `Err` for a
+/// Atmos flag off the probe — what a track menu over a probed stream (every playlist channel) has. `Err` for a
 /// track the television cannot decode (the playing track is kept) or that the probe did not see.
 pub fn request_probed_audio_track(
     ps: &mut crate::session::PlaybackSession,
@@ -1413,7 +1413,7 @@ pub fn chapters() -> Vec<Chapter> {
 /// stop. `Ok` carries what the native start did; a `Failed` start also reads `Error` (or
 /// `Connecting` while the sandbox repair runs).
 ///
-/// **A start with no declaration (`start.stream == None`, every Stremio stream) is probed first**:
+/// **A start with no declaration (`start.stream == None`, every playlist channel) is probed first**:
 /// `Ok(BufferfeedStartOutcome::Probing)`, [`state`] reads `Connecting`, and [`pump`] — which the
 /// application already calls every frame — launches the native start when the probe resolves the
 /// session, or leaves the refusal (`StartRefusal::Probe`, or any of the above for what the probe

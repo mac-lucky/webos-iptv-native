@@ -160,7 +160,7 @@ pub fn assert_held(what: &str) {
 }
 
 /// The environment variable that tells a [`fresh_process`] child which test it was started for.
-const FRESH_PROCESS_ENV: &str = "SN_TEST_FRESH_PROCESS";
+const FRESH_PROCESS_ENV: &str = "WEBOSIPTV_TEST_FRESH_PROCESS";
 
 /// Run the calling test in a CHILD copy of the test binary, for a global that can be set once per
 /// process and whose UNSET state is what the test grades (the `User-Agent` `OnceLock`: any other

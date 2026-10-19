@@ -1,0 +1,67 @@
+{
+  "playback.audio_offset": {
+    "value": "Audio offset",
+    "description": "Player menu row and its page: shifts this channel's sound against the picture"
+  },
+  "playback.default_audio_offset": {
+    "value": "Default audio offset",
+    "description": "Settings > Playback row: the audio offset of every channel without its own"
+  },
+  "playback.display_16_9": {
+    "value": "16:9",
+    "description": "Display mode: the picture shown at 16:9"
+  },
+  "playback.display_4_3": {
+    "value": "4:3",
+    "description": "Display mode: the picture shown at 4:3"
+  },
+  "playback.display_fill": {
+    "value": "Fill",
+    "description": "Display mode: the screen covered, the overhang cropped"
+  },
+  "playback.display_mode": {
+    "value": "Display mode",
+    "description": "Player menu row and Settings > Appearance > Player row: how the picture fills the screen"
+  },
+  "playback.display_normal": {
+    "value": "Normal",
+    "description": "Display mode: the picture's own aspect, fitted inside the screen"
+  },
+  "playback.sleep_cancelled": {
+    "value": "Sleep timer off",
+    "description": "Toast: the sleep timer was turned off"
+  },
+  "playback.sleep_done": {
+    "value": "Sleep timer stopped playback",
+    "description": "Toast: the sleep timer ran out and playback stopped"
+  },
+  "playback.sleep_left": {
+    "value": {
+      "one": "{count} min left",
+      "other": "{count} min left"
+    },
+    "args": {
+      "count": "i64"
+    },
+    "description": "Player menu value of the sleep timer row: minutes until playback stops"
+  },
+  "playback.sleep_off": {
+    "value": "Off",
+    "description": "Sleep timer option and row value: no timer"
+  },
+  "playback.sleep_set": {
+    "value": "Playback stops in {minutes} min",
+    "args": {
+      "minutes": "i64"
+    },
+    "description": "Toast: a sleep timer was set"
+  },
+  "playback.sleep_soon": {
+    "value": "Playback stops in a minute",
+    "description": "Toast one minute before the sleep timer stops playback"
+  },
+  "playback.sleep_timer": {
+    "value": "Sleep timer",
+    "description": "Player menu row and its page: stop playback after a while"
+  }
+}

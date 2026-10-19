@@ -55,7 +55,7 @@
 //     surface, and on a full-screen wash that multiply WAS the dither's cost: a scrolling Library
 //     measured 45 fps with it and 60 without, dithered either way (2026-09-19, `tests/run.py --fps`,
 //     `docs/backdrop-blur-profiling.md`). The tile coordinate is linear in screen position, so the
-//     paired vertex shader computes it (`#define SN_DITHER_NC`, `gfx::VS_*_DITHERED`) and the
+//     paired vertex shader computes it (`#define WI_DITHER_NC`, `gfx::VS_*_DITHERED`) and the
 //     fetch reads the varying directly: no arithmetic word at all before the fetch.
 //
 // THE NOISE IS TPDF AT ±1 LSB and both halves live in the TILE (`gfx::noise_tex`): the texel stores
@@ -89,11 +89,11 @@ varying highp vec2 v_dither_nc;
 
 // One noise sample for this fragment, in the ±u_dither/2 range. Screen-space 1:1 under GL_NEAREST,
 // so the pattern is fixed to the panel and does not swim when a surface slides.
-float sn_noise(){
+float wi_noise(){
   return texture2D(u_dither_tex, v_dither_nc).r - 0.5;
 }
 
 // Dither a COLOUR. The common case: a ramp between two rgb values, or a graded texture sample.
-vec3 sn_dither(vec3 c){
-  return c + sn_noise() * u_dither;
+vec3 wi_dither(vec3 c){
+  return c + wi_noise() * u_dither;
 }

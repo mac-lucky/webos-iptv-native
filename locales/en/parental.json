@@ -1,0 +1,82 @@
+{
+  "parental.change_pin": {
+    "value": "Change PIN",
+    "description": "Parental control row: set a new PIN"
+  },
+  "parental.channel_locked": {
+    "value": "Channel locked",
+    "description": "Toast after locking a channel"
+  },
+  "parental.channel_unlocked": {
+    "value": "Channel unlocked",
+    "description": "Toast after removing a channel's lock"
+  },
+  "parental.confirm_pin": {
+    "value": "Enter the new PIN again",
+    "description": "PIN dialog title: confirm the new PIN"
+  },
+  "parental.enter_pin": {
+    "value": "Enter PIN",
+    "description": "PIN dialog title: the parental PIN is needed"
+  },
+  "parental.full": {
+    "value": "Too many locked items",
+    "description": "Toast: the lock list has no room for another entry"
+  },
+  "parental.group_locked": {
+    "value": "Group locked",
+    "description": "Toast after locking a group"
+  },
+  "parental.group_unlocked": {
+    "value": "Group unlocked",
+    "description": "Toast after removing a group's lock"
+  },
+  "parental.hint": {
+    "value": "Number keys, or Up and Down then OK",
+    "description": "PIN dialog: how to type the digits"
+  },
+  "parental.lock_channel": {
+    "value": "Lock channel",
+    "description": "Channel menu action: the channel needs the PIN to play"
+  },
+  "parental.lock_group": {
+    "value": "Lock group",
+    "description": "Group menu action: the group needs the PIN to open"
+  },
+  "parental.locked_channels": {
+    "value": "Locked channels",
+    "description": "Setting: channels that need the PIN"
+  },
+  "parental.locked_groups": {
+    "value": "Locked groups",
+    "description": "Setting: groups that need the PIN"
+  },
+  "parental.mismatch": {
+    "value": "The PINs did not match",
+    "description": "PIN dialog: the confirmation differed from the new PIN"
+  },
+  "parental.new_pin": {
+    "value": "Enter a new PIN",
+    "description": "PIN dialog title: choose the new PIN"
+  },
+  "parental.pin_changed": {
+    "value": "PIN changed",
+    "description": "Toast after the PIN was changed"
+  },
+  "parental.title": {
+    "value": "Parental control",
+    "description": "Settings section: PIN and locks"
+  },
+  "parental.unlock_channel": {
+    "value": "Unlock channel",
+    "description": "Channel menu action: remove the channel's lock"
+  },
+  "parental.unlock_group": {
+    "value": "Unlock group",
+    "description": "Group menu action: remove the group's lock"
+  },
+  "parental.wrong_pin": {
+    "value": "Wrong PIN, try again",
+    "description": "PIN dialog: the digits were not the PIN"
+  }
+}

@@ -9,7 +9,17 @@ pub mod time;
 
 // Wave C screens (declared by the lead; each file is owned by one agent).
 pub mod data;
+pub mod groups;
 pub mod guide;
+pub mod library;
 pub mod lists;
 pub mod panels;
+pub mod playback;
 pub mod player;
+// Movies and Shows (VOD).
+pub mod vod;
+
+// Parental controls, the channel name editor and programme reminders.
+pub mod names;
+pub mod parental;
+pub mod reminders;

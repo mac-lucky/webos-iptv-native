@@ -475,7 +475,7 @@ fn scrub_params(s: &str) -> String {
     }
 }
 
-/// JSON fields whose value is a secret, as the Stremio API bodies spell them.
+/// JSON fields whose value is a secret, in the spellings web API bodies use.
 const JSON_SECRETS: [&str; 4] = ["\"authKey\":\"", "\"password\":\"", "\"apiKey\":\"", "\"token\":\""];
 
 /// `"authKey":"abc"` → `"authKey":"<redacted>"`.
@@ -483,9 +483,9 @@ fn scrub_json_secrets(s: &str) -> String {
     JSON_SECRETS.iter().fold(s.to_string(), |acc, key| replace_quoted_value(&acc, key, '"', "<redacted>"))
 }
 
-/// The resource names a Stremio addon URL routes on. Everything between the host and the first of
-/// these is the addon's transport configuration, which is the user's (a debrid key, a base64
-/// settings blob), so it becomes `<config>`.
+/// Route words of catalog-style URLs, which put per-user configuration (a key, a base64 settings
+/// blob) in the path segments before them: everything between the host and the first of these
+/// becomes `<config>`. Kept from the upstream scrubber because it only ever removes text.
 const ADDON_RESOURCES: [&str; 6] = ["manifest.json", "catalog", "meta", "stream", "subtitles", "addon_catalog"];
 
 /// URL paths, made safe: addon configuration becomes `<config>`, and any remaining path segment
@@ -666,7 +666,7 @@ mod tests {
     /// A plain addon URL is diagnostic as it is: resource, type, id and extras stay.
     #[test]
     fn an_unconfigured_addon_path_is_kept() {
-        let out = kept("addon: https://v3-cinemeta.strem.io/catalog/series/top/genre=Drama&skip=20.json");
+        let out = kept("addon: https://catalog.example/catalog/series/top/genre=Drama&skip=20.json");
         assert_eq!(out, "addon: https://<host>/catalog/series/top/genre=Drama&skip=20.json");
     }
 
@@ -690,9 +690,9 @@ mod tests {
         assert!(out.contains("path=/extractor/video"), "an ordinary path stays: {out}");
     }
 
-    /// The Stremio session key, in the API's JSON bodies and in query form.
+    /// An `authKey` session key, in JSON bodies and in query form.
     #[test]
-    fn a_stremio_auth_key_never_survives() {
+    fn an_auth_key_never_survives() {
         let out = kept(r#"api: POST {"type":"AddonCollectionGet","authKey":"5f3c9a0b7d1e","update":true}"#);
         assert!(!out.contains("5f3c9a0b7d1e"), "{out}");
         assert!(out.contains(r#""authKey":"<redacted>","update":true"#), "{out}");
@@ -1164,7 +1164,7 @@ mod tests {
         // independent of the working directory the test runner happens to have. A new crate must
         // be added here, or its log calls stop being read; crates not ported yet are skipped.
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let roots: Vec<_> = ["src", "../machine/src", "../net/src", "../platform/src", "../gfx/src", "../ui/src", "../stremio/src", "../media/src", "../app/src", "../screens/src"]
+        let roots: Vec<_> = ["src", "../machine/src", "../net/src", "../platform/src", "../gfx/src", "../ui/src", "../media/src", "../app/src", "../screens/src"]
             .iter()
             .map(|d| manifest.join(d))
             .filter(|d| d.is_dir())

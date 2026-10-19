@@ -553,7 +553,7 @@ impl Store for MemStore {
             .insert(url.to_owned(), validators.clone());
     }
 
-    fn save_playlist(&mut self, playlist: Playlist) -> Result<Stored, StoreError> {
+    fn save_playlist(&mut self, _id: i64, playlist: Playlist) -> Result<Stored, StoreError> {
         let mut mem = self.0.lock().unwrap();
         mem.guide_urls = playlist.epg_urls.clone();
         mem.playlists.push(playlist);
@@ -624,7 +624,7 @@ fn an_empty_playlist_keeps_the_stored_one() {
     let server = provider();
     let mut store = MemStore::default();
     let config = Config {
-        playlist_url: server.url("http", "/empty"),
+        playlists: vec![(1, server.url("http", "/empty"))],
         ..Config::default()
     };
     let results = refresh_once(
@@ -646,7 +646,7 @@ fn refresh_once_fetches_the_playlist_then_its_guides_and_revalidates() {
     let server = provider();
     let mut store = MemStore::default();
     let config = Config {
-        playlist_url: server.url("http", &format!("/pl/{TOKEN}/playlist.m3u")),
+        playlists: vec![(1, server.url("http", &format!("/pl/{TOKEN}/playlist.m3u")))],
         ..Config::default()
     };
     let cancel = Arc::new(AtomicBool::new(false));
@@ -681,7 +681,10 @@ fn no_status_text_or_error_holds_a_token() {
     let server = provider();
     let mut store = MemStore::default();
     let config = Config {
-        playlist_url: server.url("http", &format!("/missing/{TOKEN}?token=short")),
+        playlists: vec![(
+            1,
+            server.url("http", &format!("/missing/{TOKEN}?token=short")),
+        )],
         extra_guides: vec![
             server.url("http", &format!("/bad/{GUIDE_TOKEN}/guide.xml?key=short")),
             format!("http://127.0.0.1:1/{TOKEN}"),
@@ -729,7 +732,7 @@ fn refresher_runs_on_start_on_request_and_on_an_interval() {
     let server = provider();
     let store = MemStore::default();
     let config = Config {
-        playlist_url: server.url("http", &format!("/pl/{TOKEN}/playlist.m3u")),
+        playlists: vec![(1, server.url("http", &format!("/pl/{TOKEN}/playlist.m3u")))],
         ..Config::default()
     };
     let refresher = Refresher::start(
@@ -772,7 +775,7 @@ fn refresher_runs_on_start_on_request_and_on_an_interval() {
 fn an_idle_refresher_waits_for_a_request() {
     let server = provider();
     let config = Config {
-        playlist_url: server.url("http", &format!("/pl/{TOKEN}/playlist.m3u")),
+        playlists: vec![(1, server.url("http", &format!("/pl/{TOKEN}/playlist.m3u")))],
         ..Config::default()
     };
     let refresher =
@@ -793,7 +796,7 @@ fn an_idle_refresher_waits_for_a_request() {
 #[test]
 fn refresher_failures_are_a_status() {
     let config = Config {
-        playlist_url: format!("http://127.0.0.1:1/pl/{TOKEN}"),
+        playlists: vec![(1, format!("http://127.0.0.1:1/pl/{TOKEN}"))],
         ..Config::default()
     };
     let refresher =
@@ -833,7 +836,7 @@ fn dropping_the_refresher_ends_the_download_in_flight() {
     });
     let store = MemStore::default();
     let config = Config {
-        playlist_url: server.url("http", "/slow"),
+        playlists: vec![(1, server.url("http", "/slow"))],
         ..Config::default()
     };
     let refresher =
@@ -938,7 +941,7 @@ fn an_unbounded_budget_and_interval_do_not_overflow() {
         ))
     );
     let config = Config {
-        playlist_url: server.url("http", &format!("/pl/{TOKEN}/playlist.m3u")),
+        playlists: vec![(1, server.url("http", &format!("/pl/{TOKEN}/playlist.m3u")))],
         interval: Some(Duration::MAX),
         ..Config::default()
     };
@@ -995,8 +998,8 @@ impl Store for Answering {
         self.0.save_validators(url, validators);
     }
 
-    fn save_playlist(&mut self, playlist: Playlist) -> Result<Stored, StoreError> {
-        self.0.save_playlist(playlist)
+    fn save_playlist(&mut self, id: i64, playlist: Playlist) -> Result<Stored, StoreError> {
+        self.0.save_playlist(id, playlist)
     }
 
     fn guide_urls(&mut self) -> Vec<String> {
@@ -1067,7 +1070,7 @@ fn the_same_config_again_keeps_the_run() {
     let server = slow_playlist();
     let store = MemStore::default();
     let config = Config {
-        playlist_url: server.url("http", "/slow"),
+        playlists: vec![(1, server.url("http", "/slow"))],
         ..Config::default()
     };
     let refresher = Refresher::start(
@@ -1100,14 +1103,14 @@ fn a_superseded_run_is_never_published() {
         Box::new(transport()),
         Box::new(MemStore::default()),
         Config {
-            playlist_url: old.url("http", "/slow"),
+            playlists: vec![(1, old.url("http", "/slow"))],
             ..Config::default()
         },
     )
     .unwrap();
     wait_until("the old download to start", || !old.requests().is_empty());
     refresher.set_config(Config {
-        playlist_url: new.url("http", "/new"),
+        playlists: vec![(1, new.url("http", "/new"))],
         ..Config::default()
     });
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -1141,10 +1144,10 @@ fn a_registered_path_token_never_reaches_the_status() {
         ["kqvxzmb", "trwpln"].concat(),
     ] {
         let config = Config {
-            playlist_url: format!("http://127.0.0.1:1/pl/13/{token}/playlist.m3u8"),
+            playlists: vec![(1, format!("http://127.0.0.1:1/pl/13/{token}/playlist.m3u8"))],
             ..Config::default()
         };
-        iptv::redact::register_secrets(&config.playlist_url);
+        iptv::redact::register_secrets(&config.playlists[0].1);
         let results = refresh_once(
             &transport(),
             &mut MemStore::default(),

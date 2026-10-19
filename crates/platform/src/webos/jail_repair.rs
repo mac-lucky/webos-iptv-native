@@ -14,8 +14,8 @@ use std::time::Duration;
 const EXEC_URI: &str = "luna://org.webosbrew.hbchannel.service/exec";
 #[cfg(all(not(feature = "hostsim"), not(any(test, feature = "test-support"))))]
 const BUDGET: Duration = Duration::from_secs(10);
-const OK_MARKER: &str = "SNATIVE_JAIL_REPAIR_OK_74";
-const NOT_ROOT_MARKER: &str = "SNATIVE_JAIL_REPAIR_NOT_ROOT_74";
+const OK_MARKER: &str = "WI_JAIL_REPAIR_OK_74";
+const NOT_ROOT_MARKER: &str = "WI_JAIL_REPAIR_NOT_ROOT_74";
 const HBC_ABSENT_TEXT: &str = "Service does not exist: org.webosbrew.hbchannel.service.";
 
 /// Called only by the PlayerAdapter worker after the owner accepts explicit confirmation.
@@ -133,8 +133,8 @@ mod tests {
         for output in [
             "",
             "ok",
-            "SNATIVE_JAIL_REPAIR_OK_74\n",
-            "SNATIVE_JAIL_REPAIR_OK_74 extra",
+            "WI_JAIL_REPAIR_OK_74\n",
+            "WI_JAIL_REPAIR_OK_74 extra",
         ] {
             assert_eq!(
                 repair(|_| Ok(reply(output)), &dir(id), id, || true),

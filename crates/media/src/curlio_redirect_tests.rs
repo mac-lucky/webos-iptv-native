@@ -555,8 +555,8 @@ fn live_tv_headers() -> crate::headers::RequestHeaders {
     .expect("the stream's headers are well formed")
 }
 
-/// **A stream's request headers ride EVERY request the source makes for it** (Stremio
-/// `behaviorHints.proxyHeaders.request`): the open, the same-origin redirect hop it follows, and a
+/// **A stream's request headers ride EVERY request the source makes for it** (a playlist's
+/// `#EXTVLCOPT` / `#EXTHTTP` ones): the open, the same-origin redirect hop it follows, and a
 /// Range seek, which replays the whole chain with its `Range` on each hop. The stream's
 /// `User-Agent` REPLACES the client's own on all of them (exactly one `User-Agent` line), and the
 /// Referer and the credential header are on every request, since every hop stays on the stream's

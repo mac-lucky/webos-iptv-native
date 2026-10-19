@@ -84,6 +84,27 @@ impl ChannelKey {
     pub fn hex(self) -> String {
         format!("{:016x}", self.0)
     }
+
+    /// [`hex`](Self::hex) read back: exactly sixteen hex digits, as settings lines store keys.
+    pub fn from_hex(hex: &str) -> Option<Self> {
+        if hex.len() != 16 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
+        let bits = u64::from_str_radix(hex, 16).ok()?;
+        Some(ChannelKey(bits as i64))
+    }
+
+    /// The key of this stream as a channel of playlist `playlist` (a storage row id): the same
+    /// stream in two playlists is two channels, each with its own favourite, recents and history
+    /// entries. Playlist 1 keeps the stream's own key, the one everything stored before there
+    /// were several playlists was kept under.
+    pub fn in_playlist(self, playlist: i64) -> Self {
+        if playlist == 1 {
+            return self;
+        }
+        let h = fnv1a_more(self.0 as u64, b"\0playlist\0");
+        ChannelKey(fnv1a_more(h, &playlist.to_le_bytes()) as i64)
+    }
 }
 
 /// FNV-1a, 64-bit.
@@ -206,6 +227,9 @@ pub struct Catchup {
     pub days: u16,
     /// `catchup-source` template, when declared or derived.
     pub source: Option<String>,
+    /// Kodi's `catchup-correction` in seconds: archive URLs ask for the programme's start and
+    /// end minus this, for a provider whose archive runs off the guide's clock.
+    pub correction_secs: i32,
 }
 
 impl Catchup {
@@ -288,6 +312,7 @@ impl fmt::Debug for Catchup {
             .field("mode", &self.mode)
             .field("days", &self.days)
             .field("source", &masked(&self.source))
+            .field("correction_secs", &self.correction_secs)
             .finish()
     }
 }
@@ -431,6 +456,21 @@ mod tests {
     }
 
     #[test]
+    fn keys_read_back_from_their_hex() {
+        for k in [
+            ChannelKey(0),
+            ChannelKey(-1),
+            ChannelKey(i64::MIN),
+            ChannelKey(42),
+        ] {
+            assert_eq!(ChannelKey::from_hex(&k.hex()), Some(k));
+        }
+        for bad in ["xyz", "00000000000000zz", "+00000000000002a", "1"] {
+            assert_eq!(ChannelKey::from_hex(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
     fn catchup_mode_round_trips() {
         for m in [
             CatchupMode::Default,
@@ -476,6 +516,7 @@ mod tests {
                 mode: Some(CatchupMode::Shift),
                 days: 7,
                 source: Some(format!("{url}&utc={{utc}}")),
+                ..Default::default()
             },
             http_headers: vec![
                 ("Authorization".into(), "Bearer SECRETSECRET123".into()),
@@ -493,6 +534,18 @@ mod tests {
         assert!(!shown.contains("tx7qx7qx7qx7q"), "{shown}");
         assert!(!shown.contains("plain-word"), "{shown}");
         assert!(shown.contains("News") && shown.contains("Cookie"));
+    }
+
+    #[test]
+    fn a_stream_is_one_channel_per_playlist_and_playlist_one_keeps_its_key() {
+        let k = key("http://host/a?token=x");
+        assert_eq!(k.in_playlist(1), k);
+        assert_ne!(k.in_playlist(2), k);
+        assert_ne!(k.in_playlist(2), k.in_playlist(3));
+        assert_eq!(
+            k.in_playlist(2),
+            key("http://host/a?token=y").in_playlist(2)
+        );
     }
 
     #[test]

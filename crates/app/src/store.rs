@@ -10,6 +10,7 @@
 //! whose sorted lists are kept per group until the data or a setting changes. A storage error is
 //! logged and reads as empty: a broken database shows an empty guide, never a crash.
 
+mod library;
 mod search;
 
 use std::cell::RefCell;
@@ -18,18 +19,23 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use iptv::epg::{Match, Matcher};
 use iptv::model::{Channel, ChannelKey, Playlist, Programme, Timestamp};
 use iptv::refresh::{self, Refresher, StoreError, Stored, Transport, Validators};
-use iptv::storage::{RefreshStore, Storage};
+use iptv::storage::{RefreshStore, Storage, UserLayout};
+use iptv::vod::{VodItem, VodProgress};
 use tv_screens::data::fake::FakeData;
 use tv_screens::data::{GridProgramme, Group, HistoryEntry, Playback, SearchResult, TvData};
+use tv_screens::library::{LibraryEdit, PlaylistEntry};
 use tv_screens::lists::history::FINISHED_SLACK_SECS;
+use tv_screens::names::NameRules;
 use tv_screens::panels::settings::{is_http_url, SPECS};
 use tv_screens::panels::{keys, Settings};
+use tv_screens::parental::{Lock, Parental};
+use tv_screens::reminders::{self, Reminder};
 
+use crate::backup::Favorite;
 use crate::logs::log;
 
 /// What the shell reads and writes. Writes take effect in the reads at once.
@@ -38,7 +44,27 @@ pub trait Store: TvData {
     fn settings(&self) -> Settings;
     /// Store one setting; `settings` holds every current value.
     fn save_setting(&mut self, key: &str, settings: &Settings);
+    /// The parental PIN opened `lock`: it plays or shows without the PIN until the app exits or
+    /// goes to the background.
+    fn unlock(&mut self, lock: Lock);
+    /// Everything the PIN opened locks again (the app went to the background).
+    fn relock(&mut self);
     fn toggle_favorite(&mut self, key: ChannelKey);
+    /// Every favourite in order, with its channel's name while the playlist has it: what a backup
+    /// keeps of them.
+    fn favorite_list(&self) -> Vec<Favorite>;
+    /// Replace the favourites with `keys`, in order (a restored backup).
+    fn set_favorites(&mut self, keys: &[ChannelKey]);
+    /// What the user arranged (custom groups, group and channel order), for a backup; `None`
+    /// where nothing is stored.
+    fn backup_layout(&self) -> Option<UserLayout> {
+        None
+    }
+    /// Replace the user's arrangement with `layout` (a restored backup) and read the data again;
+    /// false, with nothing changed, when storage refuses it.
+    fn restore_layout(&mut self, _layout: &UserLayout) -> bool {
+        false
+    }
     fn remove_history(&mut self, key: ChannelKey, start: Timestamp);
     /// The channel has played long enough to count as watched.
     fn touch_recent(&mut self, key: ChannelKey);
@@ -46,6 +72,9 @@ pub trait Store: TvData {
     fn playback_mut(&mut self) -> &mut Playback;
     /// Keep how far into `programme` on `channel` the viewer got, for History.
     fn save_progress(&mut self, channel: ChannelKey, programme: &Programme, position_secs: i64);
+    /// Keep how far into the movie or episode `item` (`duration_secs` long, 0 when not known) the
+    /// viewer got, for its section's resume.
+    fn save_vod_progress(&mut self, _item: ChannelKey, _position_secs: i64, _duration_secs: i64) {}
     /// The playlist or a guide changed on disk.
     fn reload(&mut self) {}
     /// The app's private data dir (flash, owner-only), where the database lives; `None` for data
@@ -53,12 +82,18 @@ pub trait Store: TvData {
     fn data_dir(&self) -> Option<&Path> {
         None
     }
-    /// A background refresh of the playlist and its guides through `transport`, or `None`
-    /// while no playlist URL is set (idle) or the data cannot be refreshed. `at_boot`: the
+    /// A background refresh of the playlists and their guides through `transport`, or `None`
+    /// while no enabled playlist has a URL (idle) or the data cannot be refreshed. `at_boot`: the
     /// app is starting, so `playlist.update_on_start` decides whether it refreshes at once.
     fn refresher(&self, _transport: Box<dyn Transport>, _at_boot: bool) -> Option<Refresher> {
         None
     }
+    /// What a refresher fetches now; `None` while there is nothing to fetch.
+    fn refresh_config(&self) -> Option<refresh::Config> {
+        None
+    }
+    /// Change the playlists or the viewer's groups.
+    fn edit_library(&mut self, _edit: LibraryEdit) {}
 }
 
 pub use iptv::model::unix_now;
@@ -134,34 +169,11 @@ fn open_in_memory() -> StoreData {
     StoreData::new(Storage::open_in_memory().expect("SQLite opens in memory"))
 }
 
-/// What the refresher fetches, from the Settings. No `Debug`: the URLs carry tokens (their
-/// secrets were registered for masking when the Settings took them).
-pub fn refresh_config(s: &Settings) -> refresh::Config {
-    let playlist = s.get(keys::PLAYLIST_URL);
-    let guide = s.get(keys::EPG_URL);
-    refresh::Config {
-        playlist_url: playlist.to_owned(),
-        extra_guides: (!guide.is_empty())
-            .then(|| guide.to_owned())
-            .into_iter()
-            .collect(),
-        interval: Some(Duration::from_secs(
-            u64::from(s.number(keys::EPG_UPDATE_HOURS)) * 3600,
-        )),
-    }
-}
-
 /// The first data dir that exists or can be made owner-only: the user's Application Support
 /// dir on the simulator, the private data candidates on the television.
 fn data_dir() -> Option<PathBuf> {
     #[cfg(feature = "hostsim")]
-    let candidates = std::env::var_os("HOME")
-        .map(|home| {
-            Path::new(&home)
-                .join("Library/Application Support")
-                .join(crate::NAME)
-        })
-        .into_iter();
+    let candidates = tv_base::paths::user_data_dir(crate::NAME).into_iter();
     #[cfg(not(feature = "hostsim"))]
     let candidates = tv_base::paths::private_data_candidates().into_iter();
     candidates.into_iter().find(|dir| make_dir(dir))
@@ -191,6 +203,8 @@ struct Snapshot {
     /// Each channel's place in name order (case-insensitive, ties in playlist order).
     name_rank: Vec<u32>,
     search: search::Index,
+    /// Every enabled playlist's movies and episodes, in order.
+    vod: Vec<VodItem>,
 }
 
 impl Snapshot {
@@ -201,7 +215,9 @@ impl Snapshot {
         let no_overrides = HashMap::new();
         let mut channels = Vec::new();
         let mut guides = HashMap::new();
+        let mut vod = Vec::new();
         for p in playlists.iter().filter(|p| p.enabled) {
+            vod.extend(or_log("vod", storage.vod_items(p.id)));
             let list = or_log("channels", storage.channels(p.id));
             let matches = matcher.match_playlist(p.id, &list, &no_overrides);
             for (c, m) in list.iter().zip(matches.channels) {
@@ -216,12 +232,7 @@ impl Snapshot {
             .enumerate()
             .map(|(i, c)| (c.key, i))
             .collect();
-        let mut by_name: Vec<usize> = (0..channels.len()).collect();
-        by_name.sort_by_cached_key(|&i| channels[i].name.to_lowercase());
-        let mut name_rank = vec![0; channels.len()];
-        for (rank, i) in by_name.into_iter().enumerate() {
-            name_rank[i] = rank as u32;
-        }
+        let name_rank = rank_by_name(&channels);
         let search = search::Index::new(&channels, &guides);
         Snapshot {
             channels,
@@ -229,8 +240,44 @@ impl Snapshot {
             guides,
             name_rank,
             search,
+            vod,
         }
     }
+}
+
+/// The favourites `keys` as a backup keeps them: each with its channel's name while `data` lists
+/// the channel.
+fn named_favorites(data: &dyn TvData, keys: &[ChannelKey]) -> Vec<Favorite> {
+    let name = |key| data.channel(key).map(|c| c.name.clone());
+    keys.iter()
+        .map(|&key| Favorite {
+            key,
+            name: name(key),
+        })
+        .collect()
+}
+
+/// How far into `item` the viewer got, as storage keeps it: the shell's seconds clamped into
+/// [`VodProgress`]'s range.
+fn vod_progress_at(
+    item: ChannelKey,
+    position_secs: i64,
+    duration_secs: i64,
+    now: Timestamp,
+) -> VodProgress {
+    let secs = |s: i64| u32::try_from(s.max(0)).unwrap_or(u32::MAX);
+    VodProgress::new(item, secs(position_secs), secs(duration_secs), now)
+}
+
+/// Each channel's place in name order (case-insensitive, ties in playlist order).
+fn rank_by_name(channels: &[Channel]) -> Vec<u32> {
+    let mut by_name: Vec<usize> = (0..channels.len()).collect();
+    by_name.sort_by_cached_key(|&i| channels[i].name.to_lowercase());
+    let mut rank = vec![0; channels.len()];
+    for (r, i) in by_name.into_iter().enumerate() {
+        rank[i] = r as u32;
+    }
+    rank
 }
 
 /// Channels shared between the lists that show them.
@@ -256,8 +303,12 @@ impl refresh::Store for Snapshotting {
         self.store.save_validators(url, validators);
     }
 
-    fn save_playlist(&mut self, playlist: Playlist) -> Result<Stored, StoreError> {
-        self.store.save_playlist(playlist)
+    fn save_playlist(
+        &mut self,
+        id: iptv::epg::PlaylistId,
+        playlist: Playlist,
+    ) -> Result<Stored, StoreError> {
+        self.store.save_playlist(id, playlist)
     }
 
     fn guide_urls(&mut self) -> Vec<String> {
@@ -296,6 +347,14 @@ pub struct StoreData {
     recents: Vec<ChannelKey>,
     history: Vec<HistoryEntry>,
     playback: Playback,
+    /// What the parental settings block and what the PIN opened this session.
+    parental: Parental,
+    /// [`TvData::vod`], and the positions kept for it.
+    vod: Rc<[Rc<VodItem>]>,
+    vod_progress: HashMap<ChannelKey, VodProgress>,
+    /// [`TvData::playlists`], and the viewer's groups and order ([`library`]).
+    playlists: Vec<PlaylistEntry>,
+    layout: library::Layout,
 }
 
 impl StoreData {
@@ -305,6 +364,7 @@ impl StoreData {
                 .iter()
                 .filter_map(|s| Some((s.key, storage.setting(s.key).ok()??))),
         );
+        let parental = Parental::from_settings(&settings);
         let mut data = StoreData {
             storage,
             dir: None,
@@ -321,7 +381,21 @@ impl StoreData {
             recents: Vec::new(),
             history: Vec::new(),
             playback: Playback::default(),
+            parental,
+            vod: Rc::new([]),
+            vod_progress: HashMap::new(),
+            playlists: Vec::new(),
+            layout: library::Layout::default(),
         };
+        // The Settings URL names playlist 1, which a build before several playlists made only
+        // on its first refresh.
+        let url = data.settings.get(keys::PLAYLIST_URL).to_owned();
+        let made = or_log("playlists", data.storage.playlists())
+            .iter()
+            .any(|p| p.id == iptv::storage::MAIN_PLAYLIST);
+        if !url.is_empty() && !made {
+            or_log("playlist", data.storage.set_main_playlist(&url));
+        }
         data.reload();
         data
     }
@@ -360,6 +434,11 @@ impl StoreData {
         }
     }
 
+    fn load_vod_progress(&mut self) {
+        let kept = or_log("vod progress", self.storage.vod_progress());
+        self.vod_progress = kept.into_iter().map(|p| (p.key, p)).collect();
+    }
+
     fn load_recents(&mut self) {
         let recents = or_log("recents", self.storage.recent());
         self.recents = recents.into_iter().map(|(k, _)| k).collect();
@@ -389,12 +468,22 @@ impl StoreData {
     /// Take `snapshot` as the data every read answers from.
     fn install(&mut self, snapshot: Snapshot) {
         let Snapshot {
-            channels,
+            mut channels,
             index,
             guides,
-            name_rank,
+            mut name_rank,
             search,
+            vod,
         } = snapshot;
+        self.vod = vod.into_iter().map(Rc::new).collect();
+        // The one place names are cleaned: after guide matching, which reads the provider's.
+        let rules = NameRules::from_settings(&self.settings);
+        if !rules.is_empty() {
+            for c in &mut channels {
+                c.name = rules.clean(&c.name);
+            }
+            name_rank = rank_by_name(&channels);
+        }
         self.channels = channels.into_iter().map(Rc::new).collect();
         self.index = index;
         self.guides = guides;
@@ -417,6 +506,10 @@ impl StoreData {
 
     /// A group's channels, ordered as `groups.channel_sort` asks.
     fn make_list(&self, group: &Group) -> Channels {
+        // A locked group shows nothing until the PIN opens it.
+        if self.parental.group_locked(group) {
+            return Rc::new([]);
+        }
         let sort = self.settings.get(keys::GROUPS_CHANNEL_SORT);
         let all = || 0..self.channels.len();
         let mut picked: Vec<usize> = match group {
@@ -436,12 +529,26 @@ impl StoreData {
                     .collect()
             }
             Group::Playlist(name) => all()
-                .filter(|&i| self.channels[i].groups.contains(name))
+                .filter(|&i| {
+                    let c = &self.channels[i];
+                    c.groups.contains(name) && !self.layout.moved(c.key)
+                })
+                .collect(),
+            Group::Custom(name) => self
+                .layout
+                .members(name)
+                .iter()
+                .filter_map(|k| self.index.get(k).copied())
                 .collect(),
         };
-        match sort {
-            "number" => picked.sort_by_key(|&i| self.channels[i].number.unwrap_or(u32::MAX)),
-            "name" => picked.sort_by_key(|&i| self.name_rank[i]),
+        match (sort, group) {
+            ("number", _) => picked.sort_by_key(|&i| self.channels[i].number.unwrap_or(u32::MAX)),
+            ("name", _) => picked.sort_by_key(|&i| self.name_rank[i]),
+            // The viewer's order first, the rest in playlist order.
+            (_, Group::Playlist(name)) => picked.sort_by_key(|&i| {
+                let key = self.channels[i].key;
+                self.layout.channel_place(name, key).unwrap_or(usize::MAX)
+            }),
             _ => {}
         }
         picked
@@ -453,6 +560,21 @@ impl StoreData {
     /// The kept list of `group` is out of date.
     fn forget(&mut self, group: &Group) {
         self.lists.get_mut().retain(|(g, _)| g != group);
+    }
+
+    /// The custom groups and the playlist groups `shown` takes, in the viewer's order
+    /// ([`library`]). A playlist group is listed once for every playlist that has it, and not
+    /// at all once every channel of it was moved out.
+    fn arranged(&self, shown: impl Fn(&str) -> bool) -> Vec<Group> {
+        let mut seen = HashSet::new();
+        let names = self
+            .channels
+            .iter()
+            .filter(|c| !self.layout.moved(c.key))
+            .flat_map(|c| &c.groups)
+            .filter(|name| shown(name) && seen.insert(name.as_str()))
+            .cloned();
+        self.layout.arrange(names)
     }
 }
 
@@ -473,13 +595,18 @@ impl TvData for StoreData {
         .map(|(_, g)| g)
         .collect();
         let hidden: HashSet<&str> = s.hidden_groups().collect();
-        let mut seen = HashSet::new();
-        for name in self.channels.iter().flat_map(|c| &c.groups) {
-            if !hidden.contains(name.as_str()) && seen.insert(name.as_str()) {
-                out.push(Group::Playlist(name.clone()));
-            }
-        }
+        out.extend(self.arranged(|name| !hidden.contains(name)));
         out
+    }
+
+    fn all_groups(&self) -> Vec<Group> {
+        let mut out = vec![Group::Favorites, Group::All, Group::History];
+        out.extend(self.arranged(|_| true));
+        out
+    }
+
+    fn playlists(&self) -> Vec<PlaylistEntry> {
+        self.playlists.clone()
     }
 
     fn programmes(&self, channel: ChannelKey, from: Timestamp, to: Timestamp) -> Vec<Programme> {
@@ -511,6 +638,30 @@ impl TvData for StoreData {
 
     fn past_days(&self) -> u32 {
         self.settings.number(keys::EPG_PAST_DAYS)
+    }
+
+    fn vod(&self) -> Rc<[Rc<VodItem>]> {
+        Rc::clone(&self.vod)
+    }
+
+    fn vod_progress(&self, item: ChannelKey) -> Option<VodProgress> {
+        self.vod_progress.get(&item).copied()
+    }
+
+    fn vod_locked(&self, item: &VodItem) -> bool {
+        tv_screens::vod::catalog::locked(&self.parental, item)
+    }
+
+    fn locked(&self, channel: &Channel) -> bool {
+        self.parental.locked(channel)
+    }
+
+    fn group_locked(&self, group: &Group) -> bool {
+        self.parental.group_locked(group)
+    }
+
+    fn reminders(&self) -> Vec<Reminder> {
+        reminders::reminders(&self.settings)
     }
 
     fn channels(&self, group: &Group) -> Channels {
@@ -591,23 +742,79 @@ impl Store for StoreData {
         or_log("setting", self.storage.set_setting(key, settings.get(key)));
         // The playlist row and the manual guides follow the URLs, so an old token is not kept
         // (a cleared URL is stored as "" for the same reason).
+        // The Settings URL is playlist 1's, made when it is first set.
         if matches!(key, keys::PLAYLIST_URL | keys::EPG_URL) {
-            let config = refresh_config(settings);
-            if let Some(p) = or_log("playlists", self.storage.playlists()).first() {
-                let (url, guides) = (&config.playlist_url, &config.extra_guides);
-                or_log("sources", self.storage.set_sources(p.id, url, guides));
+            let url = settings.get(keys::PLAYLIST_URL);
+            if key == keys::PLAYLIST_URL {
+                or_log("playlist", self.storage.set_main_playlist(url));
             }
+            let guides = library::extra_guides(settings);
+            or_log(
+                "sources",
+                self.storage
+                    .set_sources(iptv::storage::MAIN_PLAYLIST, url, &guides),
+            );
         }
         self.settings = settings.clone();
         if key.starts_with("groups.") {
             self.lists.get_mut().clear();
         }
+        // Storage re-dated the kept entries: a shorter keep takes the old ones away now.
+        if key == keys::HISTORY_KEEP_DAYS {
+            self.load_history();
+        }
+        // A lock shows in the lists at once; new name rules clean the channels again.
+        if matches!(key, keys::PARENTAL_CHANNELS | keys::PARENTAL_GROUPS) {
+            self.parental.follow(&self.settings);
+            self.lists.get_mut().clear();
+        }
+        if matches!(key, keys::NAMES_PREFIXES | keys::NAMES_SUFFIXES) {
+            self.reload();
+        }
+        if key == keys::PLAYLIST_URL {
+            self.load_library();
+        }
+    }
+
+    fn unlock(&mut self, lock: Lock) {
+        self.parental.open(lock);
+        self.lists.get_mut().clear();
+    }
+
+    fn relock(&mut self) {
+        self.parental.relock();
+        self.lists.get_mut().clear();
     }
 
     fn toggle_favorite(&mut self, key: ChannelKey) {
         or_log("favourite", self.storage.toggle_favourite(key));
         self.favorites = or_log("favourites", self.storage.favourites());
         self.forget(&Group::Favorites);
+    }
+
+    fn favorite_list(&self) -> Vec<Favorite> {
+        named_favorites(self, &self.favorites)
+    }
+
+    fn set_favorites(&mut self, keys: &[ChannelKey]) {
+        or_log("favourites", self.storage.set_favourites(keys));
+        self.favorites = or_log("favourites", self.storage.favourites());
+        self.forget(&Group::Favorites);
+    }
+
+    fn backup_layout(&self) -> Option<UserLayout> {
+        self.storage
+            .user_layout()
+            .map_err(|e| log(&format!("storage: layout: {e}")))
+            .ok()
+    }
+
+    fn restore_layout(&mut self, layout: &UserLayout) -> bool {
+        let taken = or_log("layout", self.storage.set_user_layout(layout));
+        if taken {
+            self.reload();
+        }
+        taken
     }
 
     fn remove_history(&mut self, key: ChannelKey, start: Timestamp) {
@@ -643,6 +850,12 @@ impl Store for StoreData {
         self.load_history();
     }
 
+    fn save_vod_progress(&mut self, item: ChannelKey, position_secs: i64, duration_secs: i64) {
+        let p = vod_progress_at(item, position_secs, duration_secs, unix_now());
+        or_log("vod progress", self.storage.save_vod_progress(&p));
+        self.load_vod_progress();
+    }
+
     /// Swaps in the snapshot the refresher's thread read, or reads one here (at boot, or after a
     /// change the refresher did not make).
     fn reload(&mut self) {
@@ -652,21 +865,20 @@ impl Store for StoreData {
         self.favorites = or_log("favourites", self.storage.favourites());
         self.load_recents();
         self.load_history();
+        self.load_vod_progress();
+        self.load_library();
     }
 
     fn data_dir(&self) -> Option<&Path> {
         self.dir.as_deref()
     }
 
-    /// Into this database over a connection of the refresher's own. The Settings URL fills the
-    /// first playlist, which is made on first use; a database in memory is never refreshed. At
-    /// boot with `playlist.update_on_start` off it waits for a request or its interval, unless
-    /// nothing was ever fetched.
+    /// Into this database over a connection of the refresher's own: every enabled playlist, one
+    /// after the other; a database in memory is never refreshed. At boot with
+    /// `playlist.update_on_start` off it waits for a request or its interval, unless nothing was
+    /// ever fetched.
     fn refresher(&self, transport: Box<dyn Transport>, at_boot: bool) -> Option<Refresher> {
-        let config = refresh_config(&self.settings);
-        if config.playlist_url.is_empty() {
-            return None;
-        }
+        let config = self.refresh_config()?;
         let storage = match Storage::open(self.dir.as_deref()?) {
             Ok(s) => s,
             Err(e) => {
@@ -674,21 +886,8 @@ impl Store for StoreData {
                 return None;
             }
         };
-        let playlist = match or_log("playlists", self.storage.playlists()).first() {
-            Some(p) => p.id,
-            None => match self.storage.add_playlist("Playlist", &config.playlist_url) {
-                Ok(id) => id,
-                Err(e) => {
-                    log(&format!("refresh: playlist: {e}"));
-                    return None;
-                }
-            },
-        };
-        // A row a build before the URL sync wrote keeps the URL it was made with.
-        let (url, guides) = (&config.playlist_url, &config.extra_guides);
-        or_log("sources", self.storage.set_sources(playlist, url, guides));
         let store = Box::new(Snapshotting {
-            store: RefreshStore::new(storage, playlist),
+            store: RefreshStore::new(storage),
             next: Arc::clone(&self.next),
         });
         let now = !at_boot
@@ -701,6 +900,14 @@ impl Store for StoreData {
             Refresher::start_idle(transport, store, config)
         }
     }
+
+    fn refresh_config(&self) -> Option<refresh::Config> {
+        library::refresh_config(&self.storage, &self.settings)
+    }
+
+    fn edit_library(&mut self, edit: LibraryEdit) {
+        self.edit(edit);
+    }
 }
 
 /// The simulator's synthetic guide; writes stay in memory and settings are not kept.
@@ -709,7 +916,24 @@ impl Store for FakeData {
         Settings::new()
     }
 
-    fn save_setting(&mut self, _key: &str, _settings: &Settings) {}
+    /// Not stored, but the locks, the name rules and the reminders take effect, as on the TV.
+    fn save_setting(&mut self, _key: &str, settings: &Settings) {
+        self.parental.follow(settings);
+        self.names = NameRules::from_settings(settings);
+        self.reminders = reminders::reminders(settings);
+    }
+
+    fn unlock(&mut self, lock: Lock) {
+        self.parental.open(lock);
+    }
+
+    fn relock(&mut self) {
+        self.parental.relock();
+    }
+
+    fn edit_library(&mut self, edit: LibraryEdit) {
+        library::edit_fake(self, edit);
+    }
 
     fn toggle_favorite(&mut self, key: ChannelKey) {
         match self.favorites.iter().position(|&k| k == key) {
@@ -717,6 +941,19 @@ impl Store for FakeData {
                 self.favorites.remove(i);
             }
             None => self.favorites.push(key),
+        }
+    }
+
+    fn favorite_list(&self) -> Vec<Favorite> {
+        named_favorites(self, &self.favorites)
+    }
+
+    fn set_favorites(&mut self, keys: &[ChannelKey]) {
+        self.favorites.clear();
+        for &key in keys {
+            if !self.favorites.contains(&key) {
+                self.favorites.push(key);
+            }
         }
     }
 
@@ -735,11 +972,22 @@ impl Store for FakeData {
         &mut self.playback
     }
 
-    /// Storage's rule without its expiry: under 15 s in and not finished starts over.
+    /// Storage's rule, in memory.
+    fn save_vod_progress(&mut self, item: ChannelKey, position_secs: i64, duration_secs: i64) {
+        let p = vod_progress_at(item, position_secs, duration_secs, self.now);
+        self.vod_progress.retain(|x| x.key != item);
+        if p.worth_keeping() {
+            self.vod_progress.insert(0, p);
+        }
+    }
+
+    /// Storage's rule at the default minimum, without its expiry: under the minimum in and not
+    /// finished starts over.
     fn save_progress(&mut self, channel: ChannelKey, p: &Programme, position: i64) {
         self.history
             .retain(|h| h.channel != channel || h.programme.start != p.start);
-        if position >= 15 || position >= p.duration_secs() - FINISHED_SLACK_SECS {
+        let min = i64::from(Settings::new().number(keys::HISTORY_MIN_SECS));
+        if position >= min || position >= p.duration_secs() - FINISHED_SLACK_SECS {
             self.history.insert(
                 0,
                 HistoryEntry {
@@ -1015,25 +1263,70 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    #[test]
-    fn progress_is_kept_past_fifteen_seconds_and_shows_in_history() {
-        let mut s = store();
-        let key = s.channels[0].key;
-        let now = unix_now();
-        let programme = Programme {
+    fn earlier(now: Timestamp) -> Programme {
+        Programme {
             start: now - 7_200,
             stop: now - 3_600,
             title: "Earlier".into(),
             ..Programme::default()
-        };
-        s.save_progress(key, &programme, 10);
+        }
+    }
+
+    #[test]
+    fn progress_is_kept_from_ten_seconds_and_shows_in_history() {
+        let mut s = store();
+        let key = s.channels[0].key;
+        let programme = earlier(unix_now());
+        s.save_progress(key, &programme, 9);
         assert_eq!(s.history(), [], "under the minimum: start over");
+        s.save_progress(key, &programme, 10);
+        assert_eq!(s.history().len(), 1, "the default minimum is 10 s");
         s.save_progress(key, &programme, 600);
         let h = s.history();
         assert_eq!(h.len(), 1);
         assert_eq!((h[0].channel, h[0].position_secs), (key, 600));
         assert_eq!(h[0].programme.title, programme.title);
         assert_eq!(names(s.channels(&Group::History)), ["Beta"]);
+    }
+
+    #[test]
+    fn the_history_settings_apply_at_once_and_after_a_reopen() {
+        let dir = std::env::temp_dir().join(format!("webosiptv-hist-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(make_dir(&dir));
+        let mut s = open_at(&dir);
+        let (a, b) = (ChannelKey(1), ChannelKey(2));
+        let now = unix_now();
+        let mut settings = s.settings();
+        assert!(settings.set(keys::HISTORY_MIN_SECS, "30".into()));
+        s.save_setting(keys::HISTORY_MIN_SECS, &settings);
+        s.save_progress(a, &earlier(now), 20);
+        assert_eq!(s.history(), [], "20 s is under the 30 s asked for");
+        s.save_progress(a, &earlier(now), 30);
+        // An entry whose programme ended three days ago.
+        let old = Programme {
+            start: now - 3 * 86_400 - 3_600,
+            stop: now - 3 * 86_400,
+            ..earlier(now)
+        };
+        s.save_progress(b, &old, 600);
+        assert_eq!(s.history().len(), 2);
+        assert!(settings.set(keys::HISTORY_KEEP_DAYS, "1".into()));
+        s.save_setting(keys::HISTORY_KEEP_DAYS, &settings);
+        let kept: Vec<ChannelKey> = s.history().iter().map(|h| h.channel).collect();
+        assert_eq!(
+            kept,
+            [a],
+            "a one-day keep drops the three-day-old entry at once"
+        );
+        drop(s);
+        let s = open_at(&dir);
+        assert_eq!(s.settings().get(keys::HISTORY_MIN_SECS), "30");
+        assert_eq!(s.settings().get(keys::HISTORY_KEEP_DAYS), "1");
+        assert_eq!(s.storage.history_min_secs().unwrap(), 30);
+        assert_eq!(s.history().len(), 1);
+        drop(s);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1087,6 +1380,7 @@ mod tests {
             mode: Some(iptv::model::CatchupMode::Shift),
             days: 3,
             source: Some(String::new()),
+            ..Default::default()
         };
         let mut sport = channel("Sport", "Sport", 2);
         sport.tvg_id = Some("a".into());

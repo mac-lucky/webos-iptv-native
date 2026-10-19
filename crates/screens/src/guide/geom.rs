@@ -9,6 +9,7 @@ use iptv::model::Timestamp;
 use tv_ui::Rect;
 
 use super::clock::HALF_HOUR;
+use crate::groups::Frame;
 use crate::lists::Rows;
 use crate::theme::{guide, space};
 use crate::time::MINUTE;
@@ -18,6 +19,29 @@ pub const SCREEN_H: f32 = 1080.0;
 
 /// The preview video: top-left, a third of the screen wide, 16:9.
 pub const PREVIEW: Rect = Rect::new(space::XL, space::L, guide::PREVIEW_W, guide::PREVIEW_H);
+
+/// Picture in picture ([`Navigate::Pip`]): the video in the bottom-right corner, a quarter of
+/// the screen wide and 16:9, as far from the edges as the preview is; the guide is laid out
+/// without its preview and the window covers the end of the lowest rows.
+///
+/// [`Navigate::Pip`]: crate::data::Navigate::Pip
+pub const PIP: Rect = Rect::new(
+    SCREEN_W - space::XL - PIP_W,
+    SCREEN_H - space::L - PIP_H,
+    PIP_W,
+    PIP_H,
+);
+const PIP_W: f32 = SCREEN_W / 4.0;
+const PIP_H: f32 = PIP_W * 9.0 / 16.0;
+/// The frame around the window, so it reads as a window over the rows.
+pub const PIP_FRAME: f32 = space::XS;
+/// The details column without the preview: from the left margin, with more description.
+pub const PIP_DETAILS_X: f32 = space::XL;
+pub const PIP_DESC_LINES: usize = 6;
+// The window covers programme cells only (under the ruler, right of the channel column), and
+// the longer description still ends above the ruler.
+const _: () = assert!(PIP.y - PIP_FRAME > GRID_Y && PIP.x - PIP_FRAME > GRID_X);
+const _: () = assert!(DESC_Y + PIP_DESC_LINES as f32 * DESC_LINE_H <= RULER_Y);
 
 /// The details column right of the preview.
 pub const DETAILS_X: f32 = PREVIEW.x + PREVIEW.w + space::XXL;
@@ -83,17 +107,10 @@ pub const HALF_HOUR_W: f32 = guide::HOUR_W * 0.5;
 pub const PX_PER_SEC: f32 = HALF_HOUR_W / HALF_HOUR as f32;
 
 /// The groups panel covers the left of the guide, which stays where it is.
-pub const GROUPS_W: f32 = 615.0;
-pub const GROUP_PILL_X: f32 = 144.0;
-pub const GROUP_PILL_W: f32 = 440.0;
-pub const GROUP_PILL_H: f32 = 72.0;
-pub const GROUP_ROW_H: f32 = 77.0;
-pub const GROUP_TEXT_PAD: f32 = space::L;
-pub const GROUPS_Y: f32 = space::L;
-/// Whole group rows on screen.
-pub const GROUP_ROWS: usize = ((SCREEN_H - GROUPS_Y) / GROUP_ROW_H) as usize;
-/// The group list scrolls only to keep the focus on screen.
-pub const GROUP_LIST: Rows = Rows::new(GROUP_ROWS, 0);
+pub const GROUPS: Frame = Frame {
+    w: 615.0,
+    pill_x: 144.0,
+};
 
 /// Seconds of guide the window shows: from the grid's left edge to the screen's right edge.
 pub const fn window_span() -> i64 {
@@ -172,11 +189,21 @@ pub const fn rows_clip() -> Rect {
 /// The preview rectangle on the 1920x1080 plane. The groups panel covers it rather than moving
 /// it: moving the video window costs the TV a visible re-layout.
 pub fn preview_rect() -> crate::data::Rect {
+    plane(PREVIEW)
+}
+
+/// [`PIP`] on the 1920x1080 plane: where the video goes while picture in picture is on, and
+/// the hole the guide leaves for it.
+pub fn pip_rect() -> crate::data::Rect {
+    plane(PIP)
+}
+
+fn plane(r: Rect) -> crate::data::Rect {
     crate::data::Rect {
-        x: PREVIEW.x as i32,
-        y: PREVIEW.y as i32,
-        w: PREVIEW.w as i32,
-        h: PREVIEW.h as i32,
+        x: r.x as i32,
+        y: r.y as i32,
+        w: r.w as i32,
+        h: r.h as i32,
     }
 }
 
@@ -238,6 +265,25 @@ mod tests {
         assert_eq!(cell(W - 600, W, W), None);
         assert_eq!(cell(W + window_span(), W + window_span() + 60, W), None);
         assert_eq!(cell(W + 60, W + 60, W), None);
+    }
+
+    #[test]
+    fn the_pip_window_is_a_quarter_wide_sixteen_by_nine_in_the_bottom_right_corner() {
+        let r = pip_rect();
+        assert_eq!((r.x, r.y, r.w, r.h), (1408, 786, 480, 270));
+        assert_eq!(r.w * 4, 1920);
+        assert_eq!(r.w * 9, r.h * 16);
+        // The preview's margins, on the other corner.
+        assert_eq!(1920 - (r.x + r.w), preview_rect().x);
+        assert_eq!(1080 - (r.y + r.h), preview_rect().y);
+        // Over the programme cells only, its frame on screen (the rest: the const checks).
+        let frame = PIP_FRAME as i32;
+        assert!(r.x + r.w + frame <= 1920 && r.y + r.h + frame <= 1080);
+        assert_eq!(
+            PIP_DETAILS_X as i32,
+            preview_rect().x,
+            "the preview's left margin"
+        );
     }
 
     #[test]

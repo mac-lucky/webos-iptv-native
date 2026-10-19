@@ -13,16 +13,16 @@
 // straight-alpha blend - accepted). Full-screen art (radius 0) takes the flat fast-path.
 // v_cuv/v_p and the SDF chain are highp - see the PRECISION note in fs_src.frag.
 //
-// SN_FOCUS (linked as its own program, gfx.rs's FOCUS_IMAGE/VS_FOCUS/FS_FOCUS): the lit-glass
+// WI_FOCUS (linked as its own program, gfx.rs's FOCUS_IMAGE/VS_FOCUS/FS_FOCUS): the lit-glass
 // edge and risen shadow for a FOCUSED ArtTile used to be inline here unconditionally, behind
 // `u_focus.x > 0.0` uniform branches. A TV A/B measured real backpressure from that: EVERY IPROG
 // draw (every resting card, glyph, blur reduction, `field_kick`, `FrameCache` quad) paid for the
 // bigger program even with nothing focused - Midgard flattens the extra uniform branches into
 // selects, and the `v_gloss` varying load costs something on every fragment regardless of
-// `u_focus.x`. The plain (non-`SN_FOCUS`) path below is therefore BYTE-FOR-BYTE the pre-focus
+// `u_focus.x`. The plain (non-`WI_FOCUS`) path below is therefore BYTE-FOR-BYTE the pre-focus
 // program (main's `fs_img.frag` at 78a823eea, comments aside): `IPROG`, `FS_STILL` and every
 // resting-card draw compile and run exactly that, unaffected by any of this file's FOCUS code.
-// `gfx::draw_tex_impl` only reaches for the `SN_FOCUS` program when a draw is actually focused or
+// `gfx::draw_tex_impl` only reaches for the `WI_FOCUS` program when a draw is actually focused or
 // risen (`focus > 0.0 || dy > 0.0` - at most one card on screen), falling back to the plain
 // program if it fails to link.
 //
@@ -74,11 +74,11 @@
 precision mediump float;
 varying highp vec2 v_cuv;
 varying highp vec2 v_p;
-#ifdef SN_FOCUS
+#ifdef WI_FOCUS
 varying highp float v_gloss; // GLOSS's linear projection, computed once per vertex - see vs_img.vert
 #endif
 uniform sampler2D u_tex;
-#ifndef SN_STILL_GROUND
+#ifndef WI_STILL_GROUND
 uniform vec4 u_tint;
 #endif
 uniform float u_rimw;
@@ -86,10 +86,10 @@ uniform vec4 u_rimcol;
 uniform highp vec4 u_card; // half-size minus radius, radius, conservative interior threshold
 uniform float u_shinv;
 uniform vec4 u_shcol;
-#ifdef SN_FOCUS
+#ifdef WI_FOCUS
 uniform highp vec3 u_focus; // (pop factor f, 1/gloss-gradient-length, shadow y-offset px)
 #endif
-#ifdef SN_STILL_GROUND
+#ifdef WI_STILL_GROUND
 varying mediump float v_still_ramp;
 uniform vec4 u_still_col;
 // Compose the existing straight-alpha card output, then its separate SDF-clipped scrim.
@@ -104,7 +104,7 @@ vec4 stillOver(vec3 rgb, float alpha, float coverage, float ramp){
 #endif
 void main(){
   vec4 c = texture2D(u_tex, v_cuv);
-#ifdef SN_STILL_GROUND
+#ifdef WI_STILL_GROUND
   // The CPU admits only an exactly-white tint to this specialization.
   vec3 tex = c.rgb;
   float ta = c.a;
@@ -112,13 +112,13 @@ void main(){
   vec3 tex = c.rgb*u_tint.rgb;
   float ta = c.a*u_tint.a;
 #endif
-#ifdef SN_STILL_GROUND
+#ifdef WI_STILL_GROUND
   float ramp = u_still_col.a * clamp(v_still_ramp, 0.0, 1.0);
   if (u_card.z < 0.5) { gl_FragColor = stillOver(tex, ta, 1.0, ramp); return; }
 #else
   if (u_card.z < 0.5) { gl_FragColor = vec4(tex, ta); return; }
 #endif
-#ifdef SN_FOCUS
+#ifdef WI_FOCUS
   // `vp` is the CARD-centred coordinate: raw `v_p` shifted back up by the shadow's own downward
   // offset, since the quad's centre (what `v_p` is relative to) now sits `u_focus.z` px BELOW the
   // card's true centre once the asymmetric shadow inflation is in play (0 otherwise - see the
@@ -130,7 +130,7 @@ void main(){
   highp vec2 q = abs(v_p) - u_card.xy;
 #endif
   highp float straight = max(q.x, q.y);
-#ifdef SN_FOCUS
+#ifdef WI_FOCUS
   // The FIRST gate runs before `d` exists, so it can only afford the box distance (exact on the
   // straight segments, which is all `straight < u_card.w` ever admits) - gloss is a plain
   // interpolated varying now, so it costs nothing extra to apply right here rather than needing to
@@ -140,7 +140,7 @@ void main(){
     if (u_focus.x > 0.0) {
       tex = mix(tex, vec3(1.0), clamp(1.0 - v_gloss / 0.34, 0.0, 1.0) * 0.14 * u_focus.x);
     }
-#ifdef SN_STILL_GROUND
+#ifdef WI_STILL_GROUND
     gl_FragColor = stillOver(tex, ta, 1.0, ramp);
 #else
     gl_FragColor = vec4(tex, ta);
@@ -149,7 +149,7 @@ void main(){
   }
 #else
   if (straight < u_card.w) {
-#ifdef SN_STILL_GROUND
+#ifdef WI_STILL_GROUND
     gl_FragColor = stillOver(tex, ta, 1.0, ramp);
 #else
     gl_FragColor = vec4(tex, ta);
@@ -159,7 +159,7 @@ void main(){
 #endif
   float d = straight - u_card.z;
   if (min(q.x, q.y) > 0.0) d = length(q) - u_card.z;
-#ifdef SN_FOCUS
+#ifdef WI_FOCUS
   // The SECOND gate has the true rounded `d`: the glow's widest band is 12px, so `d > -12.0` covers
   // every RIM layer (the top/bottom bands are narrower, 6px/4px) in one compare.
   bool wide2 = u_focus.x > 0.0 && d > -12.0;
@@ -167,7 +167,7 @@ void main(){
     if (u_focus.x > 0.0) {
       tex = mix(tex, vec3(1.0), clamp(1.0 - v_gloss / 0.34, 0.0, 1.0) * 0.14 * u_focus.x);
     }
-#ifdef SN_STILL_GROUND
+#ifdef WI_STILL_GROUND
     gl_FragColor = stillOver(tex, ta, 1.0, ramp);
 #else
     gl_FragColor = vec4(tex, ta);
@@ -176,7 +176,7 @@ void main(){
   }
 #else
   if (d < -2.0) {
-#ifdef SN_STILL_GROUND
+#ifdef WI_STILL_GROUND
     gl_FragColor = stillOver(tex, ta, 1.0, ramp);
 #else
     gl_FragColor = vec4(tex, ta);
@@ -184,7 +184,7 @@ void main(){
     return;
   }
 #endif
-#ifdef SN_FOCUS
+#ifdef WI_FOCUS
   // The shadow's own distance: raw `v_p`, never `vp` - see the SHADOW paragraph above for why the
   // unshifted quad coordinate is already exactly what the shadow needs. `u_focus.z == 0` collapses
   // `qs`/`straightS` to `q`/`straight` exactly (both read the same `vp == v_p`), so this costs
@@ -234,13 +234,13 @@ void main(){
   }
 #endif
   float m = 1.0 - smoothstep(-1.0, 1.0, d);
-#ifdef SN_FOCUS
+#ifdef WI_FOCUS
   float rim = max(0.0, 1.0 - abs(d + u_rimw)) * (u_rimcol.a + glareTop);
 #else
   float rim = max(0.0, 1.0 - abs(d + u_rimw)) * u_rimcol.a;
 #endif
   tex = mix(tex, u_rimcol.rgb, rim);
-#ifdef SN_FOCUS
+#ifdef WI_FOCUS
   // The exact shadow distance. `u_focus.z <= 0` reuses `d` (exact already, `length()` and all) -
   // the box proxy above is only ever a safe LOWER bound, not the true rounded distance, so it must
   // not leak into the final `sh` for the unshifted case or a resting card's corner shadow would
@@ -255,7 +255,7 @@ void main(){
   float sh = clamp(0.5 - d*u_shinv, 0.0, 1.0);
 #endif
   sh = sh*sh*(3.0 - 2.0*sh) * u_shcol.a * (1.0 - m);
-#ifdef SN_STILL_GROUND
+#ifdef WI_STILL_GROUND
   gl_FragColor = stillOver(tex*m, ta*m + sh, m, ramp);
 #else
   gl_FragColor = vec4(tex*m, ta*m + sh);

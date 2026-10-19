@@ -43,7 +43,7 @@ pub struct Config {
     /// `host:port`, as the receiver published it. Scheme is not carried: it is always https.
     #[serde(default)]
     pub endpoint: String,
-    /// Short session id, echoed in the envelope and in the `X-Sn-Session` header so the receiver
+    /// Short session id, echoed in the envelope and in the `X-Wi-Session` header so the receiver
     /// can reject a stale build from a previous session by name rather than only by secret.
     #[serde(default)]
     pub session: String,

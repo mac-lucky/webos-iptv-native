@@ -1,0 +1,79 @@
+{
+  "vod.all": {
+    "value": "All",
+    "description": "VOD category: every movie or show of the section"
+  },
+  "vod.continue": {
+    "value": "Continue watching",
+    "description": "VOD category: items started and not finished"
+  },
+  "vod.episode_count": {
+    "value": {
+      "one": "{count} episode",
+      "other": "{count} episodes"
+    },
+    "args": {
+      "count": "i64"
+    },
+    "description": "How many episodes a show or a season has"
+  },
+  "vod.episodes": {
+    "value": "Episodes",
+    "description": "The season of a show's episodes that name no season"
+  },
+  "vod.from_start": {
+    "value": "Play from start",
+    "description": "Resume prompt: play the movie or episode from its beginning"
+  },
+  "vod.left": {
+    "value": "{time} left",
+    "args": {
+      "time": "str"
+    },
+    "description": "How much of a started movie or episode is left, e.g. 42:10 left"
+  },
+  "vod.movies": {
+    "value": "Movies",
+    "description": "Main menu entry and title of the movies section"
+  },
+  "vod.no_movies": {
+    "value": "This playlist has no movies",
+    "description": "The movies section of a playlist without any"
+  },
+  "vod.no_shows": {
+    "value": "This playlist has no shows",
+    "description": "The shows section of a playlist without any"
+  },
+  "vod.resume_from": {
+    "value": "Resume from {time}",
+    "args": {
+      "time": "str"
+    },
+    "description": "Resume prompt: play on from the saved position, e.g. Resume from 12:34"
+  },
+  "vod.season": {
+    "value": "Season {number}",
+    "args": {
+      "number": "i64"
+    },
+    "description": "A season of a show"
+  },
+  "vod.season_count": {
+    "value": {
+      "one": "{count} season",
+      "other": "{count} seasons"
+    },
+    "args": {
+      "count": "i64"
+    },
+    "description": "How many seasons a show has"
+  },
+  "vod.shows": {
+    "value": "Shows",
+    "description": "Main menu entry and title of the shows (series) section"
+  },
+  "vod.watched": {
+    "value": "Watched",
+    "description": "A movie or episode played to its end"
+  }
+}

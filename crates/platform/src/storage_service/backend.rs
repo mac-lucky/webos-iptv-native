@@ -39,7 +39,7 @@ pub fn last_error_stage() -> &'static str {
 fn stage_error(stage: &'static str, error: ErrorCode) -> ErrorCode {
     remember_stage(stage);
     use std::ffi::CString;
-    if let Ok(message) = CString::new(format!("snstorage stage={stage} code={error:?}")) {
+    if let Ok(message) = CString::new(format!("wistorage stage={stage} code={error:?}")) {
         unsafe {
             libc::syslog(
                 libc::LOG_USER | libc::LOG_ERR,

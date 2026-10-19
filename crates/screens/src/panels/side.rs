@@ -223,6 +223,12 @@ impl<Id: Copy> SidePanel<Id> {
         tv_machine::idle::invalidate();
     }
 
+    /// Put `page` in place of the current page (its rows changed), the pages under it kept.
+    pub fn replace(&mut self, page: Page<Id>) {
+        *self.page_mut() = page;
+        tv_machine::idle::invalidate();
+    }
+
     /// Leave the current sub-page; the first page stays.
     pub fn pop(&mut self) -> bool {
         if self.pages.len() < 2 {
@@ -479,7 +485,7 @@ fn draw_row<Id>(p: Painter, r: Rect, row: &Row<Id>, focused: bool) {
 
 fn draw_field(p: Painter, r: Rect, text: &CString, editing: bool) {
     let rim = if editing {
-        style::FIELD_RIM_HOT
+        crate::theme::ink(style::FIELD_RIM_HOT)
     } else {
         style::FIELD_RIM
     };

@@ -1,0 +1,6 @@
+{
+  "pip.start": {
+    "value": "Picture in picture",
+    "description": "Player menu action: the TV guide full screen with the video playing on in a corner window"
+  }
+}

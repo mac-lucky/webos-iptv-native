@@ -331,13 +331,13 @@ pub fn initialize(preference: Preference, controlled: bool) {
         .map(|v| (v.ui.as_deref(), v.fmt.as_deref(), v.clock.as_deref()))
         .unwrap_or_default();
     #[cfg(feature = "hostsim")]
-    let simulated_format = std::env::var("SNATIVE_FORMAT_LOCALE").ok();
+    let simulated_format = std::env::var("WEBOSIPTV_FORMAT_LOCALE").ok();
     #[cfg(feature = "hostsim")]
     let fmt = simulated_format.as_deref().or(fmt);
     #[allow(unused_mut)]
     let mut cx = LocaleContext::resolve(preference, ui, fmt, clock, env.as_deref());
     #[cfg(feature = "hostsim")]
-    if let Ok(forced) = std::env::var("SNATIVE_LOCALE") {
+    if let Ok(forced) = std::env::var("WEBOSIPTV_LOCALE") {
         cx = LocaleContext::resolve(
             Preference::from_tag(&forced),
             Some(&forced),

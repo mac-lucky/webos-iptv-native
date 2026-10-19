@@ -1,0 +1,26 @@
+{
+  "vod.all": "Wszystkie",
+  "vod.continue": "Kontynuuj oglądanie",
+  "vod.episode_count": {
+    "one": "{count} odcinek",
+    "few": "{count} odcinki",
+    "many": "{count} odcinków",
+    "other": "{count} odcinka"
+  },
+  "vod.episodes": "Odcinki",
+  "vod.from_start": "Odtwórz od początku",
+  "vod.left": "Zostało {time}",
+  "vod.movies": "Filmy",
+  "vod.no_movies": "Ta playlista nie ma filmów",
+  "vod.no_shows": "Ta playlista nie ma seriali",
+  "vod.resume_from": "Wznów od {time}",
+  "vod.season": "Sezon {number}",
+  "vod.season_count": {
+    "one": "{count} sezon",
+    "few": "{count} sezony",
+    "many": "{count} sezonów",
+    "other": "{count} sezonu"
+  },
+  "vod.shows": "Seriale",
+  "vod.watched": "Obejrzany"
+}

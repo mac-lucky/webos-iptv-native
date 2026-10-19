@@ -28,9 +28,8 @@ pub const fn rgb8(r: u8, g: u8, b: u8) -> [f32; 4] {
 // Neutral — achromatic. These two stops are the ones the renderer paints with directly; the rest of
 // the palette is `ui::theme`'s private primitive layer, which imports these so a code is still
 // written down in exactly one place.
-/// The app ground (`theme::SURFACE_APP`'s stop): Stremio's purple-navy `#1a173e`, stremio-web's
-/// `--secondary-background-color: rgba(26, 23, 62, 1)` (`src/App/styles.less`). The lighter end of
-/// Stremio's `41deg` page gradient rather than its near-black `#0c0b11` end, so a focused card's
+/// The app ground (`theme::SURFACE_APP`'s stop): the palette's purple-navy `#1a173e`. The lighter
+/// end of the `41deg` page gradient rather than its near-black `#0c0b11` end, so a focused card's
 /// drop shadow still has a ground to darken. (Was Apple TV's shelf gray `#2c2c2e`; the name stays
 /// so the stop keeps its one home.)
 pub const NEUTRAL_500: [f32; 4] = rgb8(0x1a, 0x17, 0x3e);

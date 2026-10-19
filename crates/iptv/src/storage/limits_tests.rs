@@ -305,7 +305,7 @@ fn set_sources_forgets_the_urls_the_settings_no_longer_name() {
     let sources = s.epg_sources().unwrap();
     let detached = sources.iter().find(|g| g.id == manual).unwrap();
     assert!(!detached.serves(id), "but serve nothing");
-    let mut store = RefreshStore::new(s, id);
+    let mut store = RefreshStore::new(s);
     assert_eq!(store.guide_urls(), [header]);
     let s = store.storage();
     let sources: Vec<String> = s

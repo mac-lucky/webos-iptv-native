@@ -41,5 +41,5 @@ void main(){
   if (abs(p.x) >= inner.x || abs(p.y) >= inner.y) {
     cov = 1.0 - smoothstep(-1.0, 1.0, sdBox(p, hsz, u_radius));
   }
-  gl_FragColor = vec4(sn_dither(c.rgb * u_tint.rgb), cov * c.a * u_tint.a);
+  gl_FragColor = vec4(wi_dither(c.rgb * u_tint.rgb), cov * c.a * u_tint.a);
 }

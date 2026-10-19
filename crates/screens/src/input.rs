@@ -193,6 +193,17 @@ impl Remote {
         })
     }
 
+    /// Whether `key` is down: its key-down came and its key-up has not.
+    pub fn holds(&self, key: Key) -> bool {
+        self.held.is_some_and(|h| h.key == key)
+    }
+
+    /// Drop the held key without an action: its key-up will not come here (the TV keyboard
+    /// rose over it and takes the remote's keys).
+    pub fn forget(&mut self) {
+        self.held = None;
+    }
+
     /// The platform's own auto-repeat for a held key: proof it is still held, never an action.
     pub fn repeat(&mut self, key: Key, now: u32) {
         if let Some(h) = self.held.as_mut().filter(|h| h.key == key) {

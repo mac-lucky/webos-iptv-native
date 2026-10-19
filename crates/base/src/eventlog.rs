@@ -17,7 +17,7 @@ pub mod scrub;
 #[cfg(feature = "lab-diagnostics")]
 pub mod ring;
 
-/// Strip a Stremio session key from a line bound for the event log.
+/// Strip an `authKey=` session key from a line bound for the event log.
 ///
 /// **This is a backstop, not the policy.** The policy is that no call site formats a URL into a log
 /// line at all, and the support channel is "send us `/tmp/webosiptv-events.log`". So the class is
@@ -67,7 +67,7 @@ pub fn events_log() -> std::path::PathBuf {
 ///
 /// **A host test that reads the log back must not read the shared one.** A host test run resolves the
 /// log to the bare `/tmp/webosiptv-events.log` (only the `hostsim` feature lets
-/// `SNATIVE_RUNTIME_DIR` steer it, [`crate::paths::ENV_STEERABLE`]), and that file is one for the
+/// `WEBOSIPTV_RUNTIME_DIR` steer it, [`crate::paths::ENV_STEERABLE`]), and that file is one for the
 /// whole machine: every test binary of this `make check`, and of any other checkout's, appends to
 /// it. `serial()` is one process's lock. With two `make check` runs side by side,
 /// `an_expired_leaf_is_logged_as_expired_not_as_a_stale_ca_store` found the OTHER run's
@@ -99,7 +99,7 @@ mod private {
     pub(super) fn with<R>(f: impl FnOnce() -> R) -> R {
         static N: AtomicU32 = AtomicU32::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "sn-private-log-{}-{}",
+            "wi-private-log-{}-{}",
             std::process::id(),
             N.fetch_add(1, Ordering::Relaxed)
         ));
@@ -330,7 +330,7 @@ mod log_sink_tests {
     #[test]
     fn a_symlink_cannot_redirect_the_rust_log_sink() {
         let _g = crate::testlock::serial();
-        let dir = std::env::temp_dir().join(format!("sn-rust-log-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("wi-rust-log-{}", std::process::id()));
         let _ = std::fs::create_dir(&dir);
         let victim = dir.join("victim");
         let sink = dir.join("sink");
@@ -367,7 +367,7 @@ mod log_sink_tests {
     fn a_sink_hard_linked_to_another_file_is_refused_and_that_file_is_untouched() {
         use std::os::unix::fs::MetadataExt;
         let _g = crate::testlock::serial();
-        let dir = std::env::temp_dir().join(format!("sn-rust-log-link-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("wi-rust-log-link-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir(&dir).unwrap();
         let other = dir.join("auth.json");
@@ -408,7 +408,7 @@ mod log_sink_tests {
     #[test]
     fn the_event_log_is_0640_even_under_a_restrictive_umask() {
         use std::os::unix::fs::MetadataExt;
-        const CHILD_ENV: &str = "SN_EVENTLOG_UMASK_CHILD";
+        const CHILD_ENV: &str = "WEBOSIPTV_EVENTLOG_UMASK_CHILD";
         if std::env::var_os(CHILD_ENV).is_none() {
             // libtest names a test without its crate: `eventlog::log_sink_tests::…`.
             let name = format!(
@@ -428,7 +428,7 @@ mod log_sink_tests {
             );
             return;
         }
-        let dir = std::env::temp_dir().join(format!("sn-rust-log-umask-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("wi-rust-log-umask-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir(&dir).unwrap();
         // Only ever reached in the child process: this changes ITS umask, never the suite's.

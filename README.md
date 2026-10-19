@@ -26,6 +26,7 @@ the Homebrew Channel or developer mode. LG does not distribute native third-part
 | Path | What it is |
 |---|---|
 | `crates/base`, `machine`, `net`, `platform`, `gfx`, `ui`, `media`, `storage` | platform, rendering, UI toolkit, network and player layers taken from StremioNative and PlxNative |
+| `crates/starfish` | the LG Starfish, ACB and exported-window seam, a Rust port of StremioNative's `native/starfish.c` |
 | `crates/iptv` | playlists, guide, catch-up URLs, storage |
 | `crates/screens` | the TV screens |
 | `crates/app` | boot, frame loop and wiring |

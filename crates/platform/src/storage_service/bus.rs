@@ -176,7 +176,7 @@ impl Drop for Bus {
             // crate; this bin crate has no `tv_base::eventlog::log`, so it logs the same way `backend.rs`'s
             // `stage_error` does, through syslog.
             if let Ok(message) = CString::new(format!(
-                "snstorage bus: unregister refused — leaking its glib main loop ({})",
+                "wistorage bus: unregister refused — leaking its glib main loop ({})",
                 error_text(&error.0)
             )) {
                 unsafe {

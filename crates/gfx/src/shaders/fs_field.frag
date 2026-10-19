@@ -24,5 +24,5 @@ uniform sampler2D u_tex;
 uniform vec4 u_tint;
 void main(){
   vec4 c = texture2D(u_tex, v_uv);
-  gl_FragColor = vec4(sn_dither(c.rgb * u_tint.rgb), c.a * u_tint.a);
+  gl_FragColor = vec4(wi_dither(c.rgb * u_tint.rgb), c.a * u_tint.a);
 }

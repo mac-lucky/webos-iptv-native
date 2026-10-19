@@ -32,9 +32,15 @@ use crate::model::{
 use crate::xmltv::{self, Sink};
 use crate::{m3u, redact};
 
+mod library;
 #[cfg(all(test, unix))]
 mod limits_tests;
 mod refresh_store;
+mod vod_store;
+pub use library::{
+    group_name_ok, CustomGroup, GroupRef, UserLayout, MAIN_PLAYLIST, MAX_CUSTOM_GROUPS,
+    MAX_GROUP_NAME, MAX_PLAYLISTS,
+};
 pub use refresh_store::RefreshStore;
 
 pub type Result<T> = rusqlite::Result<T>;
@@ -43,12 +49,12 @@ pub type Result<T> = rusqlite::Result<T>;
 pub const DB_FILE: &str = "iptv.sqlite3";
 /// Setting: how many recent channels are kept (default 10).
 pub const RECENT_CAP: &str = "recent_cap";
-/// Setting: days a history entry is kept after its programme ends (default 7).
-pub const HISTORY_DAYS: &str = "history_days";
-
-/// Below this a catch-up position means "start over" and is not kept, unless the programme was
-/// watched to the end.
-const RESUME_MIN_SECS: u32 = 15;
+/// Setting: days a history entry is kept after its programme ends (default 7). Changing it
+/// re-dates every stored entry at once.
+pub const HISTORY_DAYS: &str = "history.keep_days";
+/// Setting: seconds into a catch-up programme before it is kept in History (default 10). Below
+/// it a position means "start over" and is not kept, unless the programme was watched to the end.
+pub const HISTORY_MIN_SECS: &str = "history.min_secs";
 
 const DAY_SECS: i64 = 86_400;
 /// Programmes per guide write transaction.
@@ -264,6 +270,90 @@ CREATE TABLE history (
 ALTER TABLE programme ADD COLUMN folded TEXT;
 DELETE FROM http_validator;
 "#,
+    r#"
+-- Kodi's catchup-correction, in seconds. Rows an older build wrote kept the attribute in `extra`
+-- and read 0 here until their playlist is stored again: forgetting the playlists' validators and
+-- content hashes makes the next refresh of each a full download that rewrites its channels.
+ALTER TABLE channel ADD COLUMN catchup_correction_secs INTEGER NOT NULL DEFAULT 0;
+DELETE FROM http_validator WHERE url IN (SELECT url FROM playlist);
+UPDATE playlist SET content_hash = NULL;
+"#,
+    r#"
+-- Several playlists and the user's own groups and order. Playlist 1
+-- is the one the Settings URL (`playlist.url`) names; an install that set it but never fetched
+-- it gets its row here, so it is playlist 1 like every install that did.
+INSERT INTO playlist (id, name, url, position)
+SELECT 1, 'Playlist', value, COALESCE((SELECT MIN(position) FROM playlist), 1) - 1 FROM setting
+WHERE key = 'playlist.url' AND value <> '' AND NOT EXISTS (SELECT 1 FROM playlist WHERE id = 1);
+
+CREATE TABLE custom_group (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE custom_group_channel (
+    group_id INTEGER NOT NULL REFERENCES custom_group (id) ON DELETE CASCADE,
+    key INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    -- Moved here rather than copied: the channel leaves its playlist groups.
+    moved INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (group_id, key)
+) WITHOUT ROWID;
+
+-- The user's order of the playlist (kind 0) and custom (kind 1) groups.
+CREATE TABLE group_order (
+    kind INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (kind, name)
+) WITHOUT ROWID;
+
+-- The user's order of the channels of a playlist group.
+CREATE TABLE channel_order (
+    group_name TEXT NOT NULL,
+    key INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (group_name, key)
+) WITHOUT ROWID;
+"#,
+    r#"
+-- VOD: the movies and episodes a playlist lists, kept apart from its channels, and how
+-- far into each the viewer got. Rows an older build wrote kept them as channels: forgetting the
+-- playlists' validators and content hashes makes the next refresh of each a full download that
+-- moves them here.
+CREATE TABLE vod_item (
+    playlist_id INTEGER NOT NULL REFERENCES playlist (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    key INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    series TEXT,
+    season INTEGER,
+    episode INTEGER,
+    year INTEGER,
+    poster TEXT,
+    category TEXT,
+    url TEXT NOT NULL,
+    http_headers TEXT NOT NULL,
+    PRIMARY KEY (playlist_id, position)
+) WITHOUT ROWID;
+
+-- Fingerprint of a playlist's stored VOD items: the same download is not written again.
+CREATE TABLE vod_source (
+    playlist_id INTEGER PRIMARY KEY REFERENCES playlist (id) ON DELETE CASCADE,
+    content_hash INTEGER NOT NULL
+);
+
+CREATE TABLE vod_progress (
+    key INTEGER PRIMARY KEY,
+    position_secs INTEGER NOT NULL,
+    duration_secs INTEGER NOT NULL,
+    watched INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+DELETE FROM http_validator WHERE url IN (SELECT url FROM playlist);
+UPDATE playlist SET content_hash = NULL;
+"#,
 ];
 
 /// `Debug` masks the URL.
@@ -433,20 +523,34 @@ impl Storage {
             .optional()
     }
 
+    /// A new [`HISTORY_DAYS`] re-dates the stored history in the same transaction.
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
-        self.conn
-            .prepare_cached(
-                "INSERT INTO setting (key, value) VALUES (?1, ?2)
-                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-            )?
-            .execute([key, value])?;
-        Ok(())
+        let tx = self.write()?;
+        tx.prepare_cached(
+            "INSERT INTO setting (key, value) VALUES (?1, ?2)
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        )?
+        .execute([key, value])?;
+        self.follow_setting(key)?;
+        tx.commit()
     }
 
     pub fn remove_setting(&self, key: &str) -> Result<()> {
-        self.conn
-            .prepare_cached("DELETE FROM setting WHERE key = ?1")?
+        let tx = self.write()?;
+        tx.prepare_cached("DELETE FROM setting WHERE key = ?1")?
             .execute([key])?;
+        self.follow_setting(key)?;
+        tx.commit()
+    }
+
+    /// Inside the write that changed `key`: keep what the stored rows derive from it true.
+    fn follow_setting(&self, key: &str) -> Result<()> {
+        if key == HISTORY_DAYS {
+            let keep = i64::from(self.history_days()?) * DAY_SECS;
+            self.conn
+                .prepare_cached("UPDATE history SET expires_at = stop + ?1")?
+                .execute([keep])?;
+        }
         Ok(())
     }
 
@@ -458,6 +562,11 @@ impl Storage {
     /// [`HISTORY_DAYS`], 1 to 365.
     pub fn history_days(&self) -> Result<u32> {
         self.number_setting(HISTORY_DAYS, 7, 365)
+    }
+
+    /// [`HISTORY_MIN_SECS`], 1 to 3600.
+    pub fn history_min_secs(&self) -> Result<u32> {
+        self.number_setting(HISTORY_MIN_SECS, 10, 3600)
     }
 
     fn number_setting(&self, key: &str, default: u32, max: u32) -> Result<u32> {
@@ -498,6 +607,19 @@ impl Storage {
         keys.collect()
     }
 
+    /// Replaces every favourite with `keys`, in their order, in one transaction (a restored
+    /// backup). A key given twice is kept once, where it first appears.
+    pub fn set_favourites(&self, keys: &[ChannelKey]) -> Result<()> {
+        let tx = self.write()?;
+        tx.prepare_cached("DELETE FROM favourite")?.execute([])?;
+        let mut insert = tx.prepare_cached("INSERT OR IGNORE INTO favourite (key) VALUES (?1)")?;
+        for key in keys {
+            insert.execute([key.0])?;
+        }
+        drop(insert);
+        tx.commit()
+    }
+
     // --- recent channels --------------------------------------------------------------------
 
     /// Moves the channel to the front and drops the oldest past [`RECENT_CAP`]. The player calls
@@ -536,11 +658,11 @@ impl Storage {
     // --- catch-up history -------------------------------------------------------------------
 
     /// Stores the entry until its programme ended [`HISTORY_DAYS`] ago. An entry already past
-    /// that, or not completed and under `RESUME_MIN_SECS` in (start over), is removed instead.
+    /// that, or not completed and under [`HISTORY_MIN_SECS`] in (start over), is removed instead.
     /// Expired entries are pruned on every save.
     pub fn save_progress(&self, entry: &HistoryEntry, now: Timestamp) -> Result<()> {
         let expires_at = entry.stop + i64::from(self.history_days()?) * DAY_SECS;
-        let resumable = entry.completed || entry.position_secs >= RESUME_MIN_SECS;
+        let resumable = entry.completed || entry.position_secs >= self.history_min_secs()?;
         let tx = self.write()?;
         tx.prepare_cached("DELETE FROM history WHERE expires_at <= ?1")?
             .execute([now])?;
@@ -615,6 +737,8 @@ impl Storage {
 
     // --- playlists --------------------------------------------------------------------------
 
+    /// Adds a playlist last in order. Into an empty table it is [`MAIN_PLAYLIST`], the one the
+    /// Settings URL names: a caller adding another one makes sure that row exists first.
     pub fn add_playlist(&self, name: &str, url: &str) -> Result<PlaylistId> {
         self.conn
             .prepare_cached(
@@ -641,9 +765,11 @@ impl Storage {
         rows.collect()
     }
 
-    /// Removes the playlist, its channels and the guides only it named.
+    /// Removes the playlist, its channels, what the user kept for them (favourites, recents,
+    /// history, places in custom groups and manual order) and the guides only it named.
     pub fn remove_playlist(&self, id: PlaylistId) -> Result<()> {
         let tx = self.write()?;
+        library::forget_channels_of(&tx, id)?;
         tx.execute("DELETE FROM playlist WHERE id = ?1", [id])?;
         delete_orphan_guides(&tx)?;
         tx.commit()
@@ -751,7 +877,8 @@ impl Storage {
     pub fn channels(&self, playlist: PlaylistId) -> Result<Vec<Channel>> {
         let mut stmt = self.conn.prepare_cached(
             "SELECT key, name, number, logo, groups, url, tvg_id, tvg_name, tvg_shift_minutes,
-             catchup_mode, catchup_days, catchup_source, radio, http_headers, extra
+             catchup_mode, catchup_days, catchup_source, radio, http_headers, extra,
+             catchup_correction_secs
              FROM channel WHERE playlist_id = ?1 ORDER BY position",
         )?;
         let rows = stmt.query_map([playlist], |row| {
@@ -770,6 +897,7 @@ impl Storage {
                     mode: mode.and_then(CatchupMode::parse),
                     days: row.get(10)?,
                     source: row.get(11)?,
+                    correction_secs: row.get(15)?,
                 },
                 radio: row.get(12)?,
                 http_headers: from_json(row, 13)?,
@@ -1253,7 +1381,8 @@ fn private_files(dir: &Path, db: &Path, owner: u32) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Writes the playlist's channel rows in place of the stored ones.
+/// Writes the playlist's channel rows in place of the stored ones, each under its key in this
+/// playlist ([`ChannelKey::in_playlist`]).
 fn replace_channels(
     tx: &Transaction<'_>,
     id: PlaylistId,
@@ -1264,15 +1393,16 @@ fn replace_channels(
     let mut insert = tx.prepare_cached(
         "INSERT INTO channel (playlist_id, position, key, name, number, logo, groups, url, tvg_id,
          tvg_name, tvg_shift_minutes, catchup_mode, catchup_days, catchup_source, radio,
-         http_headers, extra)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+         http_headers, extra, catchup_correction_secs)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
+         ?18)",
     )?;
     for (position, c) in playlist.channels.iter().enumerate() {
         let [groups, http_headers, extra] = json_columns(buf, c)?;
         insert.execute(params![
             id,
             position as i64,
-            c.key.0,
+            c.key.in_playlist(id).0,
             c.name,
             c.number,
             c.logo,
@@ -1287,6 +1417,7 @@ fn replace_channels(
             c.radio,
             http_headers,
             extra,
+            c.catchup.correction_secs,
         ])?;
     }
     Ok(())
@@ -1337,6 +1468,7 @@ fn content_hash(playlist: &Playlist, buf: &mut Vec<u8>) -> Result<i64> {
             c.radio,
             &c.http_headers,
             &c.extra,
+            c.catchup.correction_secs,
         );
         serde_json::to_writer(&mut *buf, &fields).map_err(to_sql)?;
         hashes.extend(fnv1a(buf).to_le_bytes());
@@ -1578,6 +1710,42 @@ mod tests {
         migrate(&mut conn).unwrap();
         conn.pragma_update(None, "user_version", 99).unwrap();
         assert!(migrate(&mut conn).is_err());
+    }
+
+    #[test]
+    fn the_correction_column_makes_each_playlist_download_again() {
+        let conn = Connection::open_in_memory().unwrap();
+        for step in &MIGRATIONS[..2] {
+            conn.execute_batch(step).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 2).unwrap();
+        conn.execute_batch(
+            "INSERT INTO playlist (id, name, url, content_hash) VALUES (1, 'p', 'http://h/p', 7);
+             INSERT INTO guide_source (id, url) VALUES (1, 'http://h/g');
+             INSERT INTO channel (playlist_id, position, key, name, groups, url,
+             tvg_shift_minutes, catchup_mode, catchup_days, radio, http_headers, extra)
+             VALUES (1, 0, 1, 'a', '[]', 'http://h/a', 0, 'shift', 3, 0, '[]',
+             '[[\"catchup-correction\",\"2\"]]');
+             INSERT INTO http_validator (url, etag) VALUES ('http://h/p', 'e'), ('http://h/g', 'e');",
+        )
+        .unwrap();
+        let storage = Storage::init(conn, "memory").unwrap();
+        let channel = storage.channels(1).unwrap().remove(0);
+        assert_eq!(channel.catchup.correction_secs, 0);
+        let hash: Option<i64> = storage
+            .conn
+            .query_row("SELECT content_hash FROM playlist", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(hash, None);
+        let validated: Vec<String> = storage
+            .conn
+            .prepare("SELECT url FROM http_validator")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_>>()
+            .unwrap();
+        assert_eq!(validated, ["http://h/g"], "a guide keeps its validators");
     }
 
     #[test]

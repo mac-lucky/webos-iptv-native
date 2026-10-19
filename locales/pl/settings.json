@@ -11,6 +11,8 @@
   "settings.from_playlist": "Z playlisty",
   "settings.general": "Ogólne",
   "settings.hidden_groups": "Ukryte grupy",
+  "settings.history_keep": "Przechowuj historię przez",
+  "settings.history_min": "Dodaj do historii po",
   "settings.info_on_zap": "Informacje przy zmianie kanału",
   "settings.login.unknown_device": "nieznany model",
   "settings.long_press": "Długie naciśnięcie",

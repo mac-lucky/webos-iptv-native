@@ -21,7 +21,8 @@ const USAGE: &str = "\
 usage: webosiptv [--fake [--streams BASE]] [--keys KEY,KEY,...] [--wait MS] [--shot FILE.png]
   --fake     synthetic channels and guide instead of the data dir's storage
   --streams  play the synthetic channels from BASE/live.m3u8, their archive from
-             BASE/archive.m3u8?utc=..&lutc=.. (a local test origin)
+             BASE/archive.m3u8?utc=..&lutc=.., the movies from BASE/movie.mp4?item=..
+             and the episodes from BASE/vod.m3u8?item=.. (a local test origin)
   --keys     press these keys first: Up Down Left Right OK Back Exit CH+ CH- Red Green Yellow
              Blue 0-9 Del Clear; long-KEY holds it; text=WORD types WORD on the TV keyboard;
              wait=MS lets MS milliseconds pass
@@ -66,7 +67,7 @@ pub struct Options {
 
 impl Options {
     /// Read the command line and point the payload dir at the repository's `pkg/` unless
-    /// `SNATIVE_APP_DIR` names another one (before any other thread exists, and before
+    /// `WEBOSIPTV_APP_DIR` names another one (before any other thread exists, and before
     /// `tv_base::paths` first resolves). `Err` is the status to exit with after the usage text.
     pub fn start() -> Result<Self, ExitCode> {
         let options = Self::parse(std::env::args().skip(1)).map_err(|e| {
@@ -78,9 +79,9 @@ impl Options {
                 ExitCode::from(2)
             }
         })?;
-        if std::env::var_os("SNATIVE_APP_DIR").is_none() {
+        if std::env::var_os("WEBOSIPTV_APP_DIR").is_none() {
             std::env::set_var(
-                "SNATIVE_APP_DIR",
+                "WEBOSIPTV_APP_DIR",
                 concat!(env!("CARGO_MANIFEST_DIR"), "/../../pkg"),
             );
         }
@@ -108,6 +109,8 @@ impl Options {
                 }
             }
         }
+        // Movies and shows for the VOD sections, played from BASE with --streams.
+        data.vod = tv_screens::vod::fake::items(self.streams.as_deref().unwrap_or(""));
         Some(data)
     }
 
@@ -371,6 +374,7 @@ mod tests {
             !data.channels[2].catchup.available(),
             "no archive stays none"
         );
+        assert_eq!(data.vod[0].url, "http://127.0.0.1:1/movie.mp4?item=0");
         let named = |s: &Step| match s {
             Step::Press { wcode, hold_ms, .. } => {
                 format!("{} {hold_ms}", crate::input::name(*wcode).unwrap())

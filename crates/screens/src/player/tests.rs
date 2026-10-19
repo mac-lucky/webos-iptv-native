@@ -833,6 +833,7 @@ fn texts(pieces: &[Piece]) -> Vec<String> {
         .collect()
 }
 
+/// Every piece lies wholly inside the 1920 x 1080 frame, its bottom edge included.
 fn on_screen(pieces: &[Piece]) {
     use tv_ui::consts::{SCR_H, SCR_W};
     for p in pieces {
@@ -847,14 +848,58 @@ fn on_screen(pieces: &[Piece]) {
                     HAlign::Center => x - w * 0.5,
                     HAlign::Right => x - w,
                 };
-                tv_ui::Rect::new(left, *y, w, 0.0)
+                tv_ui::Rect::new(left, *y, w, Mono.line_h(*size))
             }
         };
         assert!(
-            r.x >= 0.0 && r.y >= 0.0 && r.x + r.w <= SCR_W && r.y <= SCR_H,
+            r.x >= 0.0 && r.y >= 0.0 && r.x + r.w <= SCR_W && r.y + r.h <= SCR_H,
             "{p:?}"
         );
     }
+}
+
+fn logos(pieces: &[Piece]) -> usize {
+    pieces
+        .iter()
+        .filter(|p| matches!(p, Piece::Logo { .. }))
+        .count()
+}
+
+#[test]
+fn the_playback_panel_hides_the_tile_row_and_fits_the_screen() {
+    let mut w = world();
+    w.recents = vec![w.key(1), w.key(2), w.key(3)];
+    w.catchup(ON_AIR - 2 * SLOT, 600);
+    let mut s = screen();
+    short(&mut s, &w, Key::Ok, 0);
+    let info = s.layout(&Mono);
+    assert!(texts(info).iter().any(|x| x == "TV guide"));
+    assert_eq!(
+        logos(info),
+        1 + 3,
+        "the header logo and the recent channels"
+    );
+    on_screen(info);
+
+    short(&mut s, &w, Key::Up, 0);
+    short(&mut s, &w, Key::Right, 0);
+    assert_eq!(s.overlay(), Overlay::Playback);
+    let playback = s.layout(&Mono);
+    let t = texts(playback);
+    for gone in ["TV guide", "History"] {
+        assert!(!t.iter().any(|x| x == gone), "{gone} is drawn: {t:?}");
+    }
+    assert_eq!(logos(playback), 1, "only the header logo");
+    assert!(t.iter().any(|x| x == "[+00:30]"), "{t:?}");
+    on_screen(playback);
+
+    // Down to the buttons, Down again: the info panel and its row are back.
+    short(&mut s, &w, Key::Down, 0);
+    short(&mut s, &w, Key::Down, 0);
+    assert_eq!(s.overlay(), Overlay::Info { tile: 0 });
+    let info = s.layout(&Mono);
+    assert!(texts(info).iter().any(|x| x == "TV guide"));
+    assert_eq!(logos(info), 1 + 3);
 }
 
 #[test]

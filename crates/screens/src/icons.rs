@@ -35,6 +35,8 @@ pub enum Icon {
     ChevronRight,
     ChevronUp,
     ChevronDown,
+    /// A programme reminder: the mark on a guide cell and the reminder prompt.
+    Bell,
 }
 
 impl Icon {
@@ -61,6 +63,7 @@ impl Icon {
             Icon::ChevronRight => include_str!("../../../assets/icons/chevron.svg"),
             Icon::ChevronUp => include_str!("../../../assets/icons/chevron-up.svg"),
             Icon::ChevronDown => include_str!("../../../assets/icons/chevron-down.svg"),
+            Icon::Bell => include_str!("../../../assets/icons/tv/bell.svg"),
         }
     }
 }
@@ -73,7 +76,8 @@ thread_local! {
     static CACHE: RefCell<Vec<(Icon, i32, u32)>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Draw `icon` in `tint`, in the largest square centred in `r`.
+/// Draw `icon` in `tint` (an accent role paints in the picked accent: [`crate::theme::ink`]), in
+/// the largest square centred in `r`.
 pub fn draw(p: Painter, icon: Icon, r: Rect, tint: [f32; 4]) {
     let side = r.w.min(r.h);
     let px = (side.round() as i32).min(MAX_PX);
@@ -86,7 +90,12 @@ pub fn draw(p: Painter, icon: Icon, r: Rect, tint: [f32; 4]) {
         let snap = |v: f32, d: f32| tv_gfx::gfx::snap(v + d) - d;
         let x = snap(r.x + (r.w - side) / 2.0, p.dx());
         let y = snap(r.y + (r.h - side) / 2.0, p.dy());
-        p.tex(tex, Rect::new(x, y, side, side), 0.0, tint);
+        p.tex(
+            tex,
+            Rect::new(x, y, side, side),
+            0.0,
+            crate::theme::ink(tint),
+        );
     }
 }
 
@@ -158,6 +167,16 @@ mod tests {
             assert!(edge, "{icon:?} inks the border");
             assert!(m.as_chunks::<4>().0.iter().all(|px| px[..3] == [255; 3]));
         }
+    }
+
+    #[test]
+    fn the_bell_rasterizes_inside_its_box() {
+        const S: usize = 32;
+        let m = mask(Icon::Bell, S as i32).expect("the bell rasterizes");
+        let alpha = |x: usize, y: usize| m[(y * S + x) * 4 + 3];
+        assert!((0..S * S).any(|i| alpha(i % S, i / S) == 255));
+        assert!((0..S).all(|i| alpha(i, 0) == 0 && alpha(i, S - 1) == 0));
+        assert!((0..S).all(|i| alpha(0, i) == 0 && alpha(S - 1, i) == 0));
     }
 
     #[test]

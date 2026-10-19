@@ -97,6 +97,11 @@ impl Viewport {
 /// inside a full-screen window by itself. If the webOS 5+ compositor does the same inside the
 /// exported window, Stretch reads as Auto there; the crop modes do not depend on it either way.
 /// The ACB path (webOS 4) is placed once at bind and does not follow the mode.
+///
+/// The forced ratios ([`Ratio4x3`](AspectMode::Ratio4x3), [`Ratio16x9`](AspectMode::Ratio16x9))
+/// show the whole frame in the largest centred part of the video rectangle with that aspect
+/// ([`AspectMode::dest`]): the window shrinks inside the rectangle, never past it, so it stays
+/// inside the UI's transparent hole. The caveat above applies to them as to Stretch.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AspectMode {
     /// The source's own aspect, letterboxed or pillarboxed: the picture fitted inside the screen.
@@ -110,11 +115,15 @@ pub enum AspectMode {
     Zoom4x3,
     /// A 21:9 picture inside the frame (letterboxed into a 16:9 encode) zoomed until it covers.
     Zoom21x9,
+    /// The whole frame shown at 4:3, pillarboxed inside the rectangle.
+    Ratio4x3,
+    /// The whole frame shown at 16:9 (on a 16:9 rectangle, all of it).
+    Ratio16x9,
 }
 
 impl AspectMode {
     /// Every mode, in the menu's order; a mode's index here is its wire value.
-    pub const ALL: [AspectMode; 5] = [Self::Auto, Self::Fill, Self::Stretch, Self::Zoom4x3, Self::Zoom21x9];
+    pub const ALL: [AspectMode; 7] = [Self::Auto, Self::Fill, Self::Stretch, Self::Zoom4x3, Self::Zoom21x9, Self::Ratio4x3, Self::Ratio16x9];
 
     pub fn index(self) -> u8 {
         Self::ALL.iter().position(|m| *m == self).unwrap_or(0) as u8
@@ -135,7 +144,7 @@ impl AspectMode {
         // an aspect in displayed units, as a ratio of the frame's pixels
         let raster = |a: Aspect| (i64::from(a.0) * i64::from(width) * i64::from(picture.1), i64::from(a.1) * i64::from(height) * i64::from(picture.0));
         match self {
-            Self::Auto | Self::Stretch => full,
+            Self::Auto | Self::Stretch | Self::Ratio4x3 | Self::Ratio16x9 => full,
             Self::Fill => full.cover_ratio(raster(screen)),
             Self::Zoom4x3 => full.cover_ratio(raster(Aspect(4, 3))).cover_ratio(raster(screen)),
             Self::Zoom21x9 => full.cover_ratio(raster(Aspect(21, 9))).cover_ratio(raster(screen)),
@@ -162,6 +171,19 @@ impl AspectMode {
             Self::Fill => source.cover(Aspect(width.max(1) as u32, height.max(1) as u32), width, height),
             Self::Zoom4x3 => source.cover(Aspect(4, 3), width, height),
             Self::Zoom21x9 => source.cover(Aspect(21, 9), width, height),
+            Self::Ratio4x3 => Aspect(4, 3).fit(width, height),
+            Self::Ratio16x9 => Aspect(16, 9).fit(width, height),
+        }
+    }
+
+    /// Where the exported window goes for a picture placed in `rect` (the video rectangle): the
+    /// largest centred part of it with the forced aspect, and all of it in every other mode.
+    /// Never larger than `rect`.
+    pub fn dest(self, rect: Viewport) -> Viewport {
+        match self {
+            Self::Ratio4x3 => rect.cover_of(Aspect(4, 3)),
+            Self::Ratio16x9 => rect.cover_of(Aspect(16, 9)),
+            _ => rect,
         }
     }
 }
@@ -280,6 +302,36 @@ mod tests {
             assert_eq!(AspectMode::from_index(m.index()), m);
         }
         assert_eq!(AspectMode::from_index(99), AspectMode::Auto);
+    }
+
+    /// The forced ratios keep the whole frame and shrink the window inside the video rectangle,
+    /// full screen and preview alike: never past it, so the UI's hole and the picture match.
+    #[test]
+    fn the_forced_ratios_show_the_whole_frame_inside_the_video_rect() {
+        let vp = |x, y, width, height| Viewport { x, y, width, height };
+        let full = vp(0, 0, 1920, 1080);
+        let preview = vp(1180, 96, 640, 360);
+        assert_eq!(AspectMode::Ratio4x3.dest(full), vp(240, 0, 1440, 1080));
+        assert_eq!(AspectMode::Ratio16x9.dest(full), full);
+        assert_eq!(AspectMode::Ratio4x3.dest(preview), vp(1260, 96, 480, 360));
+        assert_eq!(AspectMode::Ratio16x9.dest(vp(0, 0, 1440, 1080)), vp(0, 135, 1440, 810));
+        for m in AspectMode::ALL {
+            for rect in [full, preview] {
+                let d = m.dest(rect);
+                assert!(d.x >= rect.x && d.y >= rect.y && d.x + d.width <= rect.x + rect.width && d.y + d.height <= rect.y + rect.height, "{m:?} leaves {rect:?}: {d:?}");
+            }
+            if !matches!(m, AspectMode::Ratio4x3 | AspectMode::Ratio16x9) {
+                assert_eq!(m.dest(preview), preview, "{m:?} fills the rectangle");
+            }
+        }
+        let hd = Aspect::from_raster(1920, 1080).unwrap();
+        for m in [AspectMode::Ratio4x3, AspectMode::Ratio16x9] {
+            assert_eq!(m.crop(hd, 1920, 1080, hd), full, "{m:?} shows the whole frame");
+            assert_eq!(m.window(hd, 1920, 1080), m.dest(full));
+            assert_eq!(AspectMode::from_index(m.index()), m);
+        }
+        // where an overlay finds the picture (`player::video_viewport`)
+        assert_eq!(AspectMode::Ratio4x3.place(hd, 1920, 1080), vp(240, 0, 1440, 1080));
     }
 
     #[test]

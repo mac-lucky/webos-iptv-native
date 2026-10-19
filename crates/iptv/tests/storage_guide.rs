@@ -92,6 +92,7 @@ fn channels_round_trip_and_header_guides_are_linked() {
             mode: Some(CatchupMode::Flussonic),
             days: 7,
             source: Some("{utc}".into()),
+            correction_secs: -9_000,
         },
         radio: true,
         http_headers: vec![("User-Agent".into(), "Agent/1".into())],
@@ -166,7 +167,7 @@ fn every_catchup_mode_survives_storage() {
             catchup: Catchup {
                 mode: Some(*mode),
                 days: 3,
-                source: None,
+                ..Default::default()
             },
             ..channel(&format!("c{i}"), "")
         })

@@ -46,11 +46,10 @@ const COOL_700: [f32; 4] = rgb8(0x2e, 0x32, 0x3d);
 const COOL_850: [f32; 4] = rgb8(0x1f, 0x21, 0x29);
 const COOL_900: [f32; 4] = rgb8(0x14, 0x17, 0x1c);
 
-// Neutral — the shelf, panels, control plates, inks. The two panel stops carry Stremio's own
-// purple-navy surfaces (stremio-web `src/App/styles.less`): `NEUTRAL_650` is
-// `--modal-background-color: rgba(15, 13, 32, 1)` and `NEUTRAL_750` is
-// `--primary-background-color: rgba(12, 11, 17, 1)`, both darker than the ground (`NEUTRAL_500`,
-// `--secondary-background-color`), as the old greys were. Names kept: a stop's job did not move.
+// Neutral — the shelf, panels, control plates, inks. The two panel stops are the palette's
+// purple-navy surfaces: `NEUTRAL_650` is the modal ground #0f0d20 and `NEUTRAL_750` the darkest
+// ground #0c0b11, both darker than the app ground (`NEUTRAL_500`), as the old greys were. Names
+// kept: a stop's job did not move.
 const NEUTRAL_650: [f32; 4] = rgb8(0x0f, 0x0d, 0x20);
 const NEUTRAL_750: [f32; 4] = rgb8(0x0c, 0x0b, 0x11);
 const NEUTRAL_850: [f32; 4] = rgb8(0x14, 0x14, 0x16);
@@ -60,8 +59,7 @@ const BLACK: [f32; 4] = rgb8(0x00, 0x00, 0x00);
 // Sand — one warm off-white, and it has exactly one job: the ambient wash's resting cast.
 const SAND_100: [f32; 4] = rgb8(0xe9, 0xe6, 0xe0);
 
-// Violet — Stremio's one accent, stremio-web `src/App/styles.less`
-// `--primary-accent-color: rgb(123, 91, 245)`. The focus fill and nothing decorative.
+// Violet — the palette's one accent, rgb(123, 91, 245). The focus fill and nothing decorative.
 const VIOLET_500: [f32; 4] = rgb8(0x7b, 0x5b, 0xf5);
 /// One step deeper than the brand violet: the list focus pill's fill (white clears 5.3:1 on it).
 const VIOLET_550: [f32; 4] = rgb8(0x6e, 0x4e, 0xe8);
@@ -69,8 +67,8 @@ const VIOLET_550: [f32; 4] = rgb8(0x6e, 0x4e, 0xe8);
 // Atmosphere — deliberately dark light for a pre-content route. These are not state colours
 // and never ink a control; together they stand in for an artwork UltraBlur envelope before the
 // catalog has supplied one. The range stays on ONE axis so first-run does not invent a rainbow
-// identity before any actual artwork exists: Stremio's own `41deg` page gradient (`--primary-background-color` #0c0b11 bottom-left →
-// `--secondary-background-color` #1a173e top-right, stremio-web `src/App/styles.less`), each end
+// identity before any actual artwork exists: the palette's `41deg` page gradient (#0c0b11 bottom-left to
+// #1a173e top-right), each end
 // pushed a step past the flat ground so the corners still clear the tests below.
 //
 // **Corrected 2026-09-02.** The first cut of these four stops sat within ~15 8-bit codes of
@@ -250,12 +248,12 @@ pub mod logo {
 }
 
 // ── Accent / control ─────────────────────────────────────────────────────────
-/// **The focus fill — and the only fill a control can light up with.** Stremio's violet
-/// (`VIOLET_500`, stremio-web `--primary-accent-color: rgb(123, 91, 245)`): what Stremio lights a
+/// **The focus fill — and the only fill a control can light up with.** The palette's violet
+/// (`VIOLET_500`, rgb(123, 91, 245)): what the app lights a
 /// selected nav tab, a toggle or a primary action with, and the one hue the app's identity rests
-/// on. It was `COOL_0`, the near-white [`TEXT_PRIMARY`] is, until the Stremio palette sync; a
+/// on. It was `COOL_0`, the near-white [`TEXT_PRIMARY`] is, until the violet palette sync; a
 /// focused poster still lights WHITE (the tile's lit-glass edge, `gfx::tokens::CARD_GLOW_*`), which
-/// is Stremio's own poster focus (`MetaItem` `box-shadow: 0 0 0 .2rem` primary foreground). A
+/// is the upstream poster focus (a 0.2rem outline in the primary foreground). A
 /// control lights up for exactly one reason — the remote is on it. Nothing is filled by RANK, so there is no
 /// always-filled primary CTA: the hero Play pill sits idle like everything else until focus reaches
 /// it.
@@ -267,7 +265,7 @@ pub mod logo {
 /// control: the warm off-white is [`WASH_WARM`], a page ground; the cool plate is
 /// [`SURFACE_QR_PLATE`], a scan surface.
 pub const ACCENT: [f32; 4] = VIOLET_500;
-/// Ink/glyphs drawn over [`ACCENT`] — pure `WHITE`, the one ink that clears 4.5:1 on Stremio's
+/// Ink/glyphs drawn over [`ACCENT`] — pure `WHITE`, the one ink that clears 4.5:1 on the accent
 /// violet (4.51:1; even `TEXT_PRIMARY`'s `#f7fafc` lands at 4.30). Pinned by
 /// `widgets_control_face_tests::focus_ink_clears_4_5_on_every_focus_fill`. It was the near-black `NEUTRAL_950` over
 /// the old near-white fill.
@@ -283,20 +281,20 @@ pub const AVATAR_FILLS: [[f32; 4]; 4] =
 pub const INK_ON_ACCENT: [f32; 4] = ACCENT_INK;
 /// **A list's focus pill** (`TableView`'s sliding pill, a list row's focused face): the accent a
 /// step deeper, so a row's white title clears 5:1 and its secondary ink 3:1 on it (on the brand
-/// violet itself white sits at 4.51 and the old dark sub-ink well under 3). Still Stremio's purple.
+/// violet itself white sits at 4.51 and the old dark sub-ink well under 3). Still the palette's purple.
 pub const FOCUS_FILL: [f32; 4] = VIOLET_550;
 /// The SECONDARY ink over the accent (a focused row's source column, sub-line): white at the
 /// weight that clears 3:1 on [`FOCUS_FILL`].
 pub const INK_ON_ACCENT_SECONDARY: [f32; 4] = with_a(WHITE, 0.78);
 // (`CONTROL_FOCUS_FACE_L` .972 / `CONTROL_FOCUS_AMBIENT_C` .36 stood here: a keyed focused face
-// was near-white material carrying the page's hue. Since the Stremio palette sync focus is the
+// was near-white material carrying the page's hue. Since the violet palette sync focus is the
 // fixed [`ACCENT`] violet on every ground, so the page's key reaches only the IDLE face.)
 /// Pure OKLCH-lightness step from the focused face's lit top ([`ACCENT`]) to its body. Both stops
 /// keep the same hue and chroma, so the gradient reads as glare rather than grey laid over the
 /// tint — and the darker body only raises [`ACCENT_INK`]'s contrast.
 pub const CONTROL_FOCUS_BODY_STEP: f32 = 0.06;
-/// Fixed OKLCH lightness of an idle control face on a keyed page. .155 is Stremio's
-/// `--primary-background-color` (#0c0b11, L .154): one step under the purple-navy ground (L .233),
+/// Fixed OKLCH lightness of an idle control face on a keyed page. .155 is the palette's
+/// darkest ground (#0c0b11, L .154): one step under the purple-navy ground (L .233),
 /// the same relationship the old .215 plate had to the old grey ground (L .294).
 pub const CONTROL_IDLE_FACE_L: f32 = 0.155;
 /// Fraction of the ambient key's OKLCH chroma carried by an idle keyed face.
@@ -357,7 +355,7 @@ pub const SEARCH_FIELD_GLOW: [f32; 4] = with_a(ACCENT, 0.55);
 /// still says what it is for from the couch.
 pub const SEARCH_PLACEHOLDER_INK: [f32; 4] = TEXT_SECONDARY;
 
-/// **The Detail page's stream panel** (stremio-web's `MetaDetails` streams column): the right-hand
+/// **The Detail page's stream panel**: the right-hand
 /// column of a Detail page stands on this dark ground, full height, so the stream list reads as a
 /// panel of its own over the full-bleed backdrop.
 pub const DETAIL_STREAM_PANEL: [f32; 4] = with_a(NEUTRAL_750, 0.86);
@@ -444,10 +442,10 @@ pub const CONTROL_RIM_FOCUS_UNKEYED_GLOW: [f32; 4] = [5.0, 1.0, 2.5, 0.55];
 pub const CONTROL_CAST_FOCUS: [(f32, f32, f32); 2] = [(5.0, 32.0, 0.34), (1.0, 6.0, 0.20)];
 
 // ── Surfaces / backgrounds ───────────────────────────────────────────────────
-/// Flat shelf/app base (both gradient stops) — Stremio's purple-navy **#1A173E (26,23,62)**,
-/// stremio-web's `--secondary-background-color`. The LIGHTER end of Stremio's page gradient, not its
+/// Flat shelf/app base (both gradient stops) — the palette's purple-navy **#1A173E (26,23,62)**.
+/// The LIGHTER end of the page gradient, not its
 /// near-black #0c0b11 end, so the focused-card drop-shadow still has a ground to darken. (Was Apple
-/// TV's shelf gray #2c2c2e until the Stremio palette sync.)
+/// TV's shelf gray #2c2c2e until the violet palette sync.)
 pub const SURFACE_APP: [f32; 4] = NEUTRAL_500;
 /// Opaque sheet drawn over the hardware video plane when a detail page scrolls the hero away.
 /// Same stop as [`SURFACE_APP`] so the rising page and the cover are one surface. Different role:
@@ -868,7 +866,7 @@ pub const SCRUB_CHAPTER_CUT: [f32; 4] = with_a(BLACK, 0.55);
 pub const WASH_WARM: [f32; 4] = SAND_100;
 /// Frozen ambient envelope for a route that intentionally appears before Home has fetched any
 /// artwork (Shared Sources).  It is a DESIGN-SYSTEM fallback, not a screen colour: the night-to-
-/// violet stops (Stremio's page gradient, corners top-left, top-right, bottom-right, bottom-left) create the low-frequency wallpaper light of an UltraBlur envelope without
+/// violet stops (the palette's page gradient, corners top-left, top-right, bottom-right, bottom-left) create the low-frequency wallpaper light of an UltraBlur envelope without
 /// pretending there is a poster behind a pre-Home screen.  Once real artwork exists,
 /// [`crate::route_screen::RouteGround`] uses that instead.
 pub const ROUTE_GROUND_FALLBACK: [[f32; 4]; 4] =
@@ -907,7 +905,7 @@ pub const INK_ON_RESUME: [f32; 4] = NEUTRAL_850;
 // ── A list row's trailing VALUE read-out ─────────────────────────────────────
 /// The word at a row's trailing edge that says what it is SET to (`On`/`Off`, "English"), over the
 /// FOCUSED row's [`ACCENT`] pill. It was black at .60 over the old near-white pill, one step behind
-/// the label; over Stremio's violet nothing below pure white clears 4.5:1, so the value now takes
+/// the label; over the accent violet nothing below pure white clears 4.5:1, so the value now takes
 /// the label's own [`ACCENT_INK`] and the hierarchy is carried by position and size alone. Unfocused rows use
 /// [`TEXT_SECONDARY`] (and [`TEXT_TERTIARY`] when quietened), which need no token of their own,
 /// and [`ROW_VALUE_INK_DIM`] on a dim row.
@@ -1308,7 +1306,7 @@ pub const RATING_MUTED: [f32; 4] = COOL_400;
 // is tunable). The hero-grid card's wide glow pad is `consts::GLOW_PAD` (shared with off-screen
 // culling, so it has one home there).
 /// Card corner radius (tiles/shelves — `CardRow`'s rounded rect + its baked focus glow follow it).
-/// 12: Stremio's poster corner, stremio-web `--border-radius: 0.75rem` at the 16px root (was 14).
+/// 12: the palette's poster corner, 0.75rem at a 16px root (was 14).
 pub const CARD_RING_RAD: f32 = 12.0;
 
 // ── Episode filmstrip focus treatment ───────────────────────────────────────────────────────────
@@ -1351,7 +1349,7 @@ pub const EP_META_INK: [f32; 4] = TEXT_TERTIARY;
 /// > leaves it. 32 stays inside that vocabulary while still reading as softer than a card, and
 /// > clears the 28px glass bevel so the chamfer runs inside the arc."
 ///
-/// The tile's corner is [`CARD_RING_RAD`] (14 when the design was written, 12 since the Stremio sync) and the row pill's 18 is `table::PILL_RAD`, so that sentence
+/// The tile's corner is [`CARD_RING_RAD`] (14 when the design was written, 12 since the violet palette sync) and the row pill's 18 is `table::PILL_RAD`, so that sentence
 /// is checkable against this tree rather than only against the mock. Two consequences are
 /// load-bearing rather than decorative. The **bevel clause**: below the 28px glass bevel the
 /// chamfer would run OUTSIDE the corner arc and the rim would break at each corner. And the

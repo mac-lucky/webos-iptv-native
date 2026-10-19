@@ -132,7 +132,8 @@ fn place_exported(mt: &MainThread, eng: &mut super::engine::Engine) {
     let mode = super::aspect_mode();
     let screen = super::video_geometry::Aspect::from_raster(1920, 1080).expect("a positive raster");
     let part = mode.crop(super::picture_aspect(src), src.0, src.1, screen);
-    let (dst, dst_key) = (super::video_rect(), super::video_rect_key());
+    // A forced ratio shrinks the window inside the video rectangle, never past it.
+    let (dst, dst_key) = (mode.dest(super::video_rect()), super::video_rect_key());
     let rv = unsafe { super::sink().place_window(mt, part.x, part.y, part.width, part.height, dst.x, dst.y, dst.width, dst.height) };
     eng.placed_src = src;
     PLACED_MODE.store(mode.index(), Relaxed);

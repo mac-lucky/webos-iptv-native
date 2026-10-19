@@ -5,8 +5,10 @@
 //! `ETag` / `Last-Modified` validators. The body is streamed into the consumer, never buffered
 //! whole: a guide can exceed 100 MB.
 //!
-//! [`refresh_once`] runs one refresh (the playlist, then every guide) and [`Refresher`] runs it on
-//! a worker thread at start, on request and on an interval, publishing a [`Status`] the UI polls.
+//! [`refresh_once`] runs one refresh (every playlist, then every guide once) and [`Refresher`]
+//! runs it on a worker thread at start, on request and on an interval, publishing a [`Status`]
+//! the UI polls. One refresher serves every playlist: a guide that two playlists share must be
+//! imported by one writer, with both playlists' channel filter.
 //!
 //! The network is behind [`Transport`] (one hop, no redirects followed) and storage behind
 //! [`Store`]; the application implements both, the transport over `tv_net`'s libcurl. Nothing here
@@ -19,6 +21,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use crate::epg::PlaylistId;
 use crate::model::{unix_now, Playlist, Timestamp};
 use crate::url::{http_scheme, split_url, Scheme};
 use crate::{m3u, redact};
@@ -384,8 +387,9 @@ pub trait Store: Send {
     fn validators(&mut self, url: &str) -> Validators;
     /// Empty validators forget the stored ones.
     fn save_validators(&mut self, url: &str, validators: &Validators);
-    fn save_playlist(&mut self, playlist: Playlist) -> Result<Stored, StoreError>;
-    /// Guide URLs the stored playlist declares (`url-tvg`, ...), in order.
+    /// Store what was fetched for playlist `id` (a [`Config::playlists`] row).
+    fn save_playlist(&mut self, id: PlaylistId, playlist: Playlist) -> Result<Stored, StoreError>;
+    /// Guide URLs the stored playlists declare (`url-tvg`, ...), in order.
     fn guide_urls(&mut self) -> Vec<String>;
     /// Parse and store one guide from its raw body (plain or gzip).
     fn import_guide(&mut self, url: &str, body: &mut dyn Read) -> Result<Stored, StoreError>;
@@ -397,7 +401,8 @@ pub trait Store: Send {
 /// What to refresh and how often. No `Debug`: the URLs carry tokens.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct Config {
-    pub playlist_url: String,
+    /// The playlists to fetch, each by its storage row and URL, in the order fetched.
+    pub playlists: Vec<(PlaylistId, String)>,
     /// Guides fetched besides the ones the playlist declares.
     pub extra_guides: Vec<String>,
     /// Time between automatic refreshes; `None` (or zero) refreshes on start and on request only.
@@ -487,9 +492,9 @@ fn refresh_source(
     }
 }
 
-/// One refresh: the playlist, then the user's extra guides and the guides the playlist declares,
-/// in that order, de-duplicated, at most `MAX_GUIDES`. A failed playlist still refreshes the
-/// guides of the stored one.
+/// One refresh: every playlist in turn, then the user's extra guides and the guides the
+/// playlists declare, in that order, de-duplicated, at most `MAX_GUIDES`: a guide two playlists
+/// share is fetched once. A failed playlist still refreshes the guides of the stored one.
 pub fn refresh_once(
     transport: &dyn Transport,
     store: &mut dyn Store,
@@ -497,12 +502,12 @@ pub fn refresh_once(
     cancel: &Arc<AtomicBool>,
 ) -> Vec<SourceResult> {
     let mut results = Vec::new();
-    if !config.playlist_url.is_empty() {
+    for (id, url) in config.playlists.iter().filter(|(_, url)| !url.is_empty()) {
         results.push(refresh_source(
             transport,
             store,
             Kind::Playlist,
-            &config.playlist_url,
+            url,
             cancel,
             |store, body| {
                 let (playlist, _report) = m3u::parse(BufReader::with_capacity(64 << 10, body))
@@ -511,7 +516,7 @@ pub fn refresh_once(
                 if playlist.channels.is_empty() {
                     return Err(StoreError::new("the playlist has no channels"));
                 }
-                store.save_playlist(playlist)
+                store.save_playlist(*id, playlist)
             },
         ));
     }

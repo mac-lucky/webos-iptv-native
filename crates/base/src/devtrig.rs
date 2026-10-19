@@ -246,7 +246,7 @@ pub fn path(name: &str) -> std::path::PathBuf {
 /// removed afterwards (also when `f` panics).
 ///
 /// **A host test that arms a trigger must not do it in the shared runtime root.** A host test run
-/// resolves that root to the bare `/tmp` (only the `hostsim` feature lets `SNATIVE_RUNTIME_DIR`
+/// resolves that root to the bare `/tmp` (only the `hostsim` feature lets `WEBOSIPTV_RUNTIME_DIR`
 /// steer it, [`crate::paths::ENV_STEERABLE`]), and the root is one directory for the whole
 /// machine: every test binary of this `make check`, and of any other checkout's, reads the same
 /// `/tmp/webosiptv-*`. `jail_fixture_keeps_repair_open_through_the_screen_tick` armed
@@ -281,7 +281,7 @@ mod private {
     pub(super) fn with<R>(f: impl FnOnce() -> R) -> R {
         static N: AtomicU32 = AtomicU32::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "sn-private-triggers-{}-{}",
+            "wi-private-triggers-{}-{}",
             std::process::id(),
             N.fetch_add(1, Ordering::Relaxed)
         ));
