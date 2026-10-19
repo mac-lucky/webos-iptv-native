@@ -7,6 +7,7 @@
   "title": "IPTV Player",
   "appDescription": "Native IPTV player with a TV guide and catch-up",
   "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
   "iconColor": "#141822",
   "nativeLifeCycleInterfaceVersion": 2,
   "handlesRelaunch": false,
