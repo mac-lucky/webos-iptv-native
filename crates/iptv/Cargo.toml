@@ -1,0 +1,18 @@
+[package]
+name = "iptv"
+version = "0.0.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "IPTV data layer: model, M3U, catch-up URLs, XMLTV, EPG matching, storage and refresh."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+tv_base = { path = "../base" }
+serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }
+serde_json = { version = "1", default-features = false, features = ["alloc", "std"] }
+quick-xml = "0.42.0"
+flate2 = "1.1.10"
+rusqlite = { version = "0.40.2", features = ["bundled"] }

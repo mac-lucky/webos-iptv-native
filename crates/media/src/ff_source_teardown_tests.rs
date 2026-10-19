@@ -1,0 +1,561 @@
+//! HTTP and libcurl source teardown/abort behavior: seek-after-teardown, aborted
+//! read/seek races, and stalled or IO-failed transports across both transports.
+
+use super::*;
+#[allow(unused_imports)]
+use super::test_support::*;
+
+/// Teardown fires ONE `shutdown(2)` at the demux socket, but our AVIO is SEEKABLE, so
+/// libavformat heals the resulting broken read by calling `seek_cb` — which reopened the URL
+/// with a byte Range. That fresh socket is one the already-fired shutdown cannot reach, so the
+/// demuxer reads on while the main thread sits in `stream_th.join()`. `read_cb` has bailed on
+/// an aborted lane since it was written, and the reopen site in `demux` carries the same guard
+/// with a comment naming this exact failure; `seek_cb` was the third way in and had neither.
+///
+/// The invariant is carried by the ACCEPT COUNT, not the return value — a `seek_cb` that
+/// reopened and then failed for an unrelated reason would also return -1. The trailing
+/// AVSEEK_SIZE assertion pins the guard's PLACEMENT: bolted to the top of `seek_cb` it would
+/// start reporting the stream as unsized, a second behaviour change smuggled in under a
+/// teardown fix.
+#[test]
+fn a_seek_after_teardown_fails_instead_of_opening_a_second_connection() {
+    with_counting_listener(|port, accepts, _| {
+        let (mut hs, mut aq, ip, path) = opened_stream_with_aborted_lane(port);
+        assert_eq!(
+            accepts.load(Ordering::Acquire),
+            1,
+            "fixture: exactly one connection so far"
+        );
+        let mut st = AvioState {
+            src: Src::Socket {
+                hs: &mut *hs,
+                host: ip,
+                port: port as c_int,
+                path,
+            },
+            aq: &mut *aq,
+            off: 0,
+            size: 8,
+            io_failed: false,
+            bounce: Vec::new(),
+            bounce_pos: 0,
+            parked_at_end: false,
+        };
+        let op = &mut st as *mut AvioState as *mut c_void;
+
+        let rv = seek_cb(op, 4, SEEK_SET);
+
+        assert_eq!(
+            accepts.load(Ordering::Acquire),
+            1,
+            "seek_cb opened a SECOND connection during teardown — the one the main thread's \
+             join is waiting on, and the one its shutdown(2) can no longer reach"
+        );
+        assert_eq!(
+            rv, -1,
+            "an aborted seek must report failure so libavformat stops healing"
+        );
+        assert_eq!(
+            seek_cb(op, 0, AVSEEK_SIZE),
+            8,
+            "a size query is not I/O — the guard belongs AFTER that branch"
+        );
+        tv_net::stream::http_close(&mut *hs);
+        crate::aq::aq_destroy(&mut *aq);
+    });
+}
+
+/// The pair invariant, and the answer to "can an aborted demuxer ping-pong forever?".
+/// `read_cb` returns AVERROR_EOF unconditionally once the lane is aborted, and libavformat's
+/// recovery for a failed read on a seekable AVIO is to seek and read again — so if `seek_cb`
+/// succeeds, every hop of that loop is a full `http_open` (connect + request + header read)
+/// against a server the main thread is already waiting on. Measured on the unguarded code: nine
+/// accepts for eight hops, i.e. one whole reopen per hop, not the single wasted open the
+/// static reading of this suggested.
+#[test]
+fn an_aborted_read_and_seek_cannot_ping_pong_into_new_connections() {
+    with_counting_listener(|port, accepts, _| {
+        let (mut hs, mut aq, ip, path) = opened_stream_with_aborted_lane(port);
+        let mut st = AvioState {
+            src: Src::Socket {
+                hs: &mut *hs,
+                host: ip,
+                port: port as c_int,
+                path,
+            },
+            aq: &mut *aq,
+            off: 0,
+            size: 8,
+            io_failed: false,
+            bounce: Vec::new(),
+            bounce_pos: 0,
+            parked_at_end: false,
+        };
+        let op = &mut st as *mut AvioState as *mut c_void;
+        let mut dst = [0u8; 8];
+        let mut reads = Vec::new();
+        let mut seeks = Vec::new();
+        for _ in 0..8 {
+            reads.push(read_cb(op, dst.as_mut_ptr(), dst.len() as c_int));
+            seeks.push(seek_cb(op, 4, SEEK_SET)); // 4, not 0: a seek to 0 returns 0, and 0 is success
+        }
+        assert_eq!(
+            accepts.load(Ordering::Acquire),
+            1,
+            "the read/seek recovery loop reconnected once per hop — that is the wedge, \
+             not merely a slow teardown"
+        );
+        assert!(
+            reads.iter().all(|r| *r == AVERROR_EOF),
+            "aborted reads must all report EOF: {reads:?}"
+        );
+        assert!(
+            seeks.iter().all(|r| *r == -1),
+            "every hop must refuse the seek: {seeks:?}"
+        );
+        tv_net::stream::http_close(&mut *hs);
+        crate::aq::aq_destroy(&mut *aq);
+    });
+}
+
+#[test]
+fn drain_keeps_polling_only_while_more_body_is_expected() {
+    assert!(
+        drain_keep_polling(true, false),
+        "a live body with bounce room must keep the 10 ms window-open wait"
+    );
+    assert!(
+        !drain_keep_polling(true, true),
+        "a finished body must cond_wait, not spin"
+    );
+    assert!(!drain_keep_polling(false, false), "cap must cond_wait");
+}
+
+#[test]
+fn io_failed_after_drain_surfaces_once_bounce_is_empty() {
+    assert!(!park_read_fails_closed(true, true));
+    assert!(park_read_fails_closed(false, true));
+    assert!(!park_read_fails_closed(false, false));
+
+    let mut aq = crate::aq::aq_new(1 << 20);
+    let mut hs = tv_net::stream::http_stream_boxed();
+    let mut st = AvioState {
+        src: unopened_socket(&mut hs),
+        aq: &mut *aq,
+        off: 0,
+        size: 8,
+        io_failed: true,
+        bounce: b"ABCD".to_vec(),
+        bounce_pos: 0,
+        parked_at_end: false,
+    };
+    let op = &mut st as *mut AvioState as *mut c_void;
+    let mut dst = [0u8; 8];
+    assert_eq!(read_cb(op, dst.as_mut_ptr(), dst.len() as c_int), 4);
+    assert_eq!(&dst[..4], b"ABCD");
+    assert_eq!(
+        read_cb(op, dst.as_mut_ptr(), dst.len() as c_int),
+        AVERROR_IO,
+        "park-time RST must not look like EOS after bounce is consumed"
+    );
+    crate::aq::aq_destroy(&mut *aq);
+}
+
+#[test]
+fn a_curl_seek_after_teardown_fails_instead_of_opening_a_second_connection() {
+    let Some(_gate) = curl_gate() else { return };
+    with_counting_listener(|port, accepts, requests| {
+        let (cs, mut aq) = opened_curl_with_aborted_lane(port);
+        assert_eq!(
+            accepts.load(Ordering::Acquire),
+            1,
+            "fixture: exactly one connection so far"
+        );
+        assert_eq!(
+            requests.load(Ordering::Acquire),
+            1,
+            "fixture: and exactly one request"
+        );
+        let mut st = AvioState {
+            src: Src::Curl(cs),
+            aq: &mut *aq,
+            off: 0,
+            size: 8,
+            io_failed: false,
+            bounce: Vec::new(),
+            bounce_pos: 0,
+            parked_at_end: false,
+        };
+        let op = &mut st as *mut AvioState as *mut c_void;
+
+        let rv = seek_cb(op, 4, SEEK_SET);
+
+        assert_eq!(
+            requests.load(Ordering::Acquire),
+            1,
+            "seek_cb went back to the server through curlio during teardown — and it would do \
+             so on the CACHED connection, which is why this grades requests and not accepts"
+        );
+        assert_eq!(
+            accepts.load(Ordering::Acquire),
+            1,
+            "and opened no new connection either"
+        );
+        assert_eq!(
+            rv, -1,
+            "an aborted seek must report failure so libavformat stops healing"
+        );
+        assert_eq!(
+            seek_cb(op, 0, AVSEEK_SIZE),
+            8,
+            "a size query is not I/O — the guard belongs AFTER that branch, on both transports"
+        );
+        crate::aq::aq_destroy(&mut *aq);
+    });
+}
+
+#[test]
+fn an_aborted_curl_read_and_seek_cannot_ping_pong_into_new_connections() {
+    let Some(_gate) = curl_gate() else { return };
+    with_counting_listener(|port, accepts, requests| {
+        let (cs, mut aq) = opened_curl_with_aborted_lane(port);
+        let mut st = AvioState {
+            src: Src::Curl(cs),
+            aq: &mut *aq,
+            off: 0,
+            size: 8,
+            io_failed: false,
+            bounce: Vec::new(),
+            bounce_pos: 0,
+            parked_at_end: false,
+        };
+        let op = &mut st as *mut AvioState as *mut c_void;
+        let mut dst = [0u8; 8];
+        let mut reads = Vec::new();
+        let mut seeks = Vec::new();
+        for _ in 0..8 {
+            reads.push(read_cb(op, dst.as_mut_ptr(), dst.len() as c_int));
+            seeks.push(seek_cb(op, 4, SEEK_SET));
+        }
+        assert_eq!(
+            requests.load(Ordering::Acquire),
+            1,
+            "the read/seek recovery loop asked the server again once per hop — that is the \
+             wedge, not merely a slow teardown"
+        );
+        assert_eq!(
+            accepts.load(Ordering::Acquire),
+            1,
+            "and it opened no new connection either"
+        );
+        assert!(
+            reads.iter().all(|r| *r == AVERROR_EOF),
+            "aborted reads must all report EOF: {reads:?}"
+        );
+        assert!(
+            seeks.iter().all(|r| *r == -1),
+            "every hop must refuse the seek: {seeks:?}"
+        );
+        crate::aq::aq_destroy(&mut *aq);
+    });
+}
+
+/// A curl machinery failure is not the same event as the server finishing the file. Pin the
+/// distinction at the AVIO seam, where an earlier implementation collapsed every non-positive
+/// source result to EOF and thereby hid mid-playback truncation from both FFmpeg and the HUD.
+#[test]
+fn a_curl_transport_failure_crosses_avio_as_io_error_not_eof() {
+    let Some(_gate) = curl_gate() else { return };
+    with_counting_listener(|port, _, _| {
+        struct ClearIoFailure;
+        impl Drop for ClearIoFailure {
+            fn drop(&mut self) {
+                SHARED.demux_io_failed.store(false, Ordering::Relaxed);
+            }
+        }
+        let _clear = ClearIoFailure;
+        SHARED.demux_io_failed.store(false, Ordering::Relaxed);
+
+        let mut cs =
+            crate::curlio::CurlSource::open(&format!("http://127.0.0.1:{port}/f.mkv"), 0)
+                .expect("fixture: open");
+        cs.fail_multi_for_test();
+        let mut aq = crate::aq::aq_new(1 << 20);
+        let mut st = AvioState {
+            src: Src::Curl(cs),
+            aq: &mut *aq,
+            off: 0,
+            size: 8,
+            io_failed: false,
+            bounce: Vec::new(),
+            bounce_pos: 0,
+            parked_at_end: false,
+        };
+        let op = &mut st as *mut AvioState as *mut c_void;
+        let mut dst = [0u8; 8];
+
+        // Headers and all eight body bytes may have arrived together. Drain any buffered bytes;
+        // the terminal callback result is what must retain the machinery failure.
+        let mut terminal = 1;
+        for _ in 0..3 {
+            terminal = read_cb(op, dst.as_mut_ptr(), dst.len() as c_int);
+            if terminal <= 0 {
+                break;
+            }
+        }
+
+        assert_eq!(
+            terminal, AVERROR_IO,
+            "transport failure must not masquerade as AVERROR_EOF"
+        );
+        assert!(
+            st.io_failed,
+            "the callback leaves the error pending on its enclosing operation"
+        );
+        assert!(
+            !SHARED.demux_io_failed.load(Ordering::Acquire),
+            "a callback alone is not fatal because libavformat may still recover via seek"
+        );
+        assert!(
+            !frame_read_failed(&mut st, 0),
+            "a successful packet is not a demux failure"
+        );
+        assert!(
+            st.io_failed,
+            "packet success must not hide a transport failure that only drained bounce"
+        );
+        assert!(!SHARED.demux_io_failed.load(Ordering::Acquire));
+
+        let terminal = read_cb(op, dst.as_mut_ptr(), dst.len() as c_int);
+        assert_eq!(terminal, AVERROR_IO);
+        assert!(
+            frame_read_failed(&mut st, terminal),
+            "an unrecovered frame read ends the demux loop"
+        );
+        assert!(
+            SHARED.demux_io_failed.load(Ordering::Acquire),
+            "the main-thread pump must see the failure even after frames were presented"
+        );
+        crate::aq::aq_destroy(&mut *aq);
+    });
+}
+
+/// **Issue #504.** `ff: media transport failed during av_read_frame r=-5` was the whole account of
+/// a direct play that died a minute in. The line now carries the libcurl code the transfer died
+/// with, and the same fact is published for the handled playback error (as a class and an age
+/// bucket, never the numbers). A failure that was not a curl transfer's says nothing it does not
+/// know.
+#[test]
+fn a_frame_read_failure_names_the_curl_rc_and_publishes_it_for_the_report() {
+    let Some(_gate) = curl_gate() else { return };
+    with_counting_listener(|port, _, _| {
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                SHARED.demux_io_failed.store(false, Ordering::Relaxed);
+                SHARED.reset_session();
+            }
+        }
+        let _clear = Clear;
+        SHARED.reset_session();
+
+        fn state(src: Src, aq: *mut crate::aq::AuQueue) -> AvioState {
+            AvioState {
+                src,
+                aq,
+                off: 0,
+                size: 8,
+                io_failed: true,
+                bounce: Vec::new(),
+                bounce_pos: 0,
+                parked_at_end: false,
+            }
+        }
+        let mut aq = crate::aq::aq_new(1 << 20);
+
+        // Not a curl transfer: the old line, and nothing published.
+        let mut hs = tv_net::stream::http_stream_boxed();
+        let mut idle = state(unopened_socket(&mut hs), &mut *aq);
+        let plain = tv_base::eventlog::with_private_log(|| {
+            assert!(frame_read_failed(&mut idle, -5));
+            std::fs::read_to_string(tv_base::eventlog::events_log()).unwrap_or_default()
+        });
+        assert!(plain.contains("media transport failed during av_read_frame r=-5"), "{plain}");
+        assert!(!plain.contains("curl_rc="), "no curl code was known: {plain}");
+        assert_eq!(SHARED.dg_transport_rc.load(Ordering::Acquire), 0);
+        SHARED.demux_io_failed.store(false, Ordering::Relaxed);
+
+        // A curl transfer that died mid-body.
+        let mut cs = crate::curlio::CurlSource::open(&format!("http://127.0.0.1:{port}/f.mkv"), 0)
+            .expect("fixture: open");
+        cs.fail_body_for_test(56);
+        let mut st = state(Src::Curl(cs), &mut *aq);
+        let line = tv_base::eventlog::with_private_log(|| {
+            assert!(frame_read_failed(&mut st, -5));
+            std::fs::read_to_string(tv_base::eventlog::events_log()).unwrap_or_default()
+        });
+        assert!(
+            line.contains("media transport failed during av_read_frame r=-5 curl_rc=56"),
+            "{line}"
+        );
+        assert!(SHARED.demux_io_failed.load(Ordering::Acquire));
+        assert_eq!(SHARED.dg_transport_rc.load(Ordering::Acquire), 56);
+        assert!(SHARED.dg_transport_age_ms.load(Ordering::Acquire) >= 0);
+        assert!(!SHARED.dg_transport_reopen_failed.load(Ordering::Acquire));
+        crate::aq::aq_destroy(&mut *aq);
+    });
+}
+
+/// A server that cuts the transfer mid-body (rc=56, a server reaping the socket while the viewer sat
+/// in the subtitle menu on a webOS 3.4 set) used to end the session: libavformat heals only through
+/// `seek_cb`, and a plain read failure never reaches it. The read callback now reopens at the byte
+/// it stopped at, a bounded number of times. The counting listener answers every request with a
+/// fresh 8-byte 200, so the reopen at offset 0 succeeds and the read ends in EOF: this test pins
+/// that a reopen is attempted and that the read settles. The recovery itself and the bound are
+/// pinned against a server that honours `Range` by the `cutting_server` tests below.
+#[test]
+fn a_cut_transfer_is_reopened_at_its_offset_before_the_read_fails() {
+    let Some(_gate) = curl_gate() else { return };
+    with_counting_listener(|port, _, requests| {
+        let mut cs = crate::curlio::CurlSource::open(&format!("http://127.0.0.1:{port}/f.mkv"), 0)
+            .expect("fixture: open");
+        cs.fail_body_for_test(56);
+        let before = requests.load(Ordering::Acquire);
+        let mut aq = crate::aq::aq_new(1 << 20);
+        let mut st = AvioState {
+            src: Src::Curl(cs),
+            aq: &mut *aq,
+            off: 0,
+            size: 16,
+            io_failed: false,
+            bounce: Vec::new(),
+            bounce_pos: 0,
+            parked_at_end: false,
+        };
+        let op = &mut st as *mut AvioState as *mut c_void;
+        let mut dst = [0u8; 8];
+        let mut terminal = 1;
+        for _ in 0..8 {
+            terminal = read_cb(op, dst.as_mut_ptr(), dst.len() as c_int);
+            if terminal <= 0 {
+                break;
+            }
+        }
+        assert!(
+            requests.load(Ordering::Acquire) > before,
+            "a transfer cut mid-body must be reopened before the read gives up"
+        );
+        assert!(
+            terminal == AVERROR_IO || terminal == AVERROR_EOF,
+            "the read must settle, not loop: {terminal}"
+        );
+        crate::aq::aq_destroy(&mut *aq);
+    });
+}
+
+/// A stream sat inside `avformat_open_input` (the server was slow to serve it) and a reload tore
+/// that demuxer down. Teardown aborts the lanes, `read_cb` answers the abort with EOF, and
+/// libavformat reports the truncated probe as `AVERROR_INVALIDDATA` — which the progressive tail
+/// logged as `ff: open_input failed r=-1094995529` and then "produced no access units — treating
+/// as a failure", raising `demux_failed` for a demuxer that was merely told to stop. Every exit
+/// now reads the same rule: an aborted lane is not a failure.
+#[test]
+fn a_demux_aborted_by_teardown_before_its_first_unit_is_not_a_failure() {
+    assert!(
+        !unproductive_exit_failed(false, true),
+        "teardown aborting a demuxer that had not produced a unit yet is a stop, not a failure",
+    );
+    assert!(
+        unproductive_exit_failed(false, false),
+        "a demuxer that ended on its own with nothing to show is still a failure",
+    );
+    assert!(!unproductive_exit_failed(true, false));
+    assert!(!unproductive_exit_failed(true, true));
+
+    let aborted = open_input_failure_note(-1_094_995_529, true);
+    assert!(
+        !aborted.contains("open_input failed"),
+        "an open_input cut short by teardown must not read as the source failing: {aborted}",
+    );
+    assert!(aborted.contains("aborted"), "{aborted}");
+    assert_eq!(
+        open_input_failure_note(-1_094_995_529, false),
+        "ff: open_input failed r=-1094995529",
+    );
+}
+
+/// Read the whole source through `read_cb` the way playback does; returns
+/// (bytes, terminal result, `io_failed`, the body failure rc the source still reports).
+fn read_all_through_read_cb(port: u16) -> (Vec<u8>, c_int, bool, Option<c_int>) {
+    let cs = crate::curlio::CurlSource::open(&format!("http://127.0.0.1:{port}/f.mkv"), 0)
+        .expect("fixture: open");
+    let size = cs.size();
+    let mut aq = crate::aq::aq_new(1 << 20);
+    let mut st = AvioState {
+        src: Src::Curl(cs),
+        aq: &mut *aq,
+        off: 0,
+        size,
+        io_failed: false,
+        bounce: Vec::new(),
+        bounce_pos: 0,
+        parked_at_end: false,
+    };
+    let op = &mut st as *mut AvioState as *mut c_void;
+    let mut got = Vec::new();
+    let mut dst = [0u8; 32768];
+    let terminal = loop {
+        let r = read_cb(op, dst.as_mut_ptr(), dst.len() as c_int);
+        if r <= 0 {
+            break r;
+        }
+        got.extend_from_slice(&dst[..r as usize]);
+    };
+    let rc = match &st.src {
+        Src::Curl(cs) => cs.body_failure().map(|f| f.rc),
+        _ => None,
+    };
+    let io_failed = st.io_failed;
+    crate::aq::aq_destroy(&mut *aq);
+    (got, terminal, io_failed, rc)
+}
+
+/// Four short closes in a row, each answered by a reopen at the byte the reader stopped at: every
+/// byte arrives in order, the read ends in EOF and `io_failed` stays clear.
+#[test]
+fn a_short_close_mid_body_is_reopened_and_every_byte_arrives() {
+    let Some(_gate) = curl_gate() else { return };
+    let (port, file, seen) = cutting_server(300_000, 4, 50_000, false);
+    let (got, terminal, io_failed, _) = read_all_through_read_cb(port);
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seen, [None, Some(50_000), Some(100_000), Some(150_000), Some(200_000)]);
+    assert_eq!(terminal, AVERROR_EOF);
+    assert!(got == file && !io_failed);
+}
+
+/// The same recovery when the cut is an RST rather than a short close.
+#[test]
+fn a_reset_mid_body_is_reopened_and_every_byte_arrives() {
+    let Some(_gate) = curl_gate() else { return };
+    let (port, file, seen) = cutting_server(300_000, 2, 50_000, true);
+    let (got, terminal, io_failed, _) = read_all_through_read_cb(port);
+    let seen = seen.lock().unwrap().clone();
+    // An RST may discard bytes still in the client's socket buffer, so the reopen offsets are
+    // wherever the reader really stopped: graded on the reopen happening and the bytes being right.
+    assert_eq!(seen.len(), 3, "one open and one reopen per cut");
+    assert_eq!(terminal, AVERROR_EOF);
+    assert!(got == file && !io_failed);
+}
+
+/// A server that cuts every connection before sending a byte: the read reopens exactly
+/// `BODY_HEAL_ATTEMPTS` times and then fails with `AVERROR_IO`, rather than looping.
+#[test]
+fn a_server_that_always_cuts_fails_after_three_reopens() {
+    let Some(_gate) = curl_gate() else { return };
+    let (port, _, seen) = cutting_server(300_000, usize::MAX, 0, false);
+    let (got, terminal, io_failed, _) = read_all_through_read_cb(port);
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seen.len(), 4, "the open and exactly three reopens");
+    assert_eq!(terminal, AVERROR_IO);
+    assert!(io_failed && got.is_empty());
+}

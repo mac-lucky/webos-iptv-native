@@ -1,0 +1,5 @@
+{
+  "search.empty": "Brak wyników",
+  "search.hint": "Kanał lub program",
+  "search.programme_detail": "{channel}, {weekday} {start} - {stop}"
+}

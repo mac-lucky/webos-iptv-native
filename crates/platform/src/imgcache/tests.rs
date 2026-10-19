@@ -1,0 +1,541 @@
+use super::*;
+
+const AVATAR: &str = "/photo/:/transcode?width=300&height=300&minSize=1&url=https%3A%2F%2Fplex.tv%2Fusers%2F0123abcd%2Favatar%3Fc%3D1700000000&X-Plex-Token=tok";
+const POSTER: &str = "/photo/:/transcode?width=250&height=375&minSize=1&url=%2Flibrary%2Fmetadata%2F42%2Fthumb%2F1&X-Plex-Token=t";
+
+struct TestDir(PathBuf);
+impl TestDir {
+    fn new() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "sn-imgcache-test-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+    fn cache(&self, entries: usize, bytes: u64) -> Cache {
+        Cache::new(vec![self.0.clone()], Limits { entries, bytes })
+    }
+}
+impl Drop for TestDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn poster(id: usize) -> DiskKey {
+    classify(
+        "server-a",
+        &POSTER.replace("%2F42%2F", &format!("%2F{id}%2F")),
+    )
+    .unwrap()
+}
+
+#[test]
+fn library_art_has_a_durable_disk_key() {
+    assert!(classify("server-a", POSTER).is_some());
+}
+
+/// A scrub-preview frame is one still out of a part's BIF index, asked for once per scrub step and
+/// never again: written to disk, a single scrub through a film would push hundreds of entries
+/// through an LRU whose 8192 slots exist to keep posters.
+#[test]
+fn a_scrub_preview_frame_never_reaches_the_disk() {
+    let frame = "/photo/:/transcode?width=320&height=180&minSize=1&url=%2Flibrary%2Fparts%2F7459%2Findexes%2Fsd%2F600000&X-Plex-Token=t";
+    assert!(classify("server-a", frame).is_none());
+    let lower = "/photo/:/transcode?width=320&height=180&minSize=1&url=%2flibrary%2fparts%2f7459%2findexes%2fsd%2f0&X-Plex-Token=t";
+    assert!(classify("server-a", lower).is_none());
+    // the part's own art is not a preview frame
+    let part_thumb = "/photo/:/transcode?width=320&height=180&minSize=1&url=%2Flibrary%2Fparts%2F7459%2Fthumb&X-Plex-Token=t";
+    assert!(classify("server-a", part_thumb).is_some());
+}
+
+#[test]
+fn keys_include_namespace_source_version_and_every_transform() {
+    let name = classify("server-a", POSTER).unwrap().name;
+    assert_ne!(name, classify("server-b", POSTER).unwrap().name);
+    for key in [
+        POSTER.replace("width=250", "width=251"),
+        POSTER.replace("height=375", "height=376"),
+        POSTER.replace("minSize=1", "minSize=0"),
+        POSTER.replace("thumb%2F1", "thumb%2F2"),
+        POSTER.replace("thumb%2F1", "thumb%2F1%3Fv%3D2"),
+        format!("{POSTER}&format=png"),
+        format!("{POSTER}&upscale=0"),
+        format!("{POSTER}&quality=90"),
+    ] {
+        assert_ne!(name, classify("server-a", &key).unwrap().name, "{key}");
+    }
+    assert_eq!(
+        name,
+        classify(
+            "server-a",
+            &POSTER.replace("X-Plex-Token=t", "X-Plex-Token=another")
+        )
+        .unwrap()
+        .name
+    );
+    let shuffled = "/photo/:/transcode?X-Plex-Token=rotated&minSize=1&height=375&url=%2flibrary%2fmetadata%2f42%2fthumb%2f1&width=250";
+    assert_eq!(name, classify("server-a", shuffled).unwrap().name);
+    assert!(name.starts_with("image-") && name.ends_with(".img"));
+    assert!(cache_name(&name));
+    for bad in [
+        "no-query",
+        "/other?url=image",
+        "/photo/:/transcode?width=1",
+        "/photo/:/transcode?url=",
+        "/photo/:/transcode?url=a&url=b",
+    ] {
+        assert!(classify("server-a", bad).is_none());
+    }
+    assert!(classify("", POSTER).is_none());
+}
+
+#[test]
+fn addon_pixels_are_keyed_by_url_and_box_and_survive_a_reopen() {
+    let url = "https://images.metahub.space/poster/medium/tt0903747/img";
+    let name = classify_pixels(url, 250, 375).unwrap().name;
+    assert_eq!(Some(name.clone()), classify_pixels(url, 250, 375).map(|k| k.name), "stable across boots");
+    assert!(cache_name(&name), "kept by the startup scan: {name}");
+    assert!(!name.contains("metahub"), "the URL is hashed, never written out");
+    assert_ne!(Some(name.clone()), classify_pixels(url, 420, 236).map(|k| k.name), "another box is another file");
+    assert_ne!(Some(name), classify_pixels(&url.replace("medium", "large"), 250, 375).map(|k| k.name));
+    for bad in [("", 250, 375), ("file:///etc/passwd", 250, 375), (url, 0, 375)] {
+        assert!(classify_pixels(bad.0, bad.1, bad.2).is_none(), "{bad:?}");
+    }
+    let dir = TestDir::new();
+    let cache = dir.cache(16, 1 << 20);
+    let key = classify_pixels(url, 250, 375).unwrap();
+    assert!(cache.write_at(0, &key, b"pixels"));
+    let reopened = dir.cache(16, 1 << 20);
+    assert_eq!(reopened.read_at(0, &key).unwrap().bytes, b"pixels");
+}
+
+#[test]
+fn baked_keys_are_stable_versioned_by_stamp_and_carry_no_request() {
+    let key = |ns: &str, kind: &str, rk: &str, stamp: &str, w: u32, h: u32| {
+        classify_baked(ns, kind, rk, stamp, w, h).map(|k| k.name)
+    };
+    let name = key("machine:m|profile:", "fan", "901", "1700000000", 300, 450).unwrap();
+    assert_eq!(
+        Some(name.clone()),
+        key("machine:m|profile:", "fan", "901", "1700000000", 300, 450),
+        "the same inputs must name the same file on every boot"
+    );
+    assert!(cache_name(&name), "baked files must survive the startup scan: {name}");
+    for other in [
+        key("machine:n|profile:", "fan", "901", "1700000000", 300, 450),
+        key("machine:m|profile:u1", "fan", "901", "1700000000", 300, 450),
+        key("machine:m|profile:", "other", "901", "1700000000", 300, 450),
+        key("machine:m|profile:", "fan", "902", "1700000000", 300, 450),
+        key("machine:m|profile:", "fan", "901", "1700000001", 300, 450),
+        key("machine:m|profile:", "fan", "901", "1700000000", 301, 450),
+        key("machine:m|profile:", "fan", "901", "1700000000", 300, 451),
+    ] {
+        assert_ne!(Some(name.clone()), other);
+    }
+    // A baked identity never collides with a transcode of the same source path.
+    assert_ne!(
+        Some(name.clone()),
+        classify("machine:m|profile:", POSTER).map(|k| k.name)
+    );
+    for (ns, kind, rk, stamp, w, h) in [
+        ("", "fan", "1", "2", 3, 4),
+        ("n", "", "1", "2", 3, 4),
+        ("n", "fan", "", "2", 3, 4),
+        ("n", "fan", "1", "", 3, 4),
+        ("n", "fan", "1", "2", 0, 4),
+        ("n", "fan", "1", "2", 3, 0),
+    ] {
+        assert!(key(ns, kind, rk, stamp, w, h).is_none());
+    }
+}
+
+#[test]
+fn avatar_only_ignores_roster_stamp_and_preserves_other_queries() {
+    let key = classify("server-a", AVATAR).unwrap();
+    assert_eq!(
+        key,
+        classify("server-a", &AVATAR.replace("1700000000", "1700000001")).unwrap()
+    );
+    assert_eq!(
+        key,
+        classify("server-a", &AVATAR.replace("%3Fc%3D1700000000", "")).unwrap()
+    );
+    assert_ne!(
+        key.name,
+        classify(
+            "server-a",
+            &AVATAR.replace("%3Fc%3D1700000000", "%3Fc%3D1700000000%26version%3D2")
+        )
+        .unwrap()
+        .name
+    );
+    let other = AVATAR.replace("plex.tv", "metadata-static.plex.tv");
+    assert_ne!(
+        classify("server-a", &other).unwrap().name,
+        classify("server-a", &other.replace("1700000000", "1700000001"))
+            .unwrap()
+            .name
+    );
+    assert!(classify("server-a", &format!("{AVATAR}&format=png"))
+        .unwrap()
+        .legacy
+        .is_none());
+    assert_eq!(
+        percent_decode("plus+stays%2Bbad%zz%2"),
+        "plus+stays+bad%zz%2"
+    );
+}
+
+#[test]
+fn more_than_a_thousand_images_survive_reopen_without_network() {
+    let dir = TestDir::new();
+    let cache = dir.cache(MAX_ENTRIES, MAX_BYTES);
+    for id in 0..1200 {
+        assert!(cache.write_at(0, &poster(id), &id.to_le_bytes()));
+    }
+    assert_eq!(cache.stats().entries, 1200);
+    drop(cache);
+    let reopened = dir.cache(MAX_ENTRIES, MAX_BYTES);
+    for id in 0..1200 {
+        let hit = reopened.read_at(0, &poster(id)).unwrap();
+        assert_eq!(hit.bytes, id.to_le_bytes());
+        assert!(!hit.stale);
+    }
+    let stats = reopened.stats();
+    assert_eq!(stats.hit, 1200);
+    assert_eq!(stats.miss, 0);
+    assert_eq!(stats.write, 0);
+    assert_eq!(stats.entries, 1200);
+    assert_eq!(
+        stats.bytes,
+        1200 * (HEADER_LEN + std::mem::size_of::<usize>()) as u64
+    );
+}
+
+#[test]
+fn count_limit_evicts_least_recently_read_and_not_the_recent_hit() {
+    let dir = TestDir::new();
+    let cache = dir.cache(3, MAX_BYTES);
+    for id in 0..3 {
+        assert!(cache.write_at(0, &poster(id), b"data"));
+    }
+    assert!(cache.read_at(0, &poster(0)).is_some());
+    assert!(cache.write_at(0, &poster(3), b"next"));
+    assert!(cache.read_at(0, &poster(1)).is_none());
+    for id in [0, 2, 3] {
+        assert!(cache.read_at(0, &poster(id)).is_some());
+    }
+    assert_eq!(cache.stats().eviction, 1);
+    assert_eq!(cache.stats().entries, 3);
+}
+
+#[test]
+fn byte_limit_and_replacement_account_for_header_and_old_size() {
+    let dir = TestDir::new();
+    let cache = dir.cache(10, 2 * (HEADER_LEN + 20) as u64);
+    assert!(cache.write_at(0, &poster(1), &[1; 20]));
+    assert!(cache.write_at(0, &poster(2), &[2; 20]));
+    assert!(cache.write_at(0, &poster(2), &[3; 30]));
+    assert!(cache.read_at(0, &poster(1)).is_none());
+    assert_eq!(cache.stats().bytes, (HEADER_LEN + 30) as u64);
+    assert!(cache.write_at(0, &poster(2), &[4; 2]));
+    assert_eq!(cache.stats().bytes, (HEADER_LEN + 2) as u64);
+    assert!(!cache.write_at(0, &poster(3), &[0; 100]));
+    assert_eq!(cache.stats().entries, 1);
+    assert_eq!(cache.read_at(0, &poster(2)).unwrap().bytes, [4; 2]);
+}
+
+#[test]
+fn startup_enforces_new_limits_and_recovers_orphan_temporary_files() {
+    let dir = TestDir::new();
+    let initial = dir.cache(20, MAX_BYTES);
+    for id in 0..10 {
+        assert!(initial.write_at(0, &poster(id), b"image"));
+        File::options()
+            .write(true)
+            .open(dir.0.join(&poster(id).name))
+            .unwrap()
+            .set_modified(UNIX_EPOCH + Duration::from_secs(100 + id as u64))
+            .unwrap();
+    }
+    fs::write(
+        dir.0.join(format!("{}.tmp123-4", poster(0).name)),
+        b"partial",
+    )
+    .unwrap();
+    drop(initial);
+    let cache = dir.cache(4, 3 * (HEADER_LEN + 5) as u64);
+    assert!(cache.read_at(0, &poster(9)).is_some());
+    assert_eq!(cache.stats().entries, 3);
+    assert_eq!(cache.stats().eviction, 7);
+    assert!(cache.read_at(0, &poster(6)).is_none());
+    assert!(fs::read_dir(&dir.0).unwrap().all(|e| !e
+        .unwrap()
+        .file_name()
+        .to_string_lossy()
+        .contains(".tmp")));
+}
+
+#[test]
+fn reads_do_not_refresh_fetch_time_and_recency_survives_reopen() {
+    let dir = TestDir::new();
+    let cache = dir.cache(2, MAX_BYTES);
+    let old = unix_seconds(SystemTime::now()) - REFRESH_AFTER.as_secs() - 1;
+    {
+        let mut index = cache.index.lock().unwrap();
+        cache.initialize(&mut index);
+        for id in 0..2 {
+            assert!(cache.write_locked(&mut index, &poster(id), b"data", old));
+            let stamp = UNIX_EPOCH + Duration::from_secs(old + id as u64);
+            File::options()
+                .write(true)
+                .open(dir.0.join(&poster(id).name))
+                .unwrap()
+                .set_modified(stamp)
+                .unwrap();
+            index.entries.get_mut(&poster(id).name).unwrap().touched = stamp;
+        }
+    }
+    assert!(cache.read_at(0, &poster(0)).unwrap().stale);
+    assert_eq!(
+        read_file(&dir.0.join(&poster(0).name), false).unwrap().1,
+        old
+    );
+    let touched = fs::metadata(dir.0.join(&poster(0).name))
+        .unwrap()
+        .modified()
+        .unwrap();
+    assert!(touched > UNIX_EPOCH + Duration::from_secs(old));
+    assert!(cache.read_at(0, &poster(0)).unwrap().stale);
+    assert_eq!(
+        fs::metadata(dir.0.join(&poster(0).name))
+            .unwrap()
+            .modified()
+            .unwrap(),
+        touched,
+        "do not write metadata on every hit"
+    );
+    drop(cache);
+    let reopened = dir.cache(2, MAX_BYTES);
+    assert!(reopened.write_at(0, &poster(2), b"new"));
+    assert!(reopened.read_at(0, &poster(1)).is_none());
+    assert!(reopened.read_at(0, &poster(0)).unwrap().stale);
+}
+
+#[test]
+fn corrupt_empty_oversized_and_truncated_files_are_misses() {
+    let dir = TestDir::new();
+    let cache = dir.cache(10, MAX_BYTES);
+    assert!(!cache.write_at(0, &poster(0), b""));
+    assert!(!cache.write_at(0, &poster(0), &vec![0; MAX_FILE + 1]));
+    for id in 0..4 {
+        assert!(cache.write_at(0, &poster(id), b"some bytes"));
+    }
+    fs::write(dir.0.join(&poster(0).name), b"not a valid header").unwrap();
+    File::options()
+        .write(true)
+        .open(dir.0.join(&poster(1).name))
+        .unwrap()
+        .set_len((MAX_FILE + HEADER_LEN + 1) as u64)
+        .unwrap();
+    File::options()
+        .write(true)
+        .open(dir.0.join(&poster(2).name))
+        .unwrap()
+        .set_len(0)
+        .unwrap();
+    File::options()
+        .write(true)
+        .open(dir.0.join(&poster(3).name))
+        .unwrap()
+        .set_len((HEADER_LEN + 1) as u64)
+        .unwrap();
+    for id in 0..4 {
+        assert!(cache.read_at(0, &poster(id)).is_none());
+    }
+    assert_eq!(cache.stats().entries, 0);
+    assert_eq!(cache.stats().bytes, 0);
+    // Oversized residue present before initialization is bounded and removed too.
+    File::create(dir.0.join(&poster(5).name))
+        .unwrap()
+        .set_len((MAX_FILE * 4) as u64)
+        .unwrap();
+    let reopened = dir.cache(10, MAX_BYTES);
+    assert!(reopened.read_at(0, &poster(5)).is_none());
+    assert_eq!(reopened.stats().entries, 0);
+}
+
+#[test]
+fn legacy_avatar_migrates_without_resetting_refresh_clock() {
+    let dir = TestDir::new();
+    let key = classify("server-a", AVATAR).unwrap();
+    let legacy = dir.0.join(key.legacy.as_ref().unwrap());
+    fs::write(&legacy, b"legacy image").unwrap();
+    File::options()
+        .write(true)
+        .open(&legacy)
+        .unwrap()
+        .set_modified(UNIX_EPOCH + Duration::from_secs(100))
+        .unwrap();
+    let cache = dir.cache(100, MAX_BYTES);
+    let hit = cache.read_at(0, &key).unwrap();
+    assert_eq!(hit.bytes, b"legacy image");
+    assert!(hit.stale);
+    assert!(!legacy.exists());
+    assert!(dir.0.join(&key.name).exists());
+    assert_eq!(read_file(&dir.0.join(&key.name), false).unwrap().1, 100);
+    assert_eq!(cache.stats().entries, 1);
+}
+
+#[test]
+fn clear_scrubs_all_candidates_and_rejects_old_reads_writes_and_removes() {
+    let primary = TestDir::new();
+    let fallback = TestDir::new();
+    let cache = Cache::new(
+        vec![primary.0.clone(), fallback.0.clone()],
+        Limits {
+            entries: 10,
+            bytes: MAX_BYTES,
+        },
+    );
+    assert!(cache.write_at(0, &poster(0), b"old account"));
+    fs::write(fallback.0.join(&poster(1).name), b"other location").unwrap();
+    fs::write(fallback.0.join("avatar-old.img.tmp123"), b"partial").unwrap();
+    fs::write(fallback.0.join("keep.txt"), b"unrelated").unwrap();
+    cache.clear();
+    assert_eq!(cache.generation.load(Ordering::Acquire), 1);
+    assert!(!fallback.0.join(&poster(1).name).exists());
+    assert!(!fallback.0.join("avatar-old.img.tmp123").exists());
+    assert!(fallback.0.join("keep.txt").exists());
+    assert!(!cache.write_at(0, &poster(0), b"late fetch"));
+    assert!(cache.write_at(1, &poster(0), b"new account"));
+    assert!(cache.read_at(0, &poster(0)).is_none());
+    cache.remove_at(0, &poster(0));
+    assert_eq!(cache.read_at(1, &poster(0)).unwrap().bytes, b"new account");
+}
+
+#[test]
+fn concurrent_clear_waits_for_gate_and_late_write_is_rejected() {
+    let dir = TestDir::new();
+    let cache = std::sync::Arc::new(dir.cache(10, MAX_BYTES));
+    assert!(cache.write_at(0, &poster(0), b"old"));
+    let held = cache.index.lock().unwrap();
+    let (started_tx, started_rx) = std::sync::mpsc::channel();
+    let worker_cache = cache.clone();
+    let clear = std::thread::spawn(move || {
+        started_tx.send(()).unwrap();
+        worker_cache.clear();
+    });
+    started_rx.recv().unwrap();
+    assert_eq!(cache.generation.load(Ordering::Acquire), 0);
+    drop(held);
+    clear.join().unwrap();
+    assert!(!cache.write_at(0, &poster(0), b"late"));
+    assert_eq!(cache.stats().entries, 0);
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0);
+}
+
+#[test]
+fn failed_atomic_write_keeps_previous_entry_and_accurate_accounting() {
+    let dir = TestDir::new();
+    let cache = dir.cache(10, MAX_BYTES);
+    assert!(cache.write_at(0, &poster(0), b"original"));
+    let before = cache.stats();
+    fs::create_dir(dir.0.join(format!("{}.tmp", poster(0).name))).unwrap();
+    assert!(!cache.write_at(0, &poster(0), b"replacement"));
+    assert_eq!(cache.stats().bytes, before.bytes);
+    assert_eq!(cache.stats().entries, before.entries);
+    assert_eq!(cache.stats().write, before.write);
+    assert_eq!(cache.read_at(0, &poster(0)).unwrap().bytes, b"original");
+}
+
+#[test]
+fn unavailable_storage_is_harmless_and_stats_do_not_initialize_it() {
+    let dir = TestDir::new();
+    let file = dir.0.join("regular-file");
+    fs::write(&file, b"cannot create directory here").unwrap();
+    let cache = Cache::new(
+        vec![file],
+        Limits {
+            entries: 10,
+            bytes: MAX_BYTES,
+        },
+    );
+    assert_eq!(cache.stats().entries, 0);
+    assert!(!cache.index.lock().unwrap().initialized);
+    assert!(cache.read_at(0, &poster(0)).is_none());
+    assert!(!cache.write_at(0, &poster(0), b"image"));
+    assert_eq!(cache.stats().miss, 1);
+}
+
+/// The 3.4.3 set's numbers: 76.5 MB free on the partition installed apps share, so the cache takes
+/// at most half, not its fixed 128 MiB.
+#[test]
+fn the_byte_ceiling_takes_at_most_half_of_what_the_filesystem_can_spare() {
+    const MB: u64 = 1024 * 1024;
+    const GB: u64 = 1024 * MB;
+    assert_eq!(byte_cap(128 * MB, Some(76 * MB), 0), Some(38 * MB));
+    // A roomy disk keeps the fixed ceiling.
+    assert_eq!(byte_cap(128 * MB, Some(10 * GB), 0), Some(128 * MB));
+    // What the cache already holds counts as spare.
+    assert_eq!(byte_cap(128 * MB, Some(40 * MB), 36 * MB), Some(38 * MB));
+    // Too little to be worth having, and unknown free space is not a licence.
+    assert_eq!(byte_cap(128 * MB, Some(12 * MB), 0), None);
+    assert_eq!(byte_cap(128 * MB, None, 0), None);
+    // A small configured limit is honoured.
+    assert_eq!(byte_cap(4096, Some(10 * GB), 0), Some(4096));
+}
+
+#[test]
+fn a_test_directory_reports_its_free_space() {
+    let dir = TestDir::new();
+    assert!(free_bytes(&dir.0).is_some_and(|b| b > 0));
+}
+
+/// `/media/developer/temp` is mode 777, so a cache directory made there with the default mode
+/// would let any other process read the library's posters.
+#[test]
+fn a_private_root_is_created_for_its_owner_alone() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let dir = TestDir::new();
+    fs::set_permissions(&dir.0, fs::Permissions::from_mode(0o777)).unwrap();
+    let root = dir.0.join("imgcache");
+    assert!(probe_dir(&root, true));
+    assert_eq!(fs::metadata(&root).unwrap().mode() & 0o7777, 0o700);
+}
+
+#[test]
+fn a_looser_private_root_we_own_is_tightened_and_a_foreign_or_linked_one_is_refused() {
+    use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
+    let dir = TestDir::new();
+    let mode = |p: &Path| fs::metadata(p).unwrap().mode() & 0o7777;
+    let ours = dir.0.join("ours");
+    fs::create_dir(&ours).unwrap();
+    fs::set_permissions(&ours, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(probe_dir(&ours, true));
+    assert_eq!(mode(&ours), 0o700);
+    // Not ours: left as found, and not used.
+    let theirs = dir.0.join("theirs");
+    fs::create_dir(&theirs).unwrap();
+    fs::set_permissions(&theirs, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(!private_dir(&theirs, unsafe { libc::geteuid() } + 1));
+    assert_eq!(mode(&theirs), 0o755);
+    // A link planted at the name must not carry the chmod, or the cache, to its target.
+    let link = dir.0.join("link");
+    symlink(&theirs, &link).unwrap();
+    assert!(!probe_dir(&link, true));
+    assert_eq!(mode(&theirs), 0o755);
+}
+
+#[test]
+fn a_root_that_is_not_private_keeps_the_mode_it_has() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let dir = TestDir::new();
+    fs::set_permissions(&dir.0, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(probe_dir(&dir.0, false));
+    assert_eq!(fs::metadata(&dir.0).unwrap().mode() & 0o7777, 0o755);
+}

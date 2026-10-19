@@ -1,0 +1,17 @@
+{
+  "browse.action.more": "WIĘCEJ",
+  "browse.diagnostics.dv_forced": "wymuszone",
+  "browse.diagnostics.dv_no": "nie",
+  "browse.diagnostics.dv_supported": "obsługiwane",
+  "browse.diagnostics.dv_unsupported": "nieobsługiwane",
+  "browse.diagnostics.dv_yes": "tak",
+  "browse.diagnostics.unknown": "nieznane",
+  "browse.diagnostics.unknown_os": "webOS nieznany — nie można odczytać os_info.json",
+  "browse.person.filmography": "Filmografia",
+  "browse.search.items": {
+    "one": "{count} element",
+    "few": "{count} elementy",
+    "many": "{count} elementów",
+    "other": "{count} elementu"
+  }
+}

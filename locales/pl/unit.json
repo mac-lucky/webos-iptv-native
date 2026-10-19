@@ -1,0 +1,15 @@
+{
+  "unit.days": {
+    "one": "{count} dzień",
+    "few": "{count} dni",
+    "many": "{count} dni",
+    "other": "{count} dnia"
+  },
+  "unit.hours": {
+    "one": "{count} godz.",
+    "few": "{count} godz.",
+    "many": "{count} godz.",
+    "other": "{count} godz."
+  },
+  "unit.milliseconds": "{milliseconds} ms"
+}

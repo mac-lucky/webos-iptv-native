@@ -1,0 +1,50 @@
+{
+  "channel.all": {
+    "value": "All channels",
+    "description": "Built-in group with every channel"
+  },
+  "channel.empty": {
+    "value": "No channels",
+    "description": "Guide grid of a group without channels"
+  },
+  "channel.favorite_add": {
+    "value": "Add to favorites",
+    "description": "Channel menu action"
+  },
+  "channel.favorite_added": {
+    "value": "Added to favorites",
+    "description": "Toast after adding a channel to favorites"
+  },
+  "channel.favorite_manage": {
+    "value": "Manage favorites",
+    "description": "Group menu action: reorder and remove favorites"
+  },
+  "channel.favorite_remove": {
+    "value": "Remove from favorites",
+    "description": "Channel menu action"
+  },
+  "channel.favorite_removed": {
+    "value": "Removed from favorites",
+    "description": "Toast after removing a channel from favorites"
+  },
+  "channel.favorites": {
+    "value": "Favorites",
+    "description": "Built-in group of favorite channels"
+  },
+  "channel.history": {
+    "value": "History",
+    "description": "Built-in group and screen of recently watched channels and catch-up"
+  },
+  "channel.history_empty": {
+    "value": "No catch-up programmes watched yet",
+    "description": "History screen with nothing in it"
+  },
+  "channel.no_info": {
+    "value": "No information",
+    "description": "Channel list row without a programme on air"
+  },
+  "channel.unknown": {
+    "value": "Unknown channel",
+    "description": "History entry whose channel is gone from the playlist"
+  }
+}

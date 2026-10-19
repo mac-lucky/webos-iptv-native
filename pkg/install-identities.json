@@ -1,0 +1,17 @@
+[
+  {
+    "name": "stable",
+    "app_id": "io.github.maclucky.webosiptv",
+    "object_id": "wistate.stable"
+  },
+  {
+    "name": "debug",
+    "app_id": "io.github.maclucky.webosiptv.debug",
+    "object_id": "wistate.debug"
+  },
+  {
+    "name": "beta",
+    "app_id": "io.github.maclucky.webosiptv.beta",
+    "object_id": "wistate.beta"
+  }
+]

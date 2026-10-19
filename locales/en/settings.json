@@ -1,0 +1,146 @@
+{
+  "settings.about": {
+    "value": "About",
+    "description": "Settings section: version and licences"
+  },
+  "settings.appearance": {
+    "value": "Appearance",
+    "description": "Settings section"
+  },
+  "settings.auto_play": {
+    "value": "Start with the last channel",
+    "description": "Setting: play the last channel when the app starts"
+  },
+  "settings.bad_url": {
+    "value": "Enter an http or https URL",
+    "description": "Toast: the typed URL is not an http(s) URL"
+  },
+  "settings.data.delete_question": {
+    "value": "Delete all local data?",
+    "description": "Settings: the confirmation question for deleting all local data"
+  },
+  "settings.data.delete_scope": {
+    "value": "Signs you out and removes your session, settings and caches from this TV. Addons keep what they already received.",
+    "description": "Settings: the confirmation body for deleting all local data"
+  },
+  "settings.epg": {
+    "value": "EPG",
+    "description": "Settings section: programme guide sources"
+  },
+  "settings.epg_refresh_interval": {
+    "value": "Update interval",
+    "description": "Setting: how often the guide is reloaded"
+  },
+  "settings.epg_url": {
+    "value": "EPG source",
+    "description": "Setting: a guide URL that replaces the playlist's"
+  },
+  "settings.from_playlist": {
+    "value": "From playlist",
+    "description": "Value of an empty EPG source: the playlist's own guide"
+  },
+  "settings.general": {
+    "value": "General",
+    "description": "Settings section"
+  },
+  "settings.hidden_groups": {
+    "value": "Hidden groups",
+    "description": "Setting: playlist groups hidden from the groups panel"
+  },
+  "settings.info_on_zap": {
+    "value": "Show info on channel change",
+    "description": "Setting: show the info banner after switching channels"
+  },
+  "settings.login.unknown_device": {
+    "value": "unknown set",
+    "description": "Settings, consent or sign-in UI: settings.login.unknown_device"
+  },
+  "settings.long_press": {
+    "value": "Long press",
+    "description": "Setting: how long a press counts as long"
+  },
+  "settings.name": {
+    "value": "Name",
+    "description": "Channel sorting option"
+  },
+  "settings.not_set": {
+    "value": "Not set",
+    "description": "Value of an empty URL setting"
+  },
+  "settings.past_days": {
+    "value": "Past days to keep",
+    "description": "Setting: how many days of past guide data are kept"
+  },
+  "settings.playback": {
+    "value": "Playback",
+    "description": "Settings section"
+  },
+  "settings.player": {
+    "value": "Player",
+    "description": "Settings section, and the player menu title when nothing plays"
+  },
+  "settings.player_osd_timeout": {
+    "value": "Hide info after",
+    "description": "Setting: the info banner hides after this long"
+  },
+  "settings.playlist_url": {
+    "value": "Playlist URL",
+    "description": "Setting: the M3U playlist address"
+  },
+  "settings.playlists": {
+    "value": "Playlists",
+    "description": "Settings section"
+  },
+  "settings.remote": {
+    "value": "Remote control",
+    "description": "Settings section"
+  },
+  "settings.show_all": {
+    "value": "All channels group",
+    "description": "Setting: show the All channels group"
+  },
+  "settings.show_favorites": {
+    "value": "Favorites group",
+    "description": "Setting: show the Favorites group"
+  },
+  "settings.show_history": {
+    "value": "History group",
+    "description": "Setting: show the History group"
+  },
+  "settings.skip_back": {
+    "value": "Rewind step",
+    "description": "Setting: how far one rewind press jumps"
+  },
+  "settings.skip_forward": {
+    "value": "Fast forward step",
+    "description": "Setting: how far one fast forward press jumps"
+  },
+  "settings.sort_number": {
+    "value": "Number",
+    "description": "Channel sorting option"
+  },
+  "settings.sort_playlist": {
+    "value": "Playlist order",
+    "description": "Channel sorting option"
+  },
+  "settings.update_epg": {
+    "value": "Update EPG now",
+    "description": "Settings action"
+  },
+  "settings.update_on_start": {
+    "value": "Update on start",
+    "description": "Setting: reload the playlist when the app starts"
+  },
+  "settings.update_playlist": {
+    "value": "Update playlist now",
+    "description": "Settings action"
+  },
+  "settings.updating_epg": {
+    "value": "Updating the EPG",
+    "description": "Toast after Update EPG now"
+  },
+  "settings.updating_playlist": {
+    "value": "Updating the playlist",
+    "description": "Toast after Update playlist now"
+  }
+}

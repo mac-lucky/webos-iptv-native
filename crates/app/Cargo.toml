@@ -1,0 +1,34 @@
+[package]
+name = "webosiptv-app"
+version = "0.0.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Application core: boot, frame loop, input, lifecycle and the wiring of data, player and screens."
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "webosiptv_app"
+
+[features]
+# The desktop simulator: desktop SDL2 and GL, keyboard as the remote, `--shot` screenshots.
+hostsim = ["devtriggers", "tv_base/hostsim", "tv_machine/hostsim", "tv_platform/hostsim", "tv_gfx/hostsim", "tv_media/hostsim"]
+# Development triggers (`/tmp/webosiptv-<name>` files), e.g. `simvideo`, the simulator's decoded
+# picture. Never in a build that ships.
+devtriggers = ["tv_media/devtriggers"]
+
+[dependencies]
+tv_base = { path = "../base" }
+tv_machine = { path = "../machine" }
+tv_net = { path = "../net" }
+tv_platform = { path = "../platform" }
+tv_gfx = { path = "../gfx" }
+tv_ui = { path = "../ui" }
+tv_media = { path = "../media" }
+tv_starfish = { path = "../starfish" }
+tv_screens = { path = "../screens" }
+iptv = { path = "../iptv" }
+libc = "0.2"
+serde_json = { version = "1", default-features = false, features = ["alloc", "std"] }

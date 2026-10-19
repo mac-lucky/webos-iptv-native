@@ -1,0 +1,30 @@
+{
+  "common.channels": {
+    "value": "Channels",
+    "description": "Main menu entry: the channel list"
+  },
+  "common.groups": {
+    "value": "Groups",
+    "description": "Groups panel title and settings section"
+  },
+  "common.search": {
+    "value": "Search",
+    "description": "Menu entry and search screen"
+  },
+  "common.settings": {
+    "value": "Settings",
+    "description": "Menu entry and settings panel title"
+  },
+  "common.today": {
+    "value": "Today",
+    "description": "Day label"
+  },
+  "common.tomorrow": {
+    "value": "Tomorrow",
+    "description": "Day label"
+  },
+  "common.yesterday": {
+    "value": "Yesterday",
+    "description": "Day label"
+  }
+}

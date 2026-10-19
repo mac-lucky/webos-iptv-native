@@ -1,0 +1,26 @@
+{
+  "group.channel_sorting": {
+    "value": "Channel sorting",
+    "description": "Group menu row and settings row: channel order"
+  },
+  "group.hidden": {
+    "value": "Group hidden",
+    "description": "Toast after hiding a group"
+  },
+  "group.hide": {
+    "value": "Hide group",
+    "description": "Group menu action"
+  },
+  "group.options": {
+    "value": "Group options",
+    "description": "Group menu action"
+  },
+  "group.show": {
+    "value": "Show group",
+    "description": "Group menu action for a hidden group"
+  },
+  "group.shown": {
+    "value": "Group shown",
+    "description": "Toast after showing a hidden group"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "epg.catchup_unavailable": "Tego programu nie można odtworzyć wstecz.",
+  "epg.description": "Opis programu",
+  "epg.no_data": "Brak informacji o programie",
+  "epg.no_description": "Brak opisu.",
+  "epg.not_aired": "Ten program jeszcze się nie zaczął",
+  "epg.watch_from_start": "Oglądaj od początku",
+  "epg.when": "{weekday} {start} - {stop} ({minutes} min)"
+}

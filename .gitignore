@@ -1,2 +1,11 @@
-internal/
 .DS_Store
+target/
+vendor/
+.webos-ndk
+pkg/*.dylib
+# Local notes and agent files stay out of the repository.
+CLAUDE.md
+AGENTS.md
+/internal/
+/backlog/
+/docs/

@@ -1,0 +1,30 @@
+{
+  "weekday.fri": {
+    "value": "Fri",
+    "description": "Short weekday name"
+  },
+  "weekday.mon": {
+    "value": "Mon",
+    "description": "Short weekday name"
+  },
+  "weekday.sat": {
+    "value": "Sat",
+    "description": "Short weekday name"
+  },
+  "weekday.sun": {
+    "value": "Sun",
+    "description": "Short weekday name"
+  },
+  "weekday.thu": {
+    "value": "Thu",
+    "description": "Short weekday name"
+  },
+  "weekday.tue": {
+    "value": "Tue",
+    "description": "Short weekday name"
+  },
+  "weekday.wed": {
+    "value": "Wed",
+    "description": "Short weekday name"
+  }
+}

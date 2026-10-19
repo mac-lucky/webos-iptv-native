@@ -1,0 +1,509 @@
+//! Motion arithmetic the logical state can DEPEND on (spec §4.2): the spring integrators, with
+//! their own pure-Rust `exp` and `sin_cos` (range-reduced polynomials, pinned bit for bit), so
+//! that everything a machine hashes is IEEE `+ − × ÷ √` plus two functions whose every bit this
+//! crate decides. Everything else on the platform libm (`f32::exp`, `sin_cos`) is fine for
+//! pixels and refused for state by the `check-deps` libm gate.
+//!
+//! Two assumptions are STATED and CHECKED rather than assumed: rustc does not contract into FMA
+//! without a flag (the grep gate on `fp-contract`/`fast-math`/`+fma`), and the armv7 soft-float
+//! routines are correctly rounded for the five operations — which is what
+//! [`differential_table`] exists to measure: the same 4,096 operands through the same code on
+//! the host and on the television (`make softfloat-probe`, the `webosiptv-softfloat` trigger),
+//! compared as one hash. The host half is pinned here, and **the ARM half was measured on the
+//! television on 2026-09-07 (TV session 3, phase 5b) and MATCHES BIT FOR BIT**:
+//! `softfloat: n=4096 hash=0x65a8e905a259246d host=0x65a8e905a259246d MATCH`, on webOS 4.5 /
+//! Cortex-A9 against the same 4,096 operands. So the spec's cross-target GOAL (§4.2, §5.5) is met
+//! for these five operations on this target, and the phase-5b fixtures need no target scoping.
+//!
+//! **What that does and does not license.** It is one measurement on ONE firmware and one CPU, not
+//! a proof about armv7 soft-float in general, and it says nothing about a target this project does
+//! not build for. It is also not a licence to widen the same-build promise of §5.5: a replay
+//! fixture is still pinned to the build lineage that recorded it, and this result only removes the
+//! ARITHMETIC as a suspect when a cross-target replay does diverge. Re-run
+//! `make softfloat-probe` after any toolchain or `-C target-cpu` change — those are the inputs
+//! that would move it, and nothing in `make check` can see them. If it ever diverges, the fixture
+//! is target-scoped and the divergence named rather than the promise widened.
+//!
+//! Domain: the springs feed `exp` with `-ω·dt ∈ [-2, 0]` and `sin_cos` with `ω_d·dt ∈ [0, 2]`;
+//! both functions are correct well beyond that (`exp` over the whole finite range, `sin_cos` to
+//! |x| ≈ 1e4 with three-part Cody-Waite reduction) and say what they do past it.
+#![allow(dead_code)] // phase 2: the reporting integrators gain callers as screens migrate
+
+use super::machine::{PresentHandle, Tick};
+use super::present::PresentEvent;
+
+// --- exp ----------------------------------------------------------------------------------------
+
+const LOG2E: f32 = 1.442_695_04;
+/// ln 2 split so that `k * LN2_HI` is exact in f32 for |k| < 2^10 (HI has 16 significant bits).
+const LN2_HI: f32 = 0.693_145_751_953_125;
+const LN2_LO: f32 = 1.428_606_765_330_187e-6;
+
+/// e^x. Overflow saturates to +∞, underflow past 2^-126 flushes to 0 (no denormal tail — a spring
+/// envelope of 1e-38 is zero for every purpose here). NaN in, NaN out.
+pub fn exp(x: f32) -> f32 {
+    if x.is_nan() {
+        return x;
+    }
+    if x > 88.72 {
+        return f32::INFINITY;
+    }
+    if x < -87.33 {
+        return 0.0;
+    }
+    // x = k·ln2 + r, |r| ≤ ln2/2
+    let kf = (x * LOG2E).round();
+    let k = kf as i32;
+    let r = (x - kf * LN2_HI) - kf * LN2_LO;
+    // e^r by its Taylor polynomial to r^6: |r| ≤ 0.3466 keeps the truncation under 1.3e-7 relative
+    let p = 1.0
+        + r * (1.0
+            + r * (0.5
+                + r * (1.0 / 6.0 + r * (1.0 / 24.0 + r * (1.0 / 120.0 + r * (1.0 / 720.0))))));
+    // × 2^k by building the exponent bits (k ∈ [-126, 127] after the range guards above)
+    let scale = f32::from_bits(((k + 127) as u32) << 23);
+    p * scale
+}
+
+// --- sin_cos ------------------------------------------------------------------------------------
+
+const TWO_OVER_PI: f32 = 0.636_619_772;
+/// π/2 in three parts, each exact in f32 with trailing zeros so `k * PIO2_x` is exact.
+const PIO2_HI: f32 = 1.570_312_5;
+const PIO2_MID: f32 = 4.837_512_969_970_703e-4;
+const PIO2_LO: f32 = 7.549_789_948_768_648e-8;
+
+/// (sin x, cos x). Reduced to a quadrant by three-part Cody-Waite, then odd/even polynomials on
+/// |r| ≤ π/4 (absolute error < 2e-9). Past |x| = 1e4 the reduction loses bits and the answer is
+/// (0, 1), which no integrator can reach: ω_d·dt is bounded by the clamp on `dt`.
+pub fn sin_cos(x: f32) -> (f32, f32) {
+    if !x.is_finite() || x.abs() > 1.0e4 {
+        return (0.0, 1.0);
+    }
+    let kf = (x * TWO_OVER_PI).round();
+    let r = ((x - kf * PIO2_HI) - kf * PIO2_MID) - kf * PIO2_LO;
+    let r2 = r * r;
+    let s = r
+        * (1.0
+            - r2 * (1.0 / 6.0 - r2 * (1.0 / 120.0 - r2 * (1.0 / 5040.0 - r2 * (1.0 / 362_880.0)))));
+    let c = 1.0 - r2 * (0.5 - r2 * (1.0 / 24.0 - r2 * (1.0 / 720.0 - r2 * (1.0 / 40_320.0))));
+    match (kf as i32) & 3 {
+        0 => (s, c),
+        1 => (c, -s),
+        2 => (-s, -c),
+        _ => (-c, s),
+    }
+}
+
+// --- the integrators, reporting through the present handle ---------------------------------------
+
+/// The rest test (`tv_machine::idle`'s, verbatim): magnitude-relative, capped under a quarter pixel, the
+/// velocity judged as the travel this frame.
+const REST_REL: f32 = 1e-3;
+const REST_CAP: f32 = 0.25;
+
+fn moving(pos: f32, target: f32, vel: f32, dt: f32) -> bool {
+    let t = (REST_REL * (1.0 + pos.abs().max(target.abs()))).min(REST_CAP);
+    (pos - target).abs() > t || (vel * dt).abs() > t
+}
+
+/// Critically-damped spring step — the exact analytic solution of `x'' + 2ω·x' + ω²·x = 0`
+/// (`gfx::spring`'s form, on this module's `exp`), reporting `Motion` while it moves.
+pub fn spring(
+    pos: &mut f32,
+    vel: &mut f32,
+    target: f32,
+    k: f32,
+    t: Tick,
+    present: &mut PresentHandle<'_>,
+) {
+    let dt = t.dt();
+    let w = k.sqrt();
+    let e = exp(-w * dt);
+    let x = *pos - target;
+    let b = *vel + w * x;
+    *pos = target + (x + b * dt) * e;
+    *vel = (*vel - w * b * dt) * e;
+    if moving(*pos, target, *vel, dt) {
+        present.note(PresentEvent::Motion);
+    }
+}
+
+/// Underdamped spring step (`gfx::spring_zeta`'s form, on this module's `exp` and `sin_cos`).
+pub fn spring_zeta(
+    pos: &mut f32,
+    vel: &mut f32,
+    target: f32,
+    k: f32,
+    zeta: f32,
+    t: Tick,
+    present: &mut PresentHandle<'_>,
+) {
+    let dt = t.dt();
+    let w = k.sqrt();
+    let z = zeta.clamp(0.0, 0.999);
+    let wd = w * (1.0 - z * z).sqrt();
+    let x0 = *pos - target;
+    let v0 = *vel;
+    let e = exp(-z * w * dt);
+    let (s, c) = sin_cos(wd * dt);
+    let a = x0;
+    let b = (v0 + z * w * x0) / wd;
+    *pos = target + e * (a * c + b * s);
+    *vel = e * ((b * wd - z * w * a) * c - (a * wd + z * w * b) * s);
+    if moving(*pos, target, *vel, dt) {
+        present.note(PresentEvent::Motion);
+    }
+}
+
+/// A clock-driven ramp (`Xfade`'s shape) that REPORTS from inside `advance`, which is what the two
+/// animators that shipped frozen (`Xfade`, `Spinner`) lacked.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Ramp {
+    pub at_ms: u32,
+    pub len_ms: u32,
+    pub running: bool,
+}
+
+impl Ramp {
+    /// Arm the ramp so that THIS tick's own delta already counts toward it — backdating `at_ms`
+    /// by `t`'s own `dt_us` rather than anchoring at `t.ms` itself. Every caller starts a `Ramp`
+    /// lazily from inside the very `tick`/`advance` call that first needs it (the `len_ms == 0`
+    /// sentinel idiom), so without the backdating the FIRST `advance` on the same tick always
+    /// reads `el = 0` (progress 0.0) — silently dropping one frame's worth of progress versus the
+    /// raw `dt` accumulator this replaced, which decremented on the very tick that armed it. A
+    /// caller that starts from one event (`FocusMoved`, with its own `cx.tick`) and advances from
+    /// a LATER tick is unaffected in practice — the backdate is at most one frame's `dt_us` — but
+    /// makes the same-tick arithmetic exact when the two coincide.
+    pub fn start(&mut self, t: Tick, len_ms: u32) {
+        self.at_ms = t.ms.wrapping_sub(t.dt_us / 1000);
+        self.len_ms = len_ms.max(1);
+        self.running = true;
+    }
+
+    /// 0..1 progress; reports `Motion` while running and stops itself at the end.
+    pub fn advance(&mut self, t: Tick, present: &mut PresentHandle<'_>) -> f32 {
+        if !self.running {
+            return 1.0;
+        }
+        let el = t.ms.wrapping_sub(self.at_ms);
+        if el >= self.len_ms {
+            self.running = false;
+            return 1.0;
+        }
+        present.note(PresentEvent::Motion);
+        el as f32 / self.len_ms as f32
+    }
+}
+
+/// An UNBOUNDED clock-driven phase — a spinner's own spin, an escape-offer stall timer — where
+/// [`Ramp`] does not fit because there is no fixed length to reach 1.0 at. Anchored to wall-clock
+/// `Tick.ms` rather than an accumulated per-frame `dt`, so there is no drift from summing float
+/// deltas over the minutes a login screen can sit waiting, and a caller that skips a frame (the
+/// thing it drives was not on screen that frame) loses nothing: the next call still reads real
+/// elapsed wall time rather than a paused one.
+///
+/// Reports `Motion` on every `advance` call, matching [`Ramp`]'s idiom generalised to a clock with
+/// no natural stop: whether the phase should currently be reported is the CALLER's question,
+/// answered by whether it calls `advance` this frame at all (`screens::login`'s spinner phase is
+/// only advanced while `control_has_spinner` is true, exactly the guard that used to gate its own
+/// `fx.note(Motion)`).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Phase {
+    at_ms: u32,
+    running: bool,
+}
+
+impl Phase {
+    /// Reset the clock to start counting from `t` — `advance` reads ~0 the next time it is called
+    /// at this same tick. For a phase that restarts on some external event (a QR code replaced,
+    /// a wait that moved to a new stage) rather than running for the screen's whole lifetime.
+    pub fn reset(&mut self, t: Tick) {
+        self.at_ms = t.ms;
+        self.running = true;
+    }
+
+    /// Milliseconds elapsed since the last [`reset`](Self::reset) — or, if never reset, since the
+    /// FIRST `advance` call, so a freshly constructed `Phase` needs no `Tick` at construction time
+    /// and starts counting from whenever its owner first calls this. Reports `Motion` on every
+    /// call.
+    pub fn advance(&mut self, t: Tick, present: &mut PresentHandle<'_>) -> f32 {
+        if !self.running {
+            self.at_ms = t.ms;
+            self.running = true;
+        }
+        #[cfg(feature = "devtriggers")]
+        if let Some(held) = held_phase_ms() {
+            // Held: a still picture, so nothing to present for.
+            return held as f32;
+        }
+        present.note(PresentEvent::Motion);
+        t.ms.wrapping_sub(self.at_ms) as f32
+    }
+}
+
+#[cfg(feature = "devtriggers")]
+thread_local! {
+    /// `/tmp/webosiptv-stillclock=<ms>` (`dev::scenarios::screenshot`): every [`Phase`] on this
+    /// thread reads this many elapsed ms and reports NO motion, so a spinner is drawn at one fixed
+    /// angle and a waiting screen can settle. `u32::MAX` = not held. Thread-local because the one
+    /// writer and every reader are the UI thread, and a process global would leak between tests.
+    static HELD_PHASE_MS: std::cell::Cell<u32> = const { std::cell::Cell::new(u32::MAX) };
+}
+
+/// Hold every [`Phase`] clock at `ms` — the screenshot pipeline's pin on free-running animation
+/// (spinner angle, stall timers). `None` releases it. Dev builds only.
+#[cfg(feature = "devtriggers")]
+pub fn hold_phase_clocks(ms: Option<u32>) {
+    HELD_PHASE_MS.with(|h| h.set(ms.map_or(u32::MAX, |ms| ms.min(u32::MAX - 1))));
+}
+
+#[cfg(feature = "devtriggers")]
+fn held_phase_ms() -> Option<u32> {
+    HELD_PHASE_MS.with(|h| Some(h.get()).filter(|ms| *ms != u32::MAX))
+}
+
+/// Where the [`Phase`] clocks are held ([`hold_phase_clocks`]), if they are — for a clock that is
+/// not a `Phase` but must hold with them (the Up Next countdown). Always `None` without
+/// `devtriggers`.
+#[inline]
+pub fn held_clock_ms() -> Option<u32> {
+    #[cfg(feature = "devtriggers")]
+    {
+        held_phase_ms()
+    }
+    #[cfg(not(feature = "devtriggers"))]
+    {
+        None
+    }
+}
+
+/// Are the [`Phase`] clocks held ([`hold_phase_clocks`])? A clock-driven view that keeps the loop
+/// awake on its own (`widgets::Spinner` reports from its draw) asks this, so a held picture really
+/// is still. Always `false` without `devtriggers`.
+#[inline]
+pub fn phase_clocks_held() -> bool {
+    #[cfg(feature = "devtriggers")]
+    {
+        held_phase_ms().is_some()
+    }
+    #[cfg(not(feature = "devtriggers"))]
+    {
+        false
+    }
+}
+
+// --- the differential table -------------------------------------------------------------------
+
+/// How many operand pairs the table holds.
+pub const DIFFERENTIAL_N: usize = 4096;
+
+fn lcg(s: &mut u32) -> u32 {
+    *s = s.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+    *s
+}
+
+/// A pseudo-random finite f32 in roughly ±2^12 with a full mantissa, from the LCG.
+fn operand(s: &mut u32) -> f32 {
+    let bits = lcg(s);
+    let mant = bits & 0x007f_ffff;
+    let exp = 115 + ((bits >> 23) & 0x1f); // 2^-12 .. 2^19
+    let sign = bits & 0x8000_0000;
+    f32::from_bits(sign | (exp << 23) | mant)
+}
+
+/// The 4,096-operand table: for each pair `(a, b)`, the bits of `a+b`, `a-b`, `a*b`, `a/b`,
+/// `sqrt(|a|)`, `exp(a/2^16)`, `sin(b/2^12)`, `cos(b/2^12)` — eight words per pair.
+pub fn differential_table(out: &mut Vec<u32>) {
+    out.clear();
+    out.reserve(DIFFERENTIAL_N * 8);
+    let mut s = 0x5eed_1234u32;
+    for _ in 0..DIFFERENTIAL_N {
+        let a = operand(&mut s);
+        let b = operand(&mut s);
+        let (sn, cs) = sin_cos(b / 4096.0);
+        for v in [
+            a + b,
+            a - b,
+            a * b,
+            a / b,
+            a.abs().sqrt(),
+            exp(a / 65_536.0),
+            sn,
+            cs,
+        ] {
+            out.push(v.to_bits());
+        }
+    }
+}
+
+/// FNV-1a over the table words: the one number the host and the television compare.
+pub fn differential_hash() -> u64 {
+    let mut t = Vec::new();
+    differential_table(&mut t);
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    for w in t {
+        for b in w.to_le_bytes() {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    h
+}
+
+/// The host half of the differential claim, as a pinned constant. Re-pinning it is a deliberate
+/// act that must name why the arithmetic changed.
+pub const DIFFERENTIAL_HASH_HOST: u64 = 0x65a8_e905_a259_246d;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::present::Present;
+
+    #[test]
+    fn exp_and_sin_cos_are_close_to_libm_over_the_spring_domain() {
+        let mut worst_e = 0.0f32;
+        let mut worst_s = 0.0f32;
+        for i in 0..=4000 {
+            let x = -2.0 + i as f32 * 0.001; // exp domain [-2, 2]
+            let rel = ((exp(x) - x.exp()) / x.exp()).abs();
+            worst_e = worst_e.max(rel);
+            let y = i as f32 * 0.005; // sin_cos domain [0, 20]
+            let (s, c) = sin_cos(y);
+            let (ls, lc) = y.sin_cos();
+            worst_s = worst_s.max((s - ls).abs()).max((c - lc).abs());
+        }
+        assert!(worst_e < 4e-7, "exp relative error {worst_e}");
+        assert!(worst_s < 4e-7, "sin_cos absolute error {worst_s}");
+        assert_eq!(exp(0.0), 1.0);
+        assert_eq!(sin_cos(0.0), (0.0, 1.0));
+        assert!(exp(100.0).is_infinite() && exp(-100.0) == 0.0);
+        assert!(exp(f32::NAN).is_nan());
+    }
+
+    /// The bit-for-bit pin: these words are what THIS crate's `exp`/`sin_cos` produce for these
+    /// inputs on the build that wrote them; a change to the polynomials or the reduction changes
+    /// them, and the recorded fixtures with them (§5.5).
+    #[test]
+    fn motion_exp_and_sin_cos_match_the_pinned_table_bit_for_bit() {
+        let inputs: [f32; 8] = [-2.0, -0.7, -0.05, 0.0, 0.3, 1.0, 1.6, 12.5];
+        let got: Vec<u32> = inputs
+            .iter()
+            .flat_map(|&x| {
+                let (s, c) = sin_cos(x);
+                [exp(x).to_bits(), s.to_bits(), c.to_bits()]
+            })
+            .collect();
+        assert_eq!(got.as_slice(), PINNED.as_slice(), "repin only with a named reason");
+    }
+    const PINNED: [u32; 24] = [
+        0x3e0a9555, 0xbf68c7b7, 0xbed51132,
+        0x3efe406e, 0xbf24eb73, 0x3f43ccb3,
+        0x3f7383c6, 0xbd4cb6f5, 0x3f7fae19,
+        0x3f800000, 0x00000000, 0x3f800000,
+        0x3facc82c, 0x3e974e6d, 0x3f7490ef,
+        0x402df854, 0x3f576aa4, 0x3f0a5140,
+        0x409e7f3e, 0x3f7fe40e, 0xbcef33e2,
+        0x48830629, 0xbd87d3c6, 0x3f7f6fb5,
+    ];
+
+    #[test]
+    fn the_soft_float_differential_table_matches() {
+        let h = differential_hash();
+        assert_eq!(h, DIFFERENTIAL_HASH_HOST, "the host half moved: name why in the commit");
+    }
+
+    #[test]
+    fn a_spring_reports_motion_until_it_rests() {
+        let mut present = Present::new();
+        let _ = present.take(0);
+        let (mut pos, mut vel) = (0.0f32, 0.0f32);
+        let t = Tick {
+            ms: 0,
+            dt_us: 16_667,
+        };
+        let mut frames = 0;
+        loop {
+            let mut ph = PresentHandle(&mut present);
+            spring(&mut pos, &mut vel, 100.0, 300.0, t, &mut ph);
+            frames += 1;
+            if !present.take(frames * 16) {
+                break;
+            }
+            assert!(frames < 600, "never rested");
+        }
+        assert!((pos - 100.0).abs() < 0.25 && frames > 5, "pos={pos} frames={frames}");
+    }
+
+    #[test]
+    fn a_ramp_reports_motion_from_inside_advance() {
+        let mut present = Present::new();
+        let _ = present.take(0);
+        let mut r = Ramp::default();
+        r.start(Tick { ms: 0, dt_us: 0 }, 200);
+        let mut ph = PresentHandle(&mut present);
+        let p = r.advance(Tick { ms: 100, dt_us: 0 }, &mut ph);
+        assert!((p - 0.5).abs() < 1e-6);
+        assert!(present.take(100), "a running ramp presents");
+        let mut ph = PresentHandle(&mut present);
+        assert_eq!(r.advance(Tick { ms: 250, dt_us: 0 }, &mut ph), 1.0);
+        assert!(!r.running);
+        assert!(!present.take(250), "a finished ramp does not");
+    }
+
+    #[test]
+    fn a_phase_reports_motion_from_inside_advance_and_starts_lazily() {
+        let mut present = Present::new();
+        let _ = present.take(0);
+        let mut ph_clock = Phase::default();
+        // never explicitly `reset` — the first `advance` call anchors it, so a freshly constructed
+        // `Phase` (what every screen's `Default`-derived state gets) needs no `Tick` up front.
+        let mut ph = PresentHandle(&mut present);
+        let e0 = ph_clock.advance(Tick { ms: 1_000, dt_us: 0 }, &mut ph);
+        assert_eq!(e0, 0.0, "the anchoring call reads zero elapsed");
+        assert!(present.take(1_000), "advance reports motion");
+        let mut ph = PresentHandle(&mut present);
+        let e1 = ph_clock.advance(Tick { ms: 1_400, dt_us: 0 }, &mut ph);
+        assert_eq!(e1, 400.0);
+        assert!(present.take(1_400), "advance reports motion every call, unbounded");
+    }
+
+    #[test]
+    fn a_phase_reset_restarts_the_clock_from_the_given_tick() {
+        let mut present = Present::new();
+        let _ = present.take(0);
+        let mut ph_clock = Phase::default();
+        let mut ph = PresentHandle(&mut present);
+        assert_eq!(ph_clock.advance(Tick { ms: 5_000, dt_us: 0 }, &mut ph), 0.0);
+        let mut ph = PresentHandle(&mut present);
+        assert_eq!(ph_clock.advance(Tick { ms: 5_300, dt_us: 0 }, &mut ph), 300.0);
+        ph_clock.reset(Tick { ms: 6_000, dt_us: 0 });
+        let mut ph = PresentHandle(&mut present);
+        assert_eq!(
+            ph_clock.advance(Tick { ms: 6_050, dt_us: 0 }, &mut ph),
+            50.0,
+            "reset re-anchors rather than continuing the old count"
+        );
+    }
+
+    /// The screenshot pin: a held clock reads the held value at every tick and asks for no
+    /// present, so a screen whose only motion is a spinner comes to rest.
+    #[test]
+    #[cfg(feature = "devtriggers")]
+    fn a_held_phase_clock_reads_the_held_value_and_reports_no_motion() {
+        let mut present = Present::new();
+        let _ = present.take(0);
+        let mut ph_clock = Phase::default();
+        super::hold_phase_clocks(Some(190));
+        // All inside the keepalive window, so a `true` could only be motion.
+        for ms in [100u32, 400, 900] {
+            let mut ph = PresentHandle(&mut present);
+            assert_eq!(ph_clock.advance(Tick { ms, dt_us: 0 }, &mut ph), 190.0);
+            assert!(!present.take(ms), "a held clock is not motion");
+        }
+        super::hold_phase_clocks(None);
+        let mut ph = PresentHandle(&mut present);
+        let _ = ph_clock.advance(Tick { ms: 1_000, dt_us: 0 }, &mut ph);
+        assert!(present.take(1_000), "released, it runs again");
+    }
+}

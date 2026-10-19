@@ -1,0 +1,36 @@
+{
+  "epg.catchup_unavailable": {
+    "value": "No archive for this programme",
+    "description": "Toast: a past programme outside the catch-up window"
+  },
+  "epg.description": {
+    "value": "Programme description",
+    "description": "Channel menu action"
+  },
+  "epg.no_data": {
+    "value": "No programme information",
+    "description": "Channel list programme column without guide data"
+  },
+  "epg.no_description": {
+    "value": "No description.",
+    "description": "Programme description page without a description"
+  },
+  "epg.not_aired": {
+    "value": "This programme has not started yet",
+    "description": "Toast: an upcoming programme was picked"
+  },
+  "epg.watch_from_start": {
+    "value": "Watch from start",
+    "description": "Channel menu action: play the programme on air from its start"
+  },
+  "epg.when": {
+    "value": "{weekday} {start} - {stop} ({minutes} min)",
+    "args": {
+      "minutes": "i64",
+      "start": "str",
+      "stop": "str",
+      "weekday": "str"
+    },
+    "description": "Programme description page: when it airs and how long"
+  }
+}

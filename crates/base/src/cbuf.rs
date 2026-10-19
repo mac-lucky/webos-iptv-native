@@ -1,0 +1,36 @@
+//! `cbuf` — fixed NUL-terminated C-string buffer helpers (route HUD buffers, poster keys,
+//! the text glyph-cache keys). ONE read + write pair so the truncate-and-NUL rules can't
+//! drift between hand-rolled copies.
+use std::os::raw::c_char;
+
+/// borrow the NUL-terminated prefix of a fixed byte-array field (no copy, no UTF-8 check).
+pub fn as_bytes(b: &[u8]) -> &[u8] {
+    let n = b.iter().position(|&x| x == 0).unwrap_or(b.len());
+    &b[..n]
+}
+
+/// write raw bytes into the fixed byte-array field, zero-filled then truncated (always
+/// NUL-terminated). The byte-slice variant of [`set_bytes`] — no UTF-8 requirement.
+pub fn set_bytes_raw(dst: &mut [u8], b: &[u8]) {
+    dst.fill(0);
+    let n = b.len().min(dst.len().saturating_sub(1));
+    dst[..n].copy_from_slice(&b[..n]);
+}
+
+/// write `s` into the fixed byte-array field, zero-filled then truncated (always NUL-terminated).
+pub fn set_bytes(dst: &mut [u8], s: &str) {
+    set_bytes_raw(dst, s.as_bytes());
+}
+
+/// write `s` into a raw `c_char` buffer of `cap` bytes, truncated + NUL-terminated.
+/// # Safety: `dst` must point to at least `cap` writable bytes.
+pub unsafe fn set(dst: *mut c_char, cap: usize, s: &str) {
+    if dst.is_null() || cap == 0 {
+        return;
+    }
+    let out = std::slice::from_raw_parts_mut(dst as *mut u8, cap);
+    let b = s.as_bytes();
+    let n = b.len().min(cap - 1);
+    out[..n].copy_from_slice(&b[..n]);
+    out[n] = 0;
+}

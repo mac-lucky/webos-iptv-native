@@ -1,0 +1,242 @@
+//! **The Player ADAPTER** — the native session object and the main-thread token that confines it
+//! (restructure spec §2.2, phase 9).
+//!
+//! An adapter holds OS/FFI resources and never logical state; the decisions live one field away in
+//! [`crate::player::machine::Player`]. What this one holds is the [`Engine`] — the Starfish/ACB
+//! session, its HTTP stream box, its AU queues and the handles of the three worker threads that
+//! read raw pointers into all three — together with the [`MainThread`] token.
+//!
+//! # Why the slot moved here, and what replaced the token argument
+//!
+//! Until phase 9 the slot was `static mut ENGINE: Option<Engine>`, reachable only through four
+//! accessors that each took a `&MainThread`. That argument was the enforcement: the accessor
+//! handed out a `&'static mut` to a `static mut`, a second caller on another thread is instant UB,
+//! and `static mut` carries no `Sync` bound to stop one (verified by compiling the counterexample
+//! — see `docs/async-model-decision.md`).
+//!
+//! The reasoning is unchanged and the enforcement is stronger. **The token is now CONSUMED at
+//! construction** ([`PlayerAdapter::new`] takes it by value, and the app's run loop is the only place that
+//! can mint one), so holding a `&mut PlayerAdapter` IS the proof the old argument stood in for —
+//! and it is a proof the borrow checker keeps rather than one a caller could satisfy twice. Two
+//! live `&mut` to the engine no longer requires a convention: it does not compile.
+//!
+//! The rest of `player/engine.rs` keeps its `mt: &MainThread` parameters unchanged. They gate a
+//! DIFFERENT thing — the ACB/Starfish seam (`tv::sink::VideoSink`'s methods, whose bind order is a
+//! sequence of calls with no locking behind it) — and that surface is not this module's.
+
+use super::engine::Engine;
+use tv_base::task::MainThread;
+
+/// The `ENGINE` slot and its confinement, as one owned value (`App.adapters.player`).
+pub struct PlayerAdapter {
+    /// Proof, held rather than passed: see the module doc. It is a ZST, so this costs nothing and
+    /// is what makes `&mut PlayerAdapter` mean "the main thread, exclusively".
+    mt: MainThread,
+    /// The live native session, or `None` between playbacks.
+    engine: Option<Engine>,
+    repair: Option<(u64, std::sync::mpsc::Receiver<Result<(), tv_platform::tv::sandbox::Failure>>)>,
+    /// A timed-out native `Load` whose media thread had not returned when its Engine was torn
+    /// down. Owned here, not by a static, for the same reason the Engine is: releasing it calls
+    /// the Starfish seam, which only the main thread may do. See `engine::AbandonedLoad`.
+    abandoned_load: Option<super::engine::AbandonedLoad>,
+    /// A real stop's native object whose `Unload` is still running on its worker
+    /// (`engine::PendingRelease`). **The adapter is the fence the off-frame release relies on:**
+    /// [`mt`](Self::mt) and [`split`](Self::split) finish it (waiting if they must) before they
+    /// hand out the token, so nothing reaches the seam while the worker owns the object. A
+    /// `RefCell` because `mt` takes `&self`; the adapter is `!Send` (it holds the token), so the
+    /// cell never crosses a thread.
+    pending_release: std::cell::RefCell<Option<super::engine::PendingRelease>>,
+    /// The pre-Load probe of an unresolved start (`player::probe`), while it runs.
+    probe: Option<super::probe::PendingProbe>,
+}
+
+impl PlayerAdapter {
+    /// Take the token. The app's boot calls this once, with the token its run loop minted.
+    pub fn new(mt: MainThread) -> Self {
+        Self {
+            mt,
+            engine: None,
+            repair: None,
+            abandoned_load: None,
+            pending_release: std::cell::RefCell::new(None),
+            probe: None,
+        }
+    }
+
+    /// Hold the probe `engine::start_bufferfeed_tracked` started for an unresolved start.
+    pub fn start_probe(&mut self, probe: super::probe::PendingProbe) {
+        if let Some(old) = self.probe.replace(probe) {
+            old.cancel();
+        }
+    }
+
+    /// Is a probe running?
+    pub fn has_probe(&self) -> bool {
+        self.probe.is_some()
+    }
+
+    /// Once a frame (`pump`): the probe's answer — the URL it probed and its result — once there
+    /// is one (the probe is then released), `None` while it works. Never blocks.
+    pub fn poll_probe(&mut self) -> Option<(String, Result<crate::stream::ProbedStreams, crate::stream::ProbeFailure>)> {
+        let result = self.probe.as_mut()?.poll()?;
+        let probe = self.probe.take().expect("polled above");
+        let url = probe.url().to_string();
+        // A timeout already cancelled it; an answered probe's thread is exiting. Either way this
+        // only latches the abort, it never waits.
+        probe.cancel();
+        Some((url, result))
+    }
+
+    /// Stop a running probe (a stop, a new start, a suspend). Returns at once.
+    pub fn cancel_probe(&mut self) {
+        if let Some(p) = self.probe.take() {
+            super::log("probe: cancelled");
+            p.cancel();
+        }
+    }
+
+    /// Park a real stop's off-frame release. At most one exists: the next start finishes it
+    /// before it can construct another object.
+    pub fn park_release(&self, release: super::engine::PendingRelease) {
+        let mut slot = self.pending_release.borrow_mut();
+        debug_assert!(slot.is_none(), "a second off-frame release cannot exist");
+        *slot = Some(release);
+    }
+
+    /// Is a stopped native object's `Unload` still owed its main-thread tail?
+    pub fn has_pending_release(&self) -> bool {
+        self.pending_release.borrow().is_some()
+    }
+
+    /// Once a frame: finish the off-frame release if its `Unload` has returned. Never blocks.
+    /// `true` when this call finished it.
+    pub fn poll_release(&self) -> bool {
+        super::engine::settle_release(&mut self.pending_release.borrow_mut(), &self.mt, false)
+    }
+
+    /// Finish the off-frame release now, waiting for its `Unload` if it is still running — what a
+    /// caller that is about to use the seam (a start, the exit) must do first.
+    pub fn finish_release(&self) {
+        super::engine::settle_release(&mut self.pending_release.borrow_mut(), &self.mt, true);
+    }
+
+    /// UI-thread resource effect. The owner spends the attempt before the worker can run.
+    pub fn repair_sandbox(&mut self, owner: &mut super::machine::RepairAttempt, supported: bool) {
+        let Some(token) = owner.begin(supported) else { return; };
+        let (tx, rx) = std::sync::mpsc::channel();
+        if tv_base::task::spawn_small("jail repair", move || {
+            let _ = tx.send(tv_platform::tv::sandbox::repair());
+        }) {
+            self.repair = Some((token, rx));
+        } else {
+            owner.complete(token, Err(tv_platform::tv::sandbox::Failure::StartFailed));
+        }
+    }
+
+    /// Poll on every app frame, including while the player page is absent.
+    pub fn poll_repair(&mut self, owner: &mut super::machine::RepairAttempt) -> bool {
+        let Some((token, rx)) = self.repair.as_ref() else { return false; };
+        let result = match rx.try_recv() {
+            Ok(result) => result,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return false,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => Err(tv_platform::tv::sandbox::Failure::StartFailed),
+        };
+        let changed = owner.complete(*token, result);
+        self.repair = None;
+        changed
+    }
+
+    /// The live session, borrowed mutably.
+    #[inline]
+    pub fn engine(&mut self) -> Option<&mut Engine> {
+        self.engine.as_mut()
+    }
+
+    /// Is a session live? Distinct from [`engine`](Self::engine) because it answers without taking
+    /// the exclusive borrow — `start_bufferfeed`'s double-start guard only needs to ask.
+    #[inline]
+    pub fn is_live(&self) -> bool {
+        self.engine.is_some()
+    }
+
+    /// Install the freshly-built session. Overwriting a live slot would DROP an Engine whose
+    /// workers hold raw pointers into the boxes it owns; `start_bufferfeed` guards on
+    /// [`is_live`](Self::is_live) first.
+    #[inline]
+    pub fn install(&mut self, e: Engine) {
+        self.engine = Some(e);
+    }
+
+    /// Take the session out of the slot; the caller then joins its workers and drops it.
+    #[inline]
+    pub fn take(&mut self) -> Option<Engine> {
+        self.engine.take()
+    }
+
+    /// Park a still-in-flight Load for a later main-thread release. At most one can exist: the
+    /// C seam owns one object at a time and every start is refused while this slot is full.
+    pub fn park_abandoned_load(&mut self, load: super::engine::AbandonedLoad) {
+        debug_assert!(self.abandoned_load.is_none(), "a second abandoned Load cannot exist");
+        self.abandoned_load = Some(load);
+    }
+
+    /// Is a native object still parked behind a Load that has not been released?
+    pub fn has_abandoned_load(&self) -> bool {
+        self.abandoned_load.is_some()
+    }
+
+    /// The parked Load, borrowed mutably (its once-only log latch), or taken once it returned.
+    pub fn abandoned_load_mut(&mut self) -> Option<&mut super::engine::AbandonedLoad> {
+        self.abandoned_load.as_mut()
+    }
+
+    pub fn take_abandoned_load(&mut self) -> Option<super::engine::AbandonedLoad> {
+        self.abandoned_load.take()
+    }
+
+    /// The token, for the ACB/Starfish seam. `tv::sink::VideoSink`'s methods still take one — see the
+    /// module doc for why that surface keeps its own argument.
+    ///
+    /// Finishes a pending off-frame release first ([`finish_release`](Self::finish_release)): a
+    /// caller holding the token may call any verb, and the object the release still owns must
+    /// not be one of the things it can reach. Free when nothing is pending.
+    #[inline]
+    pub fn mt(&self) -> &MainThread {
+        self.finish_release();
+        &self.mt
+    }
+
+    /// The session AND the token at once, borrowed from disjoint fields.
+    ///
+    /// `pump` needs both for the whole of its body — it reads the live `Engine` and issues
+    /// `sf_pause`/`sf_flush` against the same session — and two separate accessor calls cannot
+    /// give it that, `engine()` taking `&mut self` and [`mt`](Self::mt) `&self`. One `&mut self`
+    /// split into two field borrows can, and the borrow checker still refuses to let either
+    /// outlive a `reload_*` that replaces the slot: that is the `eng` dangles rule of `pump`,
+    /// which was a COMMENT for as long as the slot handed out `&'static mut`.
+    #[inline]
+    pub fn split(&mut self) -> (Option<&mut Engine>, &MainThread) {
+        self.finish_release();
+        (self.engine.as_mut(), &self.mt)
+    }
+}
+
+#[cfg(test)]
+mod repair_receipt_tests {
+    use super::*;
+    use tv_platform::tv::sandbox::{Failure, State};
+    #[test]
+    fn a_receipt_lands_without_a_player_screen_and_cannot_rearm_the_attempt() {
+        let mut owner = super::super::machine::RepairAttempt::new();
+        let token = owner.begin(true).unwrap();
+        let mut adapter = PlayerAdapter::new(unsafe { MainThread::assume() });
+        let (tx, rx) = std::sync::mpsc::channel();
+        adapter.repair = Some((token, rx));
+        assert!(!adapter.poll_repair(&mut owner));
+        tx.send(Err(Failure::Timeout)).unwrap();
+        assert!(adapter.poll_repair(&mut owner));
+        assert_eq!(owner.state(), State::Failed(Failure::Timeout));
+        assert!(!adapter.poll_repair(&mut owner));
+        assert_eq!(owner.begin(true), None);
+    }
+}

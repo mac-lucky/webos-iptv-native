@@ -1,0 +1,55 @@
+[package]
+name = "tv_media"
+version = "0.0.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "WebosIptv media layer: demux (the bundled FFmpeg), the HTTPS media pull source, the access-unit queues and the buffer-feed player engine."
+repository = "https://github.com/mac-lucky/webos-iptv-native"
+publish = false
+
+[lib]
+name = "tv_media"
+# An rlib the application crate links, never an archive of its own. It owns no build script and
+# links nothing -- the FFmpeg and libcurl symbols are `dynlib!` tables (dlopen at run
+# time), the Starfish/ACB externs of `player::ffi` are resolved by the final link, and the two
+# `#[no_mangle]` callbacks `native/starfish.c` calls (`sf_on_event`, `acb_on_event`) ride the
+# application's staticlib.
+crate-type = ["rlib"]
+
+[features]
+default = []
+# Forwarded from the application crate, which is the only one that sets them. `devtriggers` is
+# behaviour here, not plumbing: the dev triggers read their files through `tv_base::devtrig`, which
+# is compile-time `None` without it.
+devtriggers = ["tv_base/devtriggers", "tv_machine/devtriggers", "tv_net/devtriggers", "tv_platform/devtriggers", "tv_gfx?/devtriggers"]
+# `player::ffi_host` (the simulator's `VideoSink`) and `player::sim_video` replace `player::ffi`
+# (Starfish/ACB) under it. `sim_video` is the one thing here that draws, so `tv_gfx` is a
+# dependency of this feature only.
+hostsim = ["dep:tv_gfx", "tv_base/hostsim", "tv_machine/hostsim", "tv_platform/hostsim", "tv_gfx/hostsim"]
+lab-diagnostics = []
+# The `cfg(test)` seams other crates' tests use (`player::preview::reset_for_test`, ...) plus the
+# test-mode arms `cfg(test)` alone cannot give a dependent. Enabled from the dependents'
+# `[dev-dependencies]`; never in a shipped build.
+test-support = ["tv_base/test-support", "tv_machine/test-support", "tv_platform/test-support", "tv_gfx?/test-support", "tv_net/test-support"]
+
+[dependencies]
+tv_base = { path = "../base" }
+tv_machine = { path = "../machine" }
+tv_platform = { path = "../platform" }
+tv_gfx = { path = "../gfx", optional = true }
+tv_net = { path = "../net" }
+libc = "0.2"
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1", default-features = false, features = ["alloc", "std"] }
+
+[dev-dependencies]
+# Dev-depend on ITSELF with `devtriggers`, so `cargo test -p tv_media` builds the crate and every
+# layer below it as the application's suite does.
+tv_media = { path = ".", features = ["devtriggers"] }
+tv_base = { path = "../base", features = ["test-support"] }
+tv_machine = { path = "../machine", features = ["test-support"] }
+tv_platform = { path = "../platform", features = ["test-support"] }
+tv_net = { path = "../net", features = ["test-support"] }
+
+[lints]
+workspace = true

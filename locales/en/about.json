@@ -1,0 +1,32 @@
+{
+  "about.copyright": {
+    "value": "Copyright (C) 2026 the webos-iptv-native authors.",
+    "description": "About page: the copyright line"
+  },
+  "about.derived": {
+    "value": "It is a modified version of StremioNative and PlxNative, both GPL-3.0-or-later.",
+    "description": "About page: the projects this one is derived from"
+  },
+  "about.ffmpeg": {
+    "value": "FFmpeg (https://ffmpeg.org), LGPL-2.1-or-later: shared libraries, replaceable. Its source and build flags: {url}.",
+    "args": {
+      "url": "str"
+    },
+    "description": "About page: the FFmpeg notice; url is the source repository"
+  },
+  "about.fonts": {
+    "value": "Fonts: Inter, SIL Open Font License 1.1.",
+    "description": "About page: the font licence"
+  },
+  "about.licence": {
+    "value": "This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It comes with ABSOLUTELY NO WARRANTY.",
+    "description": "About page: the GPL notice"
+  },
+  "about.source": {
+    "value": "Source code: the complete source of this version is available at {url}. The licences of every bundled component are listed in THIRD-PARTY-NOTICES.md there.",
+    "args": {
+      "url": "str"
+    },
+    "description": "About page: the source offer; url is the source repository"
+  }
+}

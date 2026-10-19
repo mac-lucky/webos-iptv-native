@@ -1,0 +1,16 @@
+webos-iptv-rs
+Copyright (C) 2026 the webos-iptv-native authors
+
+This program is a modified version of StremioNative
+(https://github.com/Morpheus235/stremio-native, commit 008c6ac), which is itself a modified
+version of PlxNative (https://github.com/GLinnik21/plx-native). Both are licensed under the GNU
+General Public License, version 3 or later. The crates under crates/base, crates/machine,
+crates/net, crates/platform, crates/gfx, crates/ui, crates/media, crates/storage and
+crates/build_support, the icons under assets/icons, the locales and the bundled fonts were
+derived from them and changed for this project starting 2026-10-19.
+
+This program is free software: you can redistribute it and/or modify it under the terms of the
+GNU General Public License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version. See LICENSE.
+
+Third-party components and their licences: THIRD-PARTY-NOTICES.md.

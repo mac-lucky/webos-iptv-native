@@ -1,0 +1,15 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Build, package and deploy tooling: cargo xtask <command>."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+tv_base = { path = "../crates/base" }
+flate2 = "1.1.10"
+tar = "0.4.46"

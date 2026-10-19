@@ -1,0 +1,32 @@
+[workspace]
+members = [
+    "crates/base",
+    "crates/machine",
+    "crates/net",
+    "crates/platform",
+    "crates/gfx",
+    "crates/media",
+    "crates/starfish",
+    "crates/ui",
+    "crates/storage",
+    "crates/iptv",
+    "crates/screens",
+    "crates/app",
+    "xtask",
+]
+resolver = "2"
+
+# Warnings are errors for our own packages only (a RUSTFLAGS -D would also hit dependencies).
+[workspace.lints.rust]
+warnings = "deny"
+
+[profile.release]
+opt-level = 2
+lto = "fat"
+codegen-units = 1
+
+# Local TV builds: same codegen as release without the slow fat LTO.
+[profile.tvdev]
+inherits = "release"
+lto = "off"
+codegen-units = 16

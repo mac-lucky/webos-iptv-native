@@ -1,0 +1,500 @@
+//! **The event log** — `/tmp/webosiptv-events.log` on the television, the app's one support channel.
+//!
+//! [`log`] is the ONE sink every module writes through; [`redact_tokens`] and [`scrub`] are the
+//! guards every line passes on the way, and [`ring`] is the lab's tap. It lives in the base layer
+//! (docs/module-layers.md) and names nothing outside itself but `paths`, so any module may log
+//! without naming the application, and the log closes no module cycle. It
+//! used to be `log` in `lib.rs`, and reaching the lab ring through `lab` from there put every
+//! caller above the whole app in the module graph.
+
+/// The redaction pass every line takes before the file write ([`scrub::scrub_local`]), and the
+/// stricter one a Cloud Lab upload takes ([`scrub::scrub`]). **Ungated**: its assertions must run in
+/// the default `make check`. See the module's doc for why there are two exits and why only the
+/// remote one may drop a line.
+pub mod scrub;
+/// The bounded in-memory record ring, tapped by [`log`] one call below the redaction. Behind the
+/// lab feature: a build without it has nothing to put in a ring.
+#[cfg(feature = "lab-diagnostics")]
+pub mod ring;
+
+/// Strip a Stremio session key from a line bound for the event log.
+///
+/// **This is a backstop, not the policy.** The policy is that no call site formats a URL into a log
+/// line at all, and the support channel is "send us `/tmp/webosiptv-events.log`". So the class is
+/// closed HERE, where every line passes, rather than at the call sites, where the next one is one
+/// `format!` away from re-opening it. [`scrub::scrub_local`] runs the full set of rewrites after this.
+///
+/// Matches the parameter name rather than the value: the key is an unstructured alphanumeric with
+/// no distinguishing shape, so it cannot be recognised on its own. The value runs to the next `&`
+/// or whitespace, i.e. the end of that query parameter.
+///
+/// Cheap by construction: the `find` is a no-op scan for the overwhelming majority of lines, and
+/// the log is written a few times a second at most, never per frame.
+pub fn redact_tokens(m: &str) -> std::borrow::Cow<'_, str> {
+    const KEY: &str = "authKey=";
+    if !m.contains(KEY) {
+        return std::borrow::Cow::Borrowed(m);
+    }
+    let mut out = String::with_capacity(m.len());
+    let mut rest = m;
+    while let Some(at) = rest.find(KEY) {
+        out.push_str(&rest[..at + KEY.len()]);
+        out.push_str("<redacted>");
+        let after = &rest[at + KEY.len()..];
+        // the value ends at the next query separator or any whitespace — whichever comes first
+        let end = after
+            .find(|c: char| c == '&' || c.is_whitespace())
+            .unwrap_or(after.len());
+        rest = &after[end..];
+    }
+    out.push_str(rest);
+    std::borrow::Cow::Owned(out)
+}
+
+/// The event log's path. One definition, because three things open this file: `log` below,
+/// the simulator binary (which truncates it at startup), and `src/main.c` on the television — and
+/// the last of those cannot see this module, which is what [`crate::paths::ENV_STEERABLE`] guarantees.
+pub fn events_log() -> std::path::PathBuf {
+    #[cfg(any(test, feature = "test-support"))]
+    if let Some(path) = private::path() {
+        return path;
+    }
+    crate::paths::in_runtime_dir(crate::paths::runtime_file::EVENTS)
+}
+
+/// Run `f` with THIS thread's event log redirected to a fresh private file, removed afterwards (also
+/// when `f` panics).
+///
+/// **A host test that reads the log back must not read the shared one.** A host test run resolves the
+/// log to the bare `/tmp/webosiptv-events.log` (only the `hostsim` feature lets
+/// `SNATIVE_RUNTIME_DIR` steer it, [`crate::paths::ENV_STEERABLE`]), and that file is one for the
+/// whole machine: every test binary of this `make check`, and of any other checkout's, appends to
+/// it. `serial()` is one process's lock. With two `make check` runs side by side,
+/// `an_expired_leaf_is_logged_as_expired_not_as_a_stale_ca_store` found the OTHER run's
+/// `net: curl rc=60 ... (CA store too old?)` line in its own tail and failed. The same read-back
+/// is in `auth_cause_tests`.
+///
+/// Only the calling thread is redirected, so a line another thread logs during `f` goes to the
+/// shared log; a test that needs a worker's line must have the worker log on the test thread.
+/// Not nestable: the inner call replaces the outer file for its own extent.
+#[cfg(any(test, feature = "test-support"))]
+pub fn with_private_log<R>(f: impl FnOnce() -> R) -> R {
+    private::with(f)
+}
+
+#[cfg(any(test, feature = "test-support"))]
+mod private {
+    use std::cell::RefCell;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    thread_local! {
+        static LOG: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    }
+
+    pub(super) fn path() -> Option<PathBuf> {
+        LOG.with(|l| l.borrow().clone())
+    }
+
+    pub(super) fn with<R>(f: impl FnOnce() -> R) -> R {
+        static N: AtomicU32 = AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "sn-private-log-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).expect("a private event-log directory");
+        struct Restore(Option<PathBuf>, PathBuf);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                LOG.with(|l| *l.borrow_mut() = self.0.take());
+                let _ = std::fs::remove_dir_all(&self.1);
+            }
+        }
+        let file = dir.join(crate::paths::runtime_file::EVENTS);
+        let _restore = Restore(LOG.with(|l| l.borrow_mut().replace(file)), dir);
+        f()
+    }
+}
+
+/// A private log is private: the line lands outside the shared log, is visible through
+/// `events_log()` on this thread, not on another, and the file is gone afterwards.
+#[cfg(test)]
+mod private_log_tests {
+    use super::{events_log, log, with_private_log};
+
+    #[test]
+    fn a_private_log_stays_out_of_the_shared_one() {
+        let shared = events_log();
+        let (private, line, other_thread) = with_private_log(|| {
+            let path = events_log();
+            log("private-log-test: line one");
+            let other = std::thread::spawn(events_log).join().unwrap();
+            (path.clone(), std::fs::read_to_string(&path).unwrap_or_default(), other)
+        });
+        assert_ne!(private, shared);
+        assert!(line.contains("private-log-test: line one"), "{line:?}");
+        assert_eq!(other_thread, shared, "another thread keeps the shared log");
+        assert!(!private.exists(), "the private log is removed afterwards");
+        assert_eq!(events_log(), shared, "the redirect ends with the closure");
+    }
+
+    #[test]
+    fn a_panicking_body_still_restores_the_log() {
+        let shared = events_log();
+        let result = std::panic::catch_unwind(|| with_private_log(|| panic!("body")));
+        assert!(result.is_err());
+        assert_eq!(events_log(), shared);
+    }
+}
+
+/// The mode of the event log and its two siblings (`webosiptv-crash.log`, `webosiptv-stderr.log`,
+/// which `src/main.c`'s `open_fd_log` opens at the same mode): owner read/write, the app's own
+/// group (gid 5000 on the television) read, nothing for anyone else.
+///
+/// **Group read, not 0600, so a Developer Mode user can fetch it.** A television that is not
+/// rooted gives its owner one tool, webOS Dev Manager, and it reads files as an unprivileged user
+/// that is in the app's group but is not the app's uid; at 0600 the logs were unreadable to the one
+/// person who needs them. `webosiptv-diag.log` has always shipped 0640 for the same reason.
+///
+/// **Why that is acceptable where 0644 in the shared, mode-1777 `/tmp` was not** (the 2026-08-29
+/// closed entry in `docs/distribution.md`): "other" still gets nothing, and the content is no
+/// longer what it was — [`log`] passes every line through [`scrub::scrub_local`] before the write.
+/// What stays open is that another native app in gid 5000 on the same television can read these
+/// files; `docs/distribution.md` §6.9 states that residual risk and the audit behind it.
+const LOG_MODE: u32 = 0o640;
+
+/// Open a log sink for append at [`LOG_MODE`] — **the one open discipline every Rust-side sink
+/// goes through** (the event log below and the panic hook's crash log in `app::boot`), the twin of
+/// `src/main.c`'s `open_fd_log`. The path is in the shared, sticky `/tmp`, so the open is a
+/// security boundary and refuses, with the file untouched:
+///
+/// * a symlink (`O_NOFOLLOW`);
+/// * anything that is not a regular file, or is not owned by this process's uid;
+/// * **a file with more than one link** (`st_nlink != 1`). A co-resident app in the same gid that
+///   can link names in `/tmp` can `link(2)` one of OUR 0600 files — the `auth.json` session
+///   fallback sits in the same runtime directory — onto a sink name when `fs.protected_hardlinks`
+///   is off. The open then lands on an inode that passes every other check because it IS ours, and
+///   the `fchmod` below would publish it to the group. Asked of the OPENED descriptor, so there is
+///   no window between the check and the use.
+///
+/// An existing name is opened without `O_CREAT`; only a name that does not exist is created, with
+/// `O_EXCL`, so the mode correction runs on an inode this process just made or on a single-link one
+/// it already owned. The mode is set with `fchmod` rather than trusted to `open(2)`, so it does not
+/// depend on the umask and an append target that survived from a 0600 release is corrected on its
+/// first write.
+pub fn open_log_append(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+    let open = |create: bool| {
+        let mut options = std::fs::OpenOptions::new();
+        options.append(true).custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK);
+        if create {
+            options.create_new(true).mode(LOG_MODE);
+        }
+        options.open(path)
+    };
+    let file = match open(false) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => match open(true) {
+            // Lost a race to another creator (the C shim, a second thread): check that file instead.
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => open(false)?,
+            other => other?,
+        },
+        other => other?,
+    };
+    let meta = file.metadata()?;
+    if !meta.file_type().is_file() || meta.uid() != unsafe { libc::geteuid() } || meta.nlink() != 1 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "unsafe log sink",
+        ));
+    }
+    if meta.permissions().mode() & 0o777 != LOG_MODE {
+        file.set_permissions(std::fs::Permissions::from_mode(LOG_MODE))?;
+    }
+    Ok(file)
+}
+
+/// Append one complete record with one [`std::io::Write::write`] call. The event log has several
+/// independently opened `O_APPEND` descriptors; formatting the line and newline separately lets
+/// another thread append between them, gluing two otherwise valid records together.
+fn write_log_line(writer: &mut impl std::io::Write, line: &str) -> std::io::Result<()> {
+    let mut record = Vec::with_capacity(line.len() + 1);
+    record.extend_from_slice(line.as_bytes());
+    record.push(b'\n');
+    match writer.write(&record)? {
+        written if written == record.len() => Ok(()),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::WriteZero,
+            "partial event-log record",
+        )),
+    }
+}
+
+/// Append one complete, newline-terminated record to the log sink at `path`: [`open_log_append`]'s
+/// discipline, then [`write_log_line`]'s single `write`. The ONE way a Rust-side sink is written,
+/// shared by [`log`] and the panic hook's crash log (`app::boot`), so no sink is opened with less
+/// care than the event log. The caller passes the line already redacted
+/// ([`scrub::scrub_local`]); this adds no scrubbing of its own.
+pub fn append_record(path: &std::path::Path, line: &str) -> std::io::Result<()> {
+    write_log_line(&mut open_log_append(path)?, line)
+}
+
+/// Append one line to the on-device event log (`/tmp/webosiptv-events.log`) — the primary debugging
+/// surface (`make run` fetches it). The ONE shared sink; modules bring it in as `use crate::eventlog::log;`.
+///
+/// Every line goes through [`redact_tokens`] first — see its doc for why the guard lives here.
+pub fn log(m: &str) {
+    // Through the instance root, not a literal: several host simulators run at once, and one
+    // shared event log would interleave their lines into something no run can be graded from.
+    // On the television the root is `/tmp`, so this is byte-for-byte the path it always was —
+    // `make run`, `tests/run.py` and every skill recipe still read the same file.
+    let p = events_log();
+    // The FULL local pass, not just the token backstop: identities, hostnames and bare
+    // addresses are rewritten before anything reaches the disk. `scrub_local` never DROPS a line —
+    // see its doc for why the network exit may and this one may not.
+    let line = crate::eventlog::scrub::scrub_local(m);
+    // The lab ring taps the log HERE, one call below the redaction, so it is by construction a
+    // strict subset of the file every other tool reads and inherits the credential backstop above.
+    // Compiled out without the `lab-diagnostics` feature — see `lab`.
+    #[cfg(feature = "lab-diagnostics")]
+    crate::eventlog::ring::record(&line);
+    let _ = append_record(&p, &line);
+}
+
+/// The log's credential backstop. These run on the pure function, so they need no filesystem.
+#[cfg(test)]
+mod redact_tests {
+    use super::redact_tokens;
+
+    /// A key appended last to a URL.
+    #[test]
+    fn a_token_at_the_end_of_a_url_does_not_survive() {
+        let line = "api: retry https://api.example/api/datastoreGet?collection=libraryItem&authKey=aBcD1234xyzQ";
+        let out = redact_tokens(line);
+        assert!(!out.contains("aBcD1234xyzQ"), "token survived: {out}");
+        assert!(out.contains("authKey=<redacted>"));
+        assert!(
+            out.contains("datastoreGet"),
+            "the diagnostic half must survive"
+        );
+    }
+
+    /// A token in the MIDDLE keeps the parameters after it — the redaction ends at `&`, so a line
+    /// is not silently truncated from the token onward (which would hide the very fields that make
+    /// the line worth logging).
+    #[test]
+    fn a_token_mid_url_ends_at_the_ampersand() {
+        let out = redact_tokens("GET /x?authKey=SECRET&audio=3&sub=1 ok");
+        assert!(!out.contains("SECRET"));
+        assert!(out.contains("audio=3") && out.contains("sub=1") && out.ends_with(" ok"));
+    }
+
+    /// More than one occurrence on one line (two URLs logged together).
+    #[test]
+    fn every_occurrence_is_scrubbed_not_just_the_first() {
+        let out = redact_tokens("a=?authKey=AAA b=?authKey=BBB");
+        assert!(!out.contains("AAA") && !out.contains("BBB"), "{out}");
+        assert_eq!(out.matches("<redacted>").count(), 2);
+    }
+
+    /// A token at the very end of the string (no trailing separator) must not panic or be missed.
+    #[test]
+    fn a_token_at_end_of_line_is_scrubbed() {
+        let out = redact_tokens("tail authKey=ZZZ");
+        assert_eq!(out, "tail authKey=<redacted>");
+    }
+
+    /// The common case is untouched and allocation-free.
+    #[test]
+    fn an_ordinary_line_is_borrowed_unchanged() {
+        let line = "feed v#12 reply=Ok";
+        assert!(matches!(redact_tokens(line), std::borrow::Cow::Borrowed(_)));
+        assert_eq!(redact_tokens(line), line);
+    }
+
+    /// Multi-byte content must not panic the slicing (the app logs remote tokens and item titles).
+    #[test]
+    fn multibyte_text_around_a_token_does_not_panic() {
+        let out = redact_tokens("séance ☃ ?authKey=Q1 — après");
+        assert!(!out.contains("Q1"));
+        assert!(out.contains("séance") && out.contains("après"));
+    }
+}
+
+#[cfg(test)]
+mod log_sink_tests {
+    use super::{open_log_append, write_log_line};
+    use std::io::Write;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    #[test]
+    fn a_symlink_cannot_redirect_the_rust_log_sink() {
+        let _g = crate::testlock::serial();
+        let dir = std::env::temp_dir().join(format!("sn-rust-log-{}", std::process::id()));
+        let _ = std::fs::create_dir(&dir);
+        let victim = dir.join("victim");
+        let sink = dir.join("sink");
+        let _ = std::fs::remove_file(&sink);
+        std::fs::write(&victim, b"unchanged").unwrap();
+        symlink(&victim, &sink).unwrap();
+        assert!(open_log_append(&sink).is_err());
+        assert_eq!(std::fs::read(&victim).unwrap(), b"unchanged");
+        let _ = std::fs::remove_file(&sink);
+
+        std::fs::write(&sink, b"").unwrap();
+        std::fs::set_permissions(&sink, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let mut file = open_log_append(&sink).unwrap();
+        file.write_all(b"safe").unwrap();
+        assert_eq!(
+            std::fs::metadata(&sink).unwrap().permissions().mode() & 0o777,
+            0o640,
+            "an append target left at 0644 is corrected to 0640"
+        );
+
+        let _ = std::fs::remove_file(sink);
+        let _ = std::fs::remove_file(victim);
+        let _ = std::fs::remove_dir(dir);
+    }
+
+    /// **The hard-link confused deputy.** A co-resident app in the shared gid can `link(2)` one of
+    /// OUR files onto a sink name in the shared, sticky `/tmp` (when `fs.protected_hardlinks` is
+    /// off, which the television's kernel config does not promise). The open then lands on an inode
+    /// that passes `O_NOFOLLOW`, `S_ISREG` and "owned by us" because it IS ours; widening its mode
+    /// would publish a file that was 0600 on purpose (the `auth.json` session fallback lives in the
+    /// same runtime directory). `st_nlink != 1` is the only thing that tells it from a real sink, and
+    /// it has to be asked of the OPENED descriptor.
+    #[test]
+    fn a_sink_hard_linked_to_another_file_is_refused_and_that_file_is_untouched() {
+        use std::os::unix::fs::MetadataExt;
+        let _g = crate::testlock::serial();
+        let dir = std::env::temp_dir().join(format!("sn-rust-log-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir(&dir).unwrap();
+        let other = dir.join("auth.json");
+        let sink = dir.join("sink");
+        std::fs::write(&other, b"session").unwrap();
+        std::fs::set_permissions(&other, std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::hard_link(&other, &sink).unwrap();
+
+        assert!(
+            open_log_append(&sink).is_err(),
+            "a sink with a second name is somebody else's inode"
+        );
+        let meta = std::fs::metadata(&other).unwrap();
+        assert_eq!(meta.mode() & 0o7777, 0o600, "the other file's mode is never widened");
+        assert_eq!(std::fs::read(&other).unwrap(), b"session", "and never written to");
+        assert_eq!(meta.nlink(), 2, "the refusal removes nothing either");
+
+        // The same file with its second name gone is an ordinary single-link survivor again, so
+        // the upgrade correction (a 0600 file left by an older release becomes 0640) still runs.
+        std::fs::remove_file(&sink).unwrap();
+        drop(open_log_append(&other).unwrap());
+        assert_eq!(std::fs::metadata(&other).unwrap().mode() & 0o7777, 0o640);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A umask is PROCESS-wide, so the body runs in a CHILD copy of the test binary (selected by
+    /// `CHILD_ENV`) whose umask is its own — the technique, and the reason, of
+    /// `storage::diagnostics`' `publication_is_0640_even_under_a_restrictive_umask`: setting a
+    /// restrictive umask here would silently change the mode of every file another test creates
+    /// during the window.
+    ///
+    /// The contract is the one `webosiptv-diag.log` already ships: **0640** whatever the creating
+    /// process's umask says — group read, so a Dev Mode user (whose only tool is webOS Dev Manager,
+    /// reading as an unprivileged user in the app's group) can download the file, and nothing at
+    /// all for anyone outside that group. Three starting states, because each reaches the mode by
+    /// a different route: a fresh create (the umask masks `open(2)`'s mode, so only the explicit
+    /// chmod can give 0640), a target left at 0600 by the previous release, and one left at 0666.
+    #[test]
+    fn the_event_log_is_0640_even_under_a_restrictive_umask() {
+        use std::os::unix::fs::MetadataExt;
+        const CHILD_ENV: &str = "SN_EVENTLOG_UMASK_CHILD";
+        if std::env::var_os(CHILD_ENV).is_none() {
+            // libtest names a test without its crate: `eventlog::log_sink_tests::…`.
+            let name = format!(
+                "{}::the_event_log_is_0640_even_under_a_restrictive_umask",
+                module_path!().split_once("::").unwrap().1
+            );
+            let out = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", &name, "--test-threads=1"])
+                .env(CHILD_ENV, "1")
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            assert!(
+                out.status.success() && stdout.contains("1 passed"),
+                "the child run failed or ran nothing:\n{stdout}\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("sn-rust-log-umask-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir(&dir).unwrap();
+        // Only ever reached in the child process: this changes ITS umask, never the suite's.
+        for restrictive in [0o077, 0o777] {
+            unsafe {
+                libc::umask(restrictive);
+            }
+            let fresh = dir.join(format!("fresh-{restrictive:o}"));
+            drop(open_log_append(&fresh).unwrap());
+            let meta = std::fs::metadata(&fresh).unwrap();
+            assert_eq!(meta.mode() & 0o7777, 0o640, "fresh create under umask {restrictive:o}");
+            // No gid assertion, on purpose: the group is the kernel's choice (the process's egid on
+            // Linux, where /tmp is not setgid, so 5000 on the television; the DIRECTORY's group on
+            // a BSD/macOS host) and nothing here chowns. The mode is the contract.
+        }
+        for (name, previous) in [("from-0600", 0o600), ("from-0666", 0o666)] {
+            let path = dir.join(name);
+            std::fs::write(&path, b"kept").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(previous)).unwrap();
+            let mut file = open_log_append(&path).unwrap();
+            file.write_all(b" and appended").unwrap();
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().mode() & 0o7777,
+                0o640,
+                "pre-existing {name} target"
+            );
+            assert_eq!(
+                std::fs::read(&path).unwrap(),
+                b"kept and appended",
+                "the existing contents are appended to, never truncated"
+            );
+        }
+        // Group read, never world: no `other` bit on any outcome above.
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let mode = entry.unwrap().metadata().unwrap().mode();
+            assert_eq!(mode & 0o007, 0, "no other-class permission bit, got {mode:o}");
+        }
+        // The refusals are unchanged: only a regular file is ever a sink.
+        assert!(
+            open_log_append(std::path::Path::new("/dev/null")).is_err(),
+            "a device node is not a log sink"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn each_log_line_is_one_newline_terminated_write() {
+        #[derive(Default)]
+        struct Sink {
+            calls: usize,
+            bytes: Vec<u8>,
+        }
+        impl std::io::Write for Sink {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.calls += 1;
+                self.bytes.extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let mut sink = Sink::default();
+        write_log_line(&mut sink, "install: id=io.github.maclucky.webosiptv.debug").unwrap();
+        assert_eq!(sink.calls, 1);
+        assert_eq!(sink.bytes, b"install: id=io.github.maclucky.webosiptv.debug\n");
+    }
+}

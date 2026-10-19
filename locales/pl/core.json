@@ -1,0 +1,20 @@
+{
+  "core.converts_on_server": "Konwersja na serwerze",
+  "core.duration_long_hours": "{hours} godz. {minutes} min",
+  "core.duration_long_minutes": "{minutes} min",
+  "core.duration_short_hours": "{hours} h {minutes} min",
+  "core.duration_short_minutes": "{minutes} min",
+  "core.episode": "O{episode}",
+  "core.episode_ordinal": "S{season}, O{episode}",
+  "core.percent": "{value}%",
+  "core.season": "S{season}",
+  "core.seconds": "{seconds} s",
+  "core.shared_by": "Udostępnione przez {handle}",
+  "core.system_default": "Język systemu",
+  "core.time_left_hours": "Pozostało {hours} godz. {minutes} min",
+  "core.time_left_minutes": "Pozostało {minutes} min",
+  "core.unit_b": "{value} B",
+  "core.unit_gb": "{value} GB",
+  "core.unit_kb": "{value} kB",
+  "core.unit_mb": "{value} MB"
+}

@@ -1,0 +1,11 @@
+{
+  "date.weekday_day": {
+    "value": "{weekday}, {month} {day}",
+    "args": {
+      "day": "i64",
+      "month": "str",
+      "weekday": "str"
+    },
+    "description": "A date: short weekday, short month name, day of the month"
+  }
+}

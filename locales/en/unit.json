@@ -1,0 +1,29 @@
+{
+  "unit.days": {
+    "value": {
+      "one": "{count} day",
+      "other": "{count} days"
+    },
+    "args": {
+      "count": "i64"
+    },
+    "description": "A number of days"
+  },
+  "unit.hours": {
+    "value": {
+      "one": "{count} h",
+      "other": "{count} h"
+    },
+    "args": {
+      "count": "i64"
+    },
+    "description": "A number of hours, abbreviated"
+  },
+  "unit.milliseconds": {
+    "value": "{milliseconds} ms",
+    "args": {
+      "milliseconds": "i64"
+    },
+    "description": "A number of milliseconds"
+  }
+}

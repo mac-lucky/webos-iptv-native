@@ -1,0 +1,38 @@
+[alias]
+xtask = "run --quiet --package xtask --"
+
+# The TVs run a 32-bit ARMv7 softfp userspace (Cortex-A53/A55 cores, aarch64 kernels). The
+# toolchain is the webosbrew NDK, installed outside the repo by `cargo xtask setup`, which also
+# points the ignored `.webos-ndk` symlink at it. Paths below are relative to the workspace root.
+#
+# The compiler is the NDK's real gcc driver (`.br_real`), not the buildroot wrapper in front of it:
+# on macOS the wrapper fails when called by a bare name (readlink) and passes a wrong --sysroot when
+# called by path. The real driver finds its sysroot from its own location and has the same
+# defaults (cortex-a9, softfp, neon-fp16, ARM mode).
+[target.armv7-unknown-linux-gnueabi]
+linker = ".webos-ndk/bin/arm-webos-linux-gnueabi-gcc.br_real"
+rustflags = [
+    # ARMv7-A codegen. Without it the code carries the ARMv6 CP15 barrier, which SIGILLs on the A53.
+    "-C", "target-cpu=cortex-a9",
+    # -soft-float gives our crates VFP back under the softfp calling convention (the target
+    # defaults to no FPU, about 10x slower float code). -neon dodges crates whose NEON path needs
+    # unstable intrinsics (simd-adler32). Both print an "unstable feature" warning on stable rustc.
+    "-C", "target-feature=-neon,-soft-float",
+    # Keep the r11 frame chain so a crash PC can be walked back to its Rust call stack.
+    "-C", "force-frame-pointers=yes",
+    # getrandom 0.3+: raw syscall. The app jail has no /dev/urandom and glibc 2.12 has no getrandom().
+    "--cfg", 'getrandom_backend="linux_raw"',
+    # The NDK's specs link an unlicensed libglibc_polyfills.a by default; the shims it would
+    # provide are Rust (crates/app/src/bin/webosiptv/compat.rs).
+    "-C", "link-arg=-tno-glibc-polyfill",
+    # A stable id that survives strip, to match a crash to its unstripped binary.
+    "-C", "link-arg=-Wl,--build-id=sha1",
+    # The Starfish callback interposer (tv_starfish) must be in .dynsym so libplayerAPIs binds to
+    # it. Only this one symbol: -rdynamic/-E would export everything.
+    "-C", "link-arg=-Wl,--export-dynamic-symbol=_ZN17StarfishMediaAPIs20callbackFunctionHookEixPKc",
+]
+
+[env]
+# C code built by cc-rs for the TV (ring, the bundled SQLite).
+CC_armv7_unknown_linux_gnueabi = { value = ".webos-ndk/bin/arm-webos-linux-gnueabi-gcc.br_real", relative = true }
+AR_armv7_unknown_linux_gnueabi = { value = ".webos-ndk/bin/arm-webos-linux-gnueabi-ar", relative = true }

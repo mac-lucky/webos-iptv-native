@@ -1,0 +1,36 @@
+{
+  "player.audio_channels": {
+    "value": "{channels} CH",
+    "args": {
+      "channels": "i64"
+    },
+    "description": "Badge: audio channel count"
+  },
+  "player.audio_track": {
+    "value": "Audio track",
+    "description": "Player menu action and its page title"
+  },
+  "player.fps": {
+    "value": "{fps} FPS",
+    "args": {
+      "fps": "i64"
+    },
+    "description": "Badge: frames per second"
+  },
+  "player.go_live": {
+    "value": "Return to live",
+    "description": "Player menu action while watching catch-up"
+  },
+  "player.menu": {
+    "value": "Menu",
+    "description": "Main menu title"
+  },
+  "player.mono": {
+    "value": "MONO",
+    "description": "Badge: one audio channel"
+  },
+  "player.stereo": {
+    "value": "STEREO",
+    "description": "Badge: two audio channels"
+  }
+}

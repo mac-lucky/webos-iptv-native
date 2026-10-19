@@ -1,0 +1,24 @@
+[package]
+name = "tv_screens"
+version = "0.0.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "TiviMate-style screens: guide, channel list, player panels, history, menus, settings, search."
+repository = "https://github.com/mac-lucky/webos-iptv-native"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+tv_base = { path = "../base" }
+tv_machine = { path = "../machine" }
+tv_platform = { path = "../platform" }
+tv_gfx = { path = "../gfx" }
+tv_ui = { path = "../ui" }
+tv_media = { path = "../media" }
+iptv = { path = "../iptv" }
+
+[dev-dependencies]
+# The catalog's test-mode locale (English unless a test picks another language on its thread).
+tv_platform = { path = "../platform", features = ["test-support"] }

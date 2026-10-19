@@ -1,0 +1,15 @@
+{
+  "id": "io.github.maclucky.webosiptv",
+  "version": "0.1.0",
+  "vendor": "maclucky",
+  "type": "native",
+  "main": "webosiptv",
+  "title": "IPTV Player",
+  "appDescription": "Native IPTV player with a TV guide and catch-up",
+  "icon": "icon.png",
+  "iconColor": "#141822",
+  "nativeLifeCycleInterfaceVersion": 2,
+  "handlesRelaunch": false,
+  "transparent": true,
+  "requiredMemory": 160
+}

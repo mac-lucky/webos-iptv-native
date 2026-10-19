@@ -1,0 +1,20 @@
+{
+  "search.empty": {
+    "value": "Nothing found",
+    "description": "Search with no results"
+  },
+  "search.hint": {
+    "value": "Channel or programme",
+    "description": "Empty search field"
+  },
+  "search.programme_detail": {
+    "value": "{channel}, {weekday} {start} - {stop}",
+    "args": {
+      "channel": "str",
+      "start": "str",
+      "stop": "str",
+      "weekday": "str"
+    },
+    "description": "Search result line of a programme"
+  }
+}

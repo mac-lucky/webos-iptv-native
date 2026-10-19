@@ -1,0 +1,13 @@
+[package]
+name = "tv_starfish"
+version = "0.0.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Rust port of the Starfish/ACB/exported-window video seam: exports the C ABI tv_media declares (sf_*, acb_*, vp_*)."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+libc = "0.2"

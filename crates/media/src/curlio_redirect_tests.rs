@@ -1,0 +1,663 @@
+//! Redirects, media plane: what `curlio::CurlSource` does when the server answers an open, a reopen
+//! or a seek with a `3xx`. It follows the hops itself, one request at a time (`next_hop`). These
+//! tests grade what that promises whoever relies on it, and held before it did: the hop cap, the
+//! no-downgrade rule, the `Range` that rides every hop, a relative `Location`, which statuses are
+//! followed, what a `3xx` body and a missing `Location` do, and what of the original URL a hop
+//! receives. They also grade what only a hop-by-hop follower can promise: a hop is a request of its
+//! own, to its own host, under its own TLS decision (`net::roots`), whichever mode the host that
+//! sent it was in; and the stream's request headers ride every hop.
+//!
+//! The doubles are `net::spawn_scripted`'s: each records every request it reads, so a test can say
+//! what each hop received. Hosts are loopback ones and the synthetic `*.pinned-host.invalid` names of
+//! `curlio_roots_tests.rs`, which reach loopback through a resolve pin; a hop to a name no pin
+//! covers would need DNS, and no test here may. Every test holds `testlock::serial()`: the CA
+//! override and the roots bundle are process-global.
+
+use crate::curlio::test_fixtures::{media_body, pin_to_loopback, PINNED_HOST};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+
+use tv_net::net::{curl_ready, roots, mint_ca_issued_cert, mint_cert, spawn_scripted, ymd_from_now, Observed, Reply, TestCaGuard, TestCert};
+
+use crate::curlio::{CurlSource, OpenErr};
+
+const SECOND_HOST: &str = "second.pinned-host.invalid";
+const TOKEN: &str = "test-token-0123456789";
+/// What a booted client installs as its `User-Agent` (the app names itself; tests name a stand-in).
+const CLIENT_AGENT: &str = "WebosIptv/0.0 (test)";
+
+/// A leaf for `names` from a fresh CA; `pem` of the result is that CA.
+fn leaf(names: &[&str]) -> Arc<TestCert> {
+    Arc::new(mint_ca_issued_cert(names, ymd_from_now(-1), ymd_from_now(30)))
+}
+
+/// Clears what a test latched about `host:port` in `net::roots` when it ends.
+fn watch(host: &str, port: u16) -> roots::Scoped {
+    roots::Scoped(roots::key_of(host, i32::from(port)))
+}
+
+fn url_of(host: &str, port: u16, path: &str) -> String {
+    format!("https://{host}:{port}{path}")
+}
+
+/// Every request `served` has read, verbatim, in arrival order.
+fn requests(served: &Observed) -> Vec<String> {
+    served
+        .requests
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .map(|r| String::from_utf8_lossy(r).into_owned())
+        .collect()
+}
+
+/// The request line of each request: `GET /path?query HTTP/1.1`.
+fn request_lines(served: &Observed) -> Vec<String> {
+    requests(served).iter().map(|r| r.lines().next().unwrap_or_default().to_owned()).collect()
+}
+
+/// A header's value in one recorded request, the name matched case-insensitively.
+fn header(request: &str, name: &str) -> Option<String> {
+    request.lines().find_map(|l| {
+        let (n, v) = l.split_once(':')?;
+        n.eq_ignore_ascii_case(name).then(|| v.trim().to_owned())
+    })
+}
+
+fn read_to_end(src: &mut CurlSource) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut buf = [0u8; 4096];
+    loop {
+        let n = src.read(&mut buf);
+        assert!(n >= 0, "read failed ({n}) after {} bytes", out.len());
+        if n == 0 {
+            return out;
+        }
+        out.extend_from_slice(&buf[..n as usize]);
+    }
+}
+
+/// A plaintext listener that counts the connections it accepts and answers none of them.
+struct Plain {
+    port: u16,
+    accepted: Arc<AtomicUsize>,
+}
+
+impl Plain {
+    fn spawn() -> Plain {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind plaintext listener");
+        let port = listener.local_addr().unwrap().port();
+        let accepted = Arc::new(AtomicUsize::new(0));
+        let count = Arc::clone(&accepted);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                if stream.is_ok() {
+                    count.fetch_add(1, Ordering::AcqRel);
+                }
+            }
+        });
+        Plain { port, accepted }
+    }
+
+    /// How many connections this listener has accepted besides the one this call makes to prove
+    /// it is accepting at all: a bare count of zero would also be what a dead listener reports.
+    fn connections_but_a_probe(&self) -> usize {
+        let _probe = std::net::TcpStream::connect(("127.0.0.1", self.port)).expect("the plaintext listener is up");
+        let give_up = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while self.accepted.load(Ordering::Acquire) == 0 && std::time::Instant::now() < give_up {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        // Connections queue in the order they arrive, so one made before the probe is counted by
+        // the time the probe is; this is the time for the thread to count both.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        self.accepted.load(Ordering::Acquire).saturating_sub(1)
+    }
+}
+
+#[test]
+fn a_redirect_from_https_to_plain_http_is_refused_and_the_plain_target_is_never_dialled() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&["127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "redirect-downgrade");
+    let plain = Plain::spawn();
+    let served = spawn_scripted(cert, [("/start", Reply::redirect(302, &format!("http://127.0.0.1:{}/video.mkv?token={TOKEN}", plain.port)))]);
+    let _watch = watch("127.0.0.1", served.port);
+
+    let err = CurlSource::open(&url_of("127.0.0.1", served.port, "/start"), 0)
+        .err()
+        .expect("a TLS media request may not be redirected into plaintext");
+    // CURLE_UNSUPPORTED_PROTOCOL: a hop from an https URL may only be https (`next_hop`).
+    assert_eq!(err, OpenErr::Transport(1));
+    assert_eq!(request_lines(&served), ["GET /start HTTP/1.1"], "the redirecting server was asked once");
+    assert_eq!(plain.connections_but_a_probe(), 0, "the plaintext target was never connected to");
+}
+
+/// `/h0` redirects to `/h1` and so on, `hops` times, and `/h<hops>` is the media.
+fn chain(hops: usize) -> Vec<(String, Reply)> {
+    let mut routes: Vec<(String, Reply)> = (0..hops).map(|i| (format!("/h{i}"), Reply::redirect(302, &format!("/h{}", i + 1)))).collect();
+    routes.push((format!("/h{hops}"), Reply::ok(media_body())));
+    routes
+}
+
+/// A plaintext HTTP/1.1 server that keeps its connections alive, answers a request by its path with
+/// the response head and body `routes` holds for it (the body a moment AFTER the head, as a server
+/// that is still producing it sends it), and counts the connections it accepts: the double in which a
+/// connection libcurl kept after a redirect can be seen being handed to the next hop.
+/// (`spawn_scripted` closes every connection, which is what makes its accept counts one per request.)
+struct KeepAlive {
+    port: u16,
+    accepted: Arc<AtomicUsize>,
+}
+
+impl KeepAlive {
+    fn spawn(routes: Vec<(&'static str, Vec<u8>, Vec<u8>)>) -> KeepAlive {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind keep-alive listener");
+        let port = listener.local_addr().unwrap().port();
+        let accepted = Arc::new(AtomicUsize::new(0));
+        let count = Arc::clone(&accepted);
+        let routes = Arc::new(routes);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                count.fetch_add(1, Ordering::AcqRel);
+                let routes = Arc::clone(&routes);
+                std::thread::spawn(move || {
+                    let mut seen = Vec::new();
+                    let mut buf = [0u8; 4096];
+                    loop {
+                        while let Some(end) = seen.windows(4).position(|w| w == b"\r\n\r\n") {
+                            let head = String::from_utf8_lossy(&seen[..end]).into_owned();
+                            seen.drain(..end + 4);
+                            let path = head.split_whitespace().nth(1).unwrap_or_default().split('?').next().unwrap_or_default().to_owned();
+                            let (reply_head, reply_body) = routes
+                                .iter()
+                                .find(|(p, _, _)| *p == path)
+                                .map(|(_, h, b)| (h.clone(), b.clone()))
+                                .unwrap_or_else(|| (b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_vec(), Vec::new()));
+                            let sent = stream.write_all(&reply_head).and_then(|_| stream.flush()).map(|_| std::thread::sleep(std::time::Duration::from_millis(50)));
+                            if sent.and_then(|_| stream.write_all(&reply_body)).is_err() {
+                                return;
+                            }
+                        }
+                        match stream.read(&mut buf) {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => seen.extend_from_slice(&buf[..n]),
+                        }
+                    }
+                });
+            }
+        });
+        KeepAlive { port, accepted }
+    }
+}
+
+/// **A redirect's connection is not wasted.** The hop is left only after its body has been read to its
+/// end, so libcurl keeps the connection, and the next request to the same server finds it in the
+/// source's connection cache: one connection for the redirect and the media, where a hop left
+/// mid-body would cost a second.
+#[test]
+fn the_connection_a_redirect_arrived_on_carries_the_next_hop_when_its_body_was_read() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let note = b"moved, look over there. ".repeat(25);
+    let redirect = format!("HTTP/1.1 302 Found\r\nLocation: /video.mkv\r\nContent-Length: {}\r\n\r\n", note.len()).into_bytes();
+    let media = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", media_body().len()).into_bytes();
+    let served = KeepAlive::spawn(vec![("/start", redirect, note), ("/video.mkv", media, media_body())]);
+
+    let mut src = CurlSource::open(&format!("http://127.0.0.1:{}/start", served.port), 0).expect("the redirect is followed");
+    assert_eq!(src.status(), 200);
+    assert_eq!(read_to_end(&mut src), media_body());
+    assert_eq!(served.accepted.load(Ordering::Acquire), 1, "the hop reused the redirect's connection");
+}
+
+#[test]
+fn a_chain_of_five_redirects_ends_in_the_media() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&["127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "redirect-five");
+    let served = spawn_scripted(cert, chain(5));
+    let _watch = watch("127.0.0.1", served.port);
+
+    let mut src = CurlSource::open(&url_of("127.0.0.1", served.port, "/h0"), 0).expect("five redirects are within the cap");
+    assert_eq!(src.status(), 200);
+    assert_eq!(read_to_end(&mut src), media_body());
+    assert_eq!(request_lines(&served).len(), 6, "the open and its five hops: {:?}", request_lines(&served));
+}
+
+#[test]
+fn a_chain_of_six_redirects_fails_as_too_many_after_exactly_six_requests() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&["127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "redirect-six");
+    let served = spawn_scripted(cert, chain(6));
+    let _watch = watch("127.0.0.1", served.port);
+
+    let err = CurlSource::open(&url_of("127.0.0.1", served.port, "/h0"), 0)
+        .err()
+        .expect("the sixth redirect is over the cap");
+    // CURLE_TOO_MANY_REDIRECTS: five redirects are followed (`MAX_HOPS`).
+    assert_eq!(err, OpenErr::Transport(47));
+    assert_eq!(request_lines(&served).len(), 6, "the sixth answer is read, and not followed: {:?}", request_lines(&served));
+}
+
+#[test]
+fn an_open_at_an_offset_and_a_seek_send_the_same_range_on_both_hops_of_a_redirect() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&["127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "redirect-range");
+    let target = spawn_scripted(Arc::clone(&cert), [("/video.mkv", Reply::ok(media_body()))]);
+    let redirecting = spawn_scripted(cert, [("/start", Reply::redirect(302, &url_of("127.0.0.1", target.port, "/video.mkv")))]);
+    let (_w1, _w2) = (watch("127.0.0.1", target.port), watch("127.0.0.1", redirecting.port));
+
+    let mut src = CurlSource::open(&url_of("127.0.0.1", redirecting.port, "/start"), 1000).expect("the redirect is followed at an offset");
+    assert_eq!(src.status(), 206);
+    assert_eq!(src.size(), 5000, "the total comes from the Content-Range the last hop answered");
+    let mut head = [0u8; 64];
+    assert_eq!(src.read(&mut head), 64);
+    assert_eq!(head[..], media_body()[1000..1064]);
+    assert!(src.seek(3000), "a seek goes through the redirect again");
+    assert_eq!(read_to_end(&mut src), media_body()[3000..]);
+
+    for (hop, served) in [("the redirecting server", &redirecting), ("the target", &target)] {
+        let ranges: Vec<Option<String>> = requests(served).iter().map(|r| header(r, "range")).collect();
+        assert_eq!(ranges, [Some("bytes=1000-".to_owned()), Some("bytes=3000-".to_owned())], "{hop}");
+    }
+}
+
+#[test]
+fn a_relative_location_resolves_against_the_hop_that_sent_it() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&["127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "redirect-relative");
+    // From `/a/b/next`, `../video.mkv` is `/a/video.mkv`; from the URL that was opened (`/a/start`)
+    // it would be `/video.mkv`, which holds a decoy.
+    let served = spawn_scripted(
+        cert,
+        [
+            ("/a/start", Reply::redirect(302, "b/next")),
+            ("/a/b/next", Reply::redirect(302, "../video.mkv?sig=abc")),
+            ("/a/video.mkv", Reply::ok(media_body())),
+            ("/video.mkv", Reply::ok(b"the wrong hop's base".to_vec())),
+        ],
+    );
+    let _watch = watch("127.0.0.1", served.port);
+
+    let mut src = CurlSource::open(&url_of("127.0.0.1", served.port, "/a/start"), 0).expect("a relative Location is followed");
+    assert_eq!(src.status(), 200);
+    assert_eq!(read_to_end(&mut src), media_body());
+    assert_eq!(
+        request_lines(&served),
+        ["GET /a/start HTTP/1.1", "GET /a/b/next HTTP/1.1", "GET /a/video.mkv?sig=abc HTTP/1.1"],
+    );
+}
+
+#[test]
+fn a_303_a_307_and_a_308_are_each_followed_with_a_get() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&["127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "redirect-statuses");
+    for status in [303, 307, 308] {
+        let served = spawn_scripted(
+            Arc::clone(&cert),
+            [("/start", Reply::redirect(status, "/video.mkv")), ("/video.mkv", Reply::ok(media_body()))],
+        );
+        let _watch = watch("127.0.0.1", served.port);
+        let mut src = CurlSource::open(&url_of("127.0.0.1", served.port, "/start"), 0)
+            .unwrap_or_else(|e| panic!("{status} is followed: {e:?}"));
+        assert_eq!(src.status(), 200, "{status}");
+        assert_eq!(read_to_end(&mut src), media_body(), "{status}");
+        assert_eq!(request_lines(&served), ["GET /start HTTP/1.1", "GET /video.mkv HTTP/1.1"], "{status}");
+    }
+}
+
+/// What a `302` with no `Location` is: there is nowhere to follow it to, so the `302` is the final
+/// response, and the open refuses it as the status it is.
+#[test]
+fn a_302_with_no_location_fails_the_open_as_status_302() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&["127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "redirect-no-location");
+    let served = spawn_scripted(cert, [("/start", Reply::status(302))]);
+    let _watch = watch("127.0.0.1", served.port);
+
+    let err = CurlSource::open(&url_of("127.0.0.1", served.port, "/start"), 0)
+        .err()
+        .expect("a redirect to nowhere is not a stream");
+    assert_eq!(err, OpenErr::Status(302));
+    assert_eq!(request_lines(&served), ["GET /start HTTP/1.1"], "nothing was followed");
+}
+
+/// The hop is graded like any response: a redirect into a path the server does not have is a `404`
+/// open failure, not a transport one.
+#[test]
+fn a_redirect_to_a_path_the_server_does_not_have_fails_the_open_as_status_404() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&["127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "redirect-missing");
+    let served = spawn_scripted(cert, [("/start", Reply::redirect(301, "/gone.mkv"))]);
+    let _watch = watch("127.0.0.1", served.port);
+
+    let err = CurlSource::open(&url_of("127.0.0.1", served.port, "/start"), 0)
+        .err()
+        .expect("the hop's 404 is the answer");
+    assert_eq!(err, OpenErr::Status(404));
+    assert_eq!(request_lines(&served), ["GET /start HTTP/1.1", "GET /gone.mkv HTTP/1.1"]);
+}
+
+#[test]
+fn the_body_of_a_redirect_is_not_the_body_the_open_returns() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&["127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "redirect-body");
+    let served = spawn_scripted(
+        cert,
+        [
+            ("/start", Reply::redirect(302, "/video.mkv").with_body(b"moved, look over there. ".repeat(40))),
+            ("/video.mkv", Reply::ok(media_body())),
+        ],
+    );
+    let _watch = watch("127.0.0.1", served.port);
+
+    let mut src = CurlSource::open(&url_of("127.0.0.1", served.port, "/start"), 0).expect("the redirect is followed");
+    assert_eq!(src.status(), 200);
+    assert_eq!(src.size(), 5000, "the size is the 200's Content-Length, not the redirect's");
+    assert_eq!(read_to_end(&mut src), media_body());
+}
+
+#[test]
+fn the_token_in_the_original_url_never_reaches_a_cross_host_redirect_target_but_the_user_agent_does() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    // Boot's install, which the player reads rather than naming the client itself.
+    tv_net::net::set_user_agent(CLIENT_AGENT.to_owned())
+        .expect("the client's own name");
+    // One CA for both hosts: the origin's pinned name and the CDN's address.
+    let cert = leaf(&[PINNED_HOST, "127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "redirect-token");
+    let cdn = spawn_scripted(Arc::clone(&cert), [("/cdn/video.mkv", Reply::ok(media_body()))]);
+    let origin = spawn_scripted(cert, [("/start", Reply::redirect(302, &url_of("127.0.0.1", cdn.port, "/cdn/video.mkv?sig=abc")))]);
+    pin_to_loopback(PINNED_HOST, origin.port);
+    let (_w1, _w2) = (watch("127.0.0.1", cdn.port), watch(PINNED_HOST, origin.port));
+
+    let mut src = CurlSource::open(&url_of(PINNED_HOST, origin.port, &format!("/start?token={TOKEN}")), 0)
+        .expect("the origin's redirect to the CDN is followed");
+    assert_eq!(src.status(), 200);
+    assert_eq!(read_to_end(&mut src), media_body());
+
+    let asked = requests(&origin);
+    assert_eq!(asked.len(), 1);
+    assert!(asked[0].lines().next().unwrap_or_default().contains(&format!("token={TOKEN}")), "the original request carried the token: {asked:?}");
+    let arrived = requests(&cdn);
+    assert_eq!(arrived.len(), 1);
+    assert_eq!(arrived[0].lines().next().unwrap_or_default(), "GET /cdn/video.mkv?sig=abc HTTP/1.1", "the hop is the Location, and only the Location");
+    assert!(!arrived[0].contains(TOKEN), "no trace of the token on the hop: {:?}", arrived[0]);
+    let agent = tv_net::net::user_agent().expect("installed before the open");
+    assert!(!agent.is_empty());
+    assert_eq!(header(&asked[0], "user-agent").as_deref(), Some(agent), "the player sends the installed User-Agent");
+    assert_eq!(header(&arrived[0], "user-agent").as_deref(), Some(agent), "the User-Agent follows the request to the next host");
+}
+
+/// Every request the player's HTTPS source makes names the client with the installed `User-Agent`,
+/// the first and each same-origin hop alike (one easy handle per hop, each applying it), and a
+/// source opened before boot installs one sends no `User-Agent` at all, as libcurl does by default.
+/// Runs in a child process: the value is a `OnceLock` and another test of this binary installs it.
+#[test]
+fn a_media_open_sends_the_installed_user_agent_on_every_hop_and_none_before_one_is_installed() {
+    if !tv_base::testlock::fresh_process(module_path!(), "a_media_open_sends_the_installed_user_agent_on_every_hop_and_none_before_one_is_installed") {
+        return;
+    }
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    assert_eq!(tv_net::net::user_agent(), None, "the child must start with nothing installed");
+    let cert = leaf(&["127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "ua-wire-media");
+    let served = spawn_scripted(
+        cert,
+        [("/start", Reply::redirect(302, "/video.mkv")), ("/video.mkv", Reply::ok(media_body()))],
+    );
+    let _watch = watch("127.0.0.1", served.port);
+
+    for (path, hops) in [("/video.mkv", 1), ("/start", 2)] {
+        let mut src = CurlSource::open(&url_of("127.0.0.1", served.port, path), 0).expect("opens");
+        assert_eq!(read_to_end(&mut src), media_body());
+        let asked = requests(&served);
+        assert_eq!(asked.len(), hops, "{asked:?}");
+        for request in &asked {
+            assert_eq!(header(request, "user-agent"), None, "nothing installed, nothing sent: {request:?}");
+        }
+        served.requests.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+
+    tv_net::net::set_user_agent(CLIENT_AGENT.to_owned()).expect("the client's own name");
+    let agent = tv_net::net::user_agent().expect("installed");
+    for (path, hops) in [("/video.mkv", 1), ("/start", 2)] {
+        let mut src = CurlSource::open(&url_of("127.0.0.1", served.port, path), 0).expect("opens");
+        assert_eq!(read_to_end(&mut src), media_body());
+        let asked = requests(&served);
+        assert_eq!(asked.len(), hops, "{asked:?}");
+        for request in &asked {
+            let agents: Vec<_> = request.lines().filter(|l| l.to_ascii_lowercase().starts_with("user-agent:")).collect();
+            assert_eq!(agents, [format!("User-Agent: {agent}")], "exactly one, on every hop: {request:?}");
+        }
+        served.requests.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+}
+
+#[test]
+fn a_roots_mode_host_redirected_to_a_relative_path_on_itself_reads_the_body_through_the_bundle() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&[PINNED_HOST]);
+    let served = spawn_scripted(
+        Arc::clone(&cert),
+        [("/start", Reply::redirect(302, "/video.mkv")), ("/video.mkv", Reply::ok(media_body()))],
+    );
+    // The device store holds nothing relevant; only the bundle can verify the host, on either hop.
+    let _device = TestCaGuard::install(&mint_cert(&["unrelated.invalid"]).pem, "redirect-roots-same-host");
+    let _roots = roots::test_roots::Guard::install(&cert.pem, "redirect-roots-same-host");
+    pin_to_loopback(PINNED_HOST, served.port);
+    let key = roots::key_of(PINNED_HOST, i32::from(served.port));
+    let _watch = roots::Scoped(key.clone());
+    roots::roots_established(&key, Some(20));
+
+    let mut src = CurlSource::open(&url_of(PINNED_HOST, served.port, "/start"), 0).expect("the bundle verifies both hops");
+    assert_eq!(src.status(), 200);
+    assert_eq!(read_to_end(&mut src), media_body());
+    assert_eq!(request_lines(&served), ["GET /start HTTP/1.1", "GET /video.mkv HTTP/1.1"]);
+    assert_eq!(served.accepted(), 2, "a latched host starts in roots mode: no strict handshake first, one connection per hop");
+    assert!(roots::is_latched(&key), "still latched");
+}
+
+/// Two host names, neither verifiable by the device store, one CA (the bundle's) for both.
+/// Neither is latched, so the open goes strict, then roots, on the first, and is redirected to the
+/// second, which is a request of its own: it goes strict, then roots, under ITS key, from a ladder that
+/// remembers nothing the first hop's did (the bundle is offered once per hop, not once per open). Both
+/// end latched in roots mode. Each name reaches loopback through its own resolve pin, so the test
+/// needs no DNS.
+#[test]
+fn a_roots_mode_open_redirected_to_a_second_host_ends_in_the_media() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&[PINNED_HOST, SECOND_HOST]);
+    let second = spawn_scripted(Arc::clone(&cert), [("/video.mkv", Reply::ok(media_body()))]);
+    let first = spawn_scripted(Arc::clone(&cert), [("/start", Reply::redirect(302, &url_of(SECOND_HOST, second.port, "/video.mkv")))]);
+    let _device = TestCaGuard::install(&mint_cert(&["unrelated.invalid"]).pem, "redirect-roots-two-hosts");
+    let _roots = roots::test_roots::Guard::install(&cert.pem, "redirect-roots-two-hosts");
+    pin_to_loopback(PINNED_HOST, first.port);
+    pin_to_loopback(SECOND_HOST, second.port);
+    let first_key = roots::key_of(PINNED_HOST, i32::from(first.port));
+    let _w1 = roots::Scoped(first_key.clone());
+    let _w2 = watch(SECOND_HOST, second.port);
+    let second_key = roots::key_of(SECOND_HOST, i32::from(second.port));
+
+    let mut src = CurlSource::open(&url_of(PINNED_HOST, first.port, "/start"), 0).expect("both hops are verified by the bundle");
+    assert_eq!(src.status(), 200);
+    assert_eq!(read_to_end(&mut src), media_body());
+    assert_eq!(request_lines(&first), ["GET /start HTTP/1.1"]);
+    assert_eq!(request_lines(&second), ["GET /video.mkv HTTP/1.1"]);
+    assert!(roots::is_latched(&first_key), "the host the open began on is latched in roots mode");
+    assert!(roots::is_latched(&second_key), "so is the host it was redirected to: it went through the ladder under its own key");
+}
+
+/// The host a hop returns to is the host the open began on, unlatched at the start: the first request
+/// runs the ladder (strict fails, the bundle answers) and latches the host, and the second begins from
+/// that latch, in roots mode, with no doomed strict handshake of its own: three connections, not four.
+#[test]
+fn a_redirect_back_to_the_same_host_starts_its_second_hop_from_the_latch_the_first_set() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&[PINNED_HOST]);
+    let served = spawn_scripted(
+        Arc::clone(&cert),
+        [("/start", Reply::redirect(302, "/video.mkv")), ("/video.mkv", Reply::ok(media_body()))],
+    );
+    let _device = TestCaGuard::install(&mint_cert(&["unrelated.invalid"]).pem, "redirect-roots-same-host-cold");
+    let _roots = roots::test_roots::Guard::install(&cert.pem, "redirect-roots-same-host-cold");
+    pin_to_loopback(PINNED_HOST, served.port);
+    let key = roots::key_of(PINNED_HOST, i32::from(served.port));
+    let _watch = roots::Scoped(key.clone());
+    assert!(!roots::is_latched(&key), "the open starts unlatched");
+
+    let mut src = CurlSource::open(&url_of(PINNED_HOST, served.port, "/start"), 0).expect("both hops are verified by the bundle");
+    assert_eq!(src.status(), 200);
+    assert_eq!(read_to_end(&mut src), media_body());
+    assert_eq!(request_lines(&served), ["GET /start HTTP/1.1", "GET /video.mkv HTTP/1.1"]);
+    assert_eq!(served.accepted(), 3, "the failed strict handshake and the bundle one for the first hop, one more for the second");
+    assert!(roots::is_latched(&key));
+}
+
+/// The `name` lines of one recorded request, verbatim.
+fn header_lines<'a>(request: &'a str, name: &str) -> Vec<&'a str> {
+    request
+        .lines()
+        .filter(|l| l.split_once(':').is_some_and(|(n, _)| n.eq_ignore_ascii_case(name)))
+        .collect()
+}
+
+/// A live-TV stream's `behaviorHints.proxyHeaders.request`: the origin refuses any request that
+/// does not carry them.
+fn live_tv_headers() -> crate::headers::RequestHeaders {
+    crate::headers::RequestHeaders::from_pairs(&[
+        ("User-Agent", "LiveClient/2.6"),
+        ("Referer", "https://live.example/"),
+        ("Authorization", "Bearer stream-secret"),
+    ])
+    .expect("the stream's headers are well formed")
+}
+
+/// **A stream's request headers ride EVERY request the source makes for it** (Stremio
+/// `behaviorHints.proxyHeaders.request`): the open, the same-origin redirect hop it follows, and a
+/// Range seek, which replays the whole chain with its `Range` on each hop. The stream's
+/// `User-Agent` REPLACES the client's own on all of them (exactly one `User-Agent` line), and the
+/// Referer and the credential header are on every request, since every hop stays on the stream's
+/// own origin.
+#[test]
+fn a_streams_request_headers_ride_the_open_its_redirect_hop_and_every_range_seek() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&["127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "stream-headers-same-origin");
+    let served = spawn_scripted(
+        cert,
+        [("/live/start", Reply::redirect(302, "/live/segment.ts")), ("/live/segment.ts", Reply::ok(media_body()))],
+    );
+    let _watch = watch("127.0.0.1", served.port);
+
+    let mut src = CurlSource::open_with_headers(&url_of("127.0.0.1", served.port, "/live/start"), 0, &live_tv_headers())
+        .expect("the stream opens through its redirect");
+    assert_eq!(src.status(), 200);
+    let mut head = [0u8; 16];
+    assert_eq!(src.read(&mut head), 16);
+    assert!(src.seek(1000), "the Range seek replays the chain");
+    let mut buf = [0u8; 16];
+    assert_eq!(src.read(&mut buf), 16);
+    assert_eq!(buf[..], media_body()[1000..1016]);
+    assert!(src.seek(4000), "a second seek");
+    drop(src);
+
+    let asked = requests(&served);
+    assert_eq!(
+        request_lines(&served),
+        ["GET /live/start HTTP/1.1", "GET /live/segment.ts HTTP/1.1", "GET /live/start HTTP/1.1", "GET /live/segment.ts HTTP/1.1", "GET /live/start HTTP/1.1", "GET /live/segment.ts HTTP/1.1"],
+        "an open and two seeks, each a two-hop chain"
+    );
+    for (i, request) in asked.iter().enumerate() {
+        assert_eq!(header_lines(request, "user-agent"), ["User-Agent: LiveClient/2.6"], "request {i}: exactly the stream's User-Agent: {request:?}");
+        assert_eq!(header(request, "referer").as_deref(), Some("https://live.example/"), "request {i}: {request:?}");
+        assert_eq!(header(request, "authorization").as_deref(), Some("Bearer stream-secret"), "request {i}: same origin, so the credential goes too");
+    }
+    assert_eq!(header(&asked[0], "range"), None, "the open from byte 0 asks for no range");
+    for (i, at) in [(2, 1000), (3, 1000), (4, 4000), (5, 4000)] {
+        assert_eq!(header(&asked[i], "range"), Some(format!("bytes={at}-")), "request {i} is a seek's hop and carries its Range");
+    }
+}
+
+/// **A redirect to another origin keeps the stream's headers but not its credentials.** A live-TV
+/// URL that redirects to its CDN needs the same `User-Agent` and `Referer` there (that is why the
+/// addon names them), and a seek replays the chain, so the CDN sees them on its Range request too;
+/// `Authorization` stays with the stream's own origin, exactly as libcurl's own redirect follower
+/// would keep it.
+#[test]
+fn a_cross_origin_hop_gets_the_streams_headers_but_never_its_credentials() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&["127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "stream-headers-cross-origin");
+    let cdn = spawn_scripted(Arc::clone(&cert), [("/cdn/channel.ts", Reply::ok(media_body()))]);
+    let origin = spawn_scripted(cert, [("/play", Reply::redirect(302, &url_of("127.0.0.1", cdn.port, "/cdn/channel.ts")))]);
+    let (_w1, _w2) = (watch("127.0.0.1", cdn.port), watch("127.0.0.1", origin.port));
+
+    let mut src = CurlSource::open_with_headers(&url_of("127.0.0.1", origin.port, "/play"), 0, &live_tv_headers())
+        .expect("the CDN hop is followed");
+    let mut head = [0u8; 16];
+    assert_eq!(src.read(&mut head), 16);
+    assert!(src.seek(2500), "the seek replays the chain to the CDN");
+    let mut buf = [0u8; 16];
+    assert_eq!(src.read(&mut buf), 16);
+    assert_eq!(buf[..], media_body()[2500..2516]);
+    drop(src);
+
+    let at_origin = requests(&origin);
+    assert_eq!(at_origin.len(), 2, "the open and the seek each began at the stream's own URL");
+    for request in &at_origin {
+        assert_eq!(header(request, "authorization").as_deref(), Some("Bearer stream-secret"));
+    }
+    let at_cdn = requests(&cdn);
+    assert_eq!(at_cdn.len(), 2, "{at_cdn:?}");
+    for (i, request) in at_cdn.iter().enumerate() {
+        assert_eq!(header_lines(request, "user-agent"), ["User-Agent: LiveClient/2.6"], "cdn request {i}: {request:?}");
+        assert_eq!(header(request, "referer").as_deref(), Some("https://live.example/"), "cdn request {i}");
+        assert_eq!(header(request, "authorization"), None, "cdn request {i}: a credential never leaves the stream's origin");
+    }
+    assert_eq!(header(&at_cdn[1], "range").as_deref(), Some("bytes=2500-"), "the seek's hop to the CDN carries its Range and the headers");
+}
+
+/// A source with no stream headers sends exactly what it always did: the client's own `User-Agent`
+/// (or none before one is installed) and nothing of a previous stream's.
+#[test]
+fn a_source_without_stream_headers_sends_none_of_another_streams() {
+    let _serial = tv_base::testlock::serial();
+    if !curl_ready() { return; }
+    let cert = leaf(&["127.0.0.1"]);
+    let _ca = TestCaGuard::install(&cert.pem, "stream-headers-none");
+    let served = spawn_scripted(cert, [("/video.mkv", Reply::ok(media_body()))]);
+    let _watch = watch("127.0.0.1", served.port);
+    drop(CurlSource::open_with_headers(&url_of("127.0.0.1", served.port, "/video.mkv"), 0, &live_tv_headers()).expect("opens"));
+    let mut src = CurlSource::open(&url_of("127.0.0.1", served.port, "/video.mkv"), 0).expect("opens");
+    assert_eq!(read_to_end(&mut src), media_body());
+    let asked = requests(&served);
+    assert_eq!(asked.len(), 2);
+    assert_eq!(header(&asked[1], "referer"), None, "{:?}", asked[1]);
+    assert_eq!(header(&asked[1], "authorization"), None);
+    assert!(header_lines(&asked[1], "user-agent").iter().all(|l| !l.contains("LiveClient")), "{:?}", asked[1]);
+}
