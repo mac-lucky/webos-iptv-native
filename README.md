@@ -77,8 +77,14 @@ The app id is `io.github.maclucky.webosiptv`. The package version lives in one p
 This project is built on [StremioNative](https://github.com/Morpheus235/stremio-native), which is
 built on [PlxNative](https://github.com/GLinnik21/plx-native). Their renderer, UI toolkit, network
 transport, Starfish playback engine, FFmpeg demuxer and HLS client are the foundation of this
-player. Thanks to their authors and contributors. Details: [NOTICE](NOTICE) and
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+player. Thanks to their authors and contributors.
+
+Parts of the IPTV core (M3U and XMLTV parsing, guide matching, channel identity and the history
+rules), test cases for them and some Polish strings come from
+[webOS IPTV Player](https://github.com/lennylxx/webos-iptv-player) by lennylxx (Apache-2.0).
+Thanks to lennylxx as well.
+
+Details: [NOTICE](NOTICE) and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 Not affiliated with or endorsed by LG Electronics.
 

@@ -6,9 +6,17 @@ This program is a modified version of StremioNative
 version of PlxNative (https://github.com/GLinnik21/plx-native). Both are licensed under the GNU
 General Public License, version 3 or later. The crates under crates/base, crates/machine,
 crates/net, crates/platform, crates/gfx, crates/ui, crates/media, crates/storage and
-crates/build_support, the icons under assets/icons, the locales and the bundled fonts were
-derived from them and changed for this project starting 2026-10-19. crates/starfish is a Rust
-port of StremioNative's native/starfish.c, itself derived from PlxNative's src/starfish.c.
+crates/build_support, the icons under assets/icons, the English messages in locales/en that
+came with those crates and the bundled fonts were derived from them and changed for this project
+starting 2026-10-19. crates/starfish is a Rust port of StremioNative's native/starfish.c, itself
+derived from PlxNative's src/starfish.c.
+
+Parts of crates/iptv are ported to Rust from webOS IPTV Player
+(https://github.com/lennylxx/webos-iptv-player, commit 7d8fd30), Copyright 2026 lennylxx,
+licensed under the Apache License, Version 2.0 (licenses/Apache-2.0.txt), and were changed for
+this project: functions and rules of its M3U and XMLTV parsers, guide matching, channel identity
+and storage, and test cases from its test suites. Some Polish strings in locales/pl come from its
+src/i18n/pl.ts. THIRD-PARTY-NOTICES.md lists exactly which.
 
 This program is free software: you can redistribute it and/or modify it under the terms of the
 GNU General Public License as published by the Free Software Foundation, either version 3 of the

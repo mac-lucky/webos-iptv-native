@@ -1,9 +1,12 @@
 //! Streaming M3U playlist parser with Kodi pvr.iptvsimple and SIPTV catch-up rules.
 //!
-//! Ported from webOS IPTV Player `src/parsers/m3u-parser.ts` (Apache-2.0). Input is untrusted:
-//! every buffer is capped ([`Limits`]), malformed entries are skipped and counted in
-//! [`ParseReport`], and only http(s) stream URLs become channels. Nothing here logs: playlist and
-//! stream URLs carry tokens.
+//! Parts are ported to Rust from webOS IPTV Player `src/parsers/m3u-parser.ts` (commit 7d8fd30,
+//! Copyright 2026 lennylxx, Apache-2.0; see THIRD-PARTY-NOTICES.md) and changed: the attribute
+//! scanner, the `#EXTINF` entry mapping, the directive switch, the guide URL keys and the name of
+//! a bare URL. Streaming, the caps and the SIPTV, header and correction catch-up rules are this
+//! project's. Input is untrusted: every buffer is capped ([`Limits`]), malformed entries are
+//! skipped and counted in [`ParseReport`], and only http(s) stream URLs become channels. Nothing
+//! here logs: playlist and stream URLs carry tokens.
 
 use std::borrow::Cow;
 use std::fmt;

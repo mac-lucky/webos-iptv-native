@@ -7,8 +7,11 @@
 //! hide another feed's schedule for it. A source serves the playlists that list it; a manual source
 //! with no playlists serves all of them, and manual sources are tried first.
 //!
-//! Ported from webOS IPTV Player `src/services/epg-service.ts` (`findBaseChannelId`,
-//! `applyChannelOffset`, `filterFor`; Apache-2.0).
+//! Parts are ported to Rust from webOS IPTV Player `src/services/epg-service.ts` (commit 7d8fd30,
+//! Copyright 2026 lennylxx, Apache-2.0; see THIRD-PARTY-NOTICES.md) and changed:
+//! `findBaseChannelId`, `sourceAppliesToChannel` and `filterFor`, with the offsets of
+//! `applyChannelOffset` reduced to one number per channel. The `tvg-shift` fallback and the
+//! diagnostics are this project's.
 
 use std::collections::{HashMap, HashSet};
 

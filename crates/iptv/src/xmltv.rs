@@ -2,9 +2,12 @@
 //! channels and programmes to a [`Sink`] as they stream, so a guide of any size is never held in
 //! memory: the parser keeps one XML event (capped) and the fields of the current element.
 //!
-//! Element rules, the channel filter, the time window, the order retry and the timestamp format
-//! are ported from webOS IPTV Player `src/parsers/xmltv-parser.ts` and `xmltv-loader.ts`
-//! (Apache-2.0).
+//! Parts are ported to Rust from webOS IPTV Player `src/parsers/xmltv-parser.ts` and
+//! `xmltv-loader.ts` (commit 7d8fd30, Copyright 2026 lennylxx, Apache-2.0; see
+//! THIRD-PARTY-NOTICES.md) and changed: the timestamp parser, the channel and programme checks
+//! (filter, time window, budget) with their statistics, the element and entity rules, display-name
+//! retention, the order retry and the gzip and UTF-8 handling. The quick-xml streaming reader and
+//! the caps are this project's.
 
 use std::borrow::Cow;
 use std::collections::HashSet;

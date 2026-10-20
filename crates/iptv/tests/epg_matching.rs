@@ -1,5 +1,6 @@
-//! EPG matching tests. The multi-source cases are ported from webOS IPTV Player
-//! `src/services/epg-service.test.ts` (Apache-2.0); the rest cover tvg-shift and diagnostics.
+//! EPG matching tests. The multi-source cases are ported to Rust from webOS IPTV Player
+//! `src/services/epg-service.test.ts` (commit 7d8fd30, Copyright 2026 lennylxx, Apache-2.0; see
+//! THIRD-PARTY-NOTICES.md) and changed; the rest cover tvg-shift and diagnostics.
 
 use std::collections::{HashMap, HashSet};
 

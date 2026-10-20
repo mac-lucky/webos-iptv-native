@@ -13,8 +13,11 @@
 //! file by `MAX_DB_BYTES` (a guide that does not fit fails its import and the old one stays),
 //! the programmes of all guides together by `MAX_PROGRAMMES`.
 //!
-//! Favourites, recents and the history rules follow webOS IPTV Player
-//! `src/services/storage-service.ts` (Apache-2.0).
+//! Favourites, recents and the catch-up history rules (keyed by channel and programme start, kept
+//! a set number of days past the programme end, pruned on every save) follow webOS IPTV Player
+//! `src/services/storage-service.ts` (commit 7d8fd30, Copyright 2026 lennylxx, Apache-2.0; see
+//! THIRD-PARTY-NOTICES.md), changed to SQLite and to settings for the limits. The schema, the guide
+//! import and the flash bounds are this project's.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -1778,6 +1781,7 @@ mod tests {
 
     #[test]
     fn a_save_prunes_expired_history() {
+        // ported from webOS IPTV Player `src/services/storage-service.test.ts`
         let storage = Storage::open_in_memory().unwrap();
         storage.set_setting(HISTORY_DAYS, "1").unwrap();
         storage.save_progress(&entry(1, 0, 3600), 0).unwrap();
@@ -1871,6 +1875,7 @@ mod tests {
 
     #[test]
     fn an_already_expired_entry_is_not_written() {
+        // ported from webOS IPTV Player `src/services/storage-service.test.ts`
         let storage = Storage::open_in_memory().unwrap();
         let now = 100 * DAY_SECS;
         storage.save_progress(&entry(1, 0, 3600), now).unwrap();

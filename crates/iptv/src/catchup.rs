@@ -1,9 +1,12 @@
 //! Catch-up (archive) URLs: the modes and format specifiers of Kodi's pvr.iptvsimple, which most
 //! providers write playlists for.
 //!
-//! Ported from webOS IPTV Player `src/utils/catchup-url.ts` (Apache-2.0). The M3U parser derives
-//! a channel's template once ([`template`]); [`archive_url`] fills it for one programme. Nothing
-//! here logs: templates and filled URLs carry stream tokens.
+//! Ported from `src/utils/catchup-url.ts` of this project's catch-up patch for webOS IPTV Player,
+//! written for this project and offered upstream as lennylxx/webos-iptv-player#87. Only the
+//! `{channel-id}` substitution follows webOS IPTV Player's own `src/components/player.ts`
+//! (Apache-2.0; see THIRD-PARTY-NOTICES.md). The M3U parser derives a channel's template once
+//! ([`template`]); [`archive_url`] fills it for one programme. Nothing here logs: templates and
+//! filled URLs carry stream tokens.
 
 use std::fmt::Write as _;
 

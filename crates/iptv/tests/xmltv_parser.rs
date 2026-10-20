@@ -1,5 +1,6 @@
-//! XMLTV parser tests. The first 23 are ported from webOS IPTV Player
-//! `src/parsers/xmltv-parser.test.ts` (Apache-2.0); the rest cover the input adapter.
+//! XMLTV parser tests. The first 23 are ported to Rust from webOS IPTV Player
+//! `src/parsers/xmltv-parser.test.ts` (commit 7d8fd30, Copyright 2026 lennylxx, Apache-2.0; see
+//! THIRD-PARTY-NOTICES.md) and changed; the rest cover the input adapter and review regressions.
 
 mod common;
 

@@ -1,7 +1,9 @@
-//! M3U parser cases ported from webOS IPTV Player `src/parsers/m3u-parser.test.ts` (Apache-2.0),
+//! M3U parser cases ported to Rust from webOS IPTV Player `src/parsers/m3u-parser.test.ts`
+//! (commit 7d8fd30, Copyright 2026 lennylxx, Apache-2.0; see THIRD-PARTY-NOTICES.md) and changed,
 //! in the same order, then playlist shapes seen in the field and hostile input. Cases marked
 //! "Adapted" test the same behaviour through this crate's API, which has no parse hooks, keeps
-//! no header attributes and leaves wrapping a single stream to the caller.
+//! no header attributes and leaves wrapping a single stream to the caller. Cases marked "Ours"
+//! are this project's, some from its catch-up patch (lennylxx/webos-iptv-player#87).
 
 use std::io::BufReader;
 
@@ -122,6 +124,7 @@ fn keeps_an_explicit_catchup_source_for_catchup_xc() {
 
 #[test]
 fn reads_siptv_timeshift_as_catchup_days_in_shift_mode() {
+    // Ours, from the catch-up patch.
     let chs = channels(concat!(
         "#EXTM3U\n",
         "#EXTINF:0 tvg-id=\"ch1\" timeshift=\"7\",Alpha\n",
@@ -143,6 +146,7 @@ fn reads_siptv_timeshift_as_catchup_days_in_shift_mode() {
 
 #[test]
 fn reads_tvg_rec_like_siptv_timeshift() {
+    // Ours, from the catch-up patch.
     let ch = channel("#EXTM3U\n#EXTINF:0 tvg-rec=\"3\",Alpha\nhttp://host/ch1/index.m3u8");
     assert_eq!(
         catchup(&ch),
@@ -156,6 +160,7 @@ fn reads_tvg_rec_like_siptv_timeshift() {
 
 #[test]
 fn keeps_an_explicit_mode_and_catchup_days_over_siptv_timeshift() {
+    // Ours, from the catch-up patch.
     let ch = channel(concat!(
         "#EXTM3U\n",
         "#EXTINF:0 catchup=\"default\" catchup-days=\"2\" timeshift=\"7\" ",
@@ -170,6 +175,7 @@ fn keeps_an_explicit_mode_and_catchup_days_over_siptv_timeshift() {
 
 #[test]
 fn builds_sources_for_append_shift_and_flussonic_modes() {
+    // Ours, from the catch-up patch.
     let chs = channels(concat!(
         "#EXTM3U\n",
         "#EXTINF:0 catchup=\"append\" catchup-source=\"?cutv={Y}-{m}-{d}\",Alpha\n",
@@ -210,6 +216,7 @@ fn builds_sources_for_append_shift_and_flussonic_modes() {
 
 #[test]
 fn applies_header_catchup_defaults_to_entries_without_their_own() {
+    // Ours, from the catch-up patch.
     let chs = channels(concat!(
         "#EXTM3U catchup-type=\"flussonic\" catchup-time=\"604800\"\n",
         "#EXTINF:0 tvg-id=\"ch1\",Alpha\n",
@@ -237,6 +244,7 @@ fn applies_header_catchup_defaults_to_entries_without_their_own() {
 
 #[test]
 fn inherits_a_header_catchup_source_only_for_the_header_mode() {
+    // Ours, from the catch-up patch.
     let chs = channels(concat!(
         "#EXTM3U catchup=\"default\" catchup-source=\"http://host/c/{utc}\" catchup-days=\"5\"\n",
         "#EXTINF:0,Alpha\n",
@@ -264,6 +272,7 @@ fn correction_secs(text: &str) -> Vec<i32> {
 
 #[test]
 fn reads_catchup_correction_hours_from_the_entry_else_the_header() {
+    // Ours.
     let chs = channels(concat!(
         "#EXTM3U catchup-correction=\"-2.5\"\n",
         "#EXTINF:0 catchup=\"shift\" catchup-correction=\"1.5\",Entry\n",
@@ -283,6 +292,7 @@ fn reads_catchup_correction_hours_from_the_entry_else_the_header() {
 
 #[test]
 fn catchup_correction_is_zero_when_absent() {
+    // Ours.
     assert_eq!(
         correction_secs("#EXTM3U\n#EXTINF:0 catchup=\"shift\",Alpha\nhttp://host/a.m3u8"),
         [0]
@@ -295,6 +305,7 @@ fn catchup_correction_is_zero_when_absent() {
 
 #[test]
 fn reads_catchup_correction_like_atof_within_a_day() {
+    // Ours.
     for (value, secs) in [
         ("-2", -7_200),
         ("+1", 3_600),

@@ -1,5 +1,6 @@
 //! Favourites, recent channels, catch-up history and settings. The cases marked "ported" come
-//! from webOS IPTV Player `src/services/storage-service.test.ts` (Apache-2.0).
+//! from webOS IPTV Player `src/services/storage-service.test.ts` (commit 7d8fd30, Copyright 2026
+//! lennylxx, Apache-2.0; see THIRD-PARTY-NOTICES.md), ported to Rust and changed.
 
 mod common;
 

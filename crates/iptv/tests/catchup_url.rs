@@ -1,6 +1,8 @@
-//! Catch-up URL cases ported from webOS IPTV Player `src/utils/catchup-url.test.ts`
-//! (Apache-2.0), in the same order, then the archive URL policy. Date specifiers are local time
-//! at an explicit UTC offset, so no test depends on the machine's time zone.
+//! Catch-up URL cases ported from `src/utils/catchup-url.test.ts` of this project's catch-up
+//! patch for webOS IPTV Player (written for this project and offered upstream as
+//! lennylxx/webos-iptv-player#87), in the same order, then the archive URL policy. Date
+//! specifiers are local time at an explicit UTC offset, so no test depends on the machine's time
+//! zone.
 
 use iptv::catchup::{
     append_query, archive_url, fill, flussonic_source, in_archive, template, Times,

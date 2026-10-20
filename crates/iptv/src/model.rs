@@ -62,9 +62,10 @@ impl Channel {
 ///
 /// FNV-1a (64-bit) of the stream URL with the fragment and volatile query parameters (tokens,
 /// signatures, expiries) removed and the remaining parameters sorted, so a rotated token keeps the
-/// same key. Ported from webOS IPTV Player `src/utils/channel.ts` (Apache-2.0), widened to 64 bits so
-/// a 100k-channel playlist does not collide. Held as `i64` (the same bits) because SQLite integers
-/// are signed.
+/// same key. The stable URL, the volatile parameter list and the key are ported to Rust from
+/// webOS IPTV Player `src/utils/channel.ts` (commit 7d8fd30, Copyright 2026 lennylxx, Apache-2.0;
+/// see THIRD-PARTY-NOTICES.md) and changed: the hash is widened to 64 bits so a 100k-channel
+/// playlist does not collide. Held as `i64` (the same bits) because SQLite integers are signed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ChannelKey(pub i64);
 
@@ -384,6 +385,7 @@ impl Programme {
 
 #[cfg(test)]
 mod tests {
+    // Cases marked "ported" come from webOS IPTV Player `src/utils/channel.test.ts`.
     use super::*;
 
     fn key(url: &str) -> ChannelKey {
@@ -409,11 +411,13 @@ mod tests {
 
     #[test]
     fn same_url_same_key() {
+        // ported
         assert_eq!(key("http://host/a"), key("http://host/a"));
     }
 
     #[test]
     fn rotating_tokens_keep_the_key() {
+        // ported (two cases)
         assert_eq!(
             key("http://host/a?token=AAA&e=1"),
             key("http://host/a?token=BBB&e=2")
@@ -430,12 +434,14 @@ mod tests {
 
     #[test]
     fn stable_params_and_paths_distinguish_streams() {
+        // ported (two cases)
         assert_ne!(key("http://host/a?id=1"), key("http://host/a?id=2"));
         assert_ne!(key("http://host/hd"), key("http://host/sd"));
     }
 
     #[test]
     fn fragment_is_ignored_and_params_are_sorted() {
+        // ported (the fragment case; the sorting checks are new)
         assert_eq!(key("http://host/a#frag"), key("http://host/a"));
         assert_eq!(key("http://host/a?b=2&a=1"), key("http://host/a?a=1&b=2"));
         assert_eq!(
@@ -446,6 +452,7 @@ mod tests {
 
     #[test]
     fn hex_is_sixteen_digits_even_for_empty() {
+        // ported (two cases; 16 digits here, 8 in the web app)
         for url in ["http://host/a", ""] {
             let h = key(url).hex();
             assert_eq!(h.len(), 16);
