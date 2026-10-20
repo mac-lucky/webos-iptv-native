@@ -10,6 +10,7 @@ use tv_screens::parental::{pin_matches, Parental};
 use tv_screens::reminders::{self, Toggled};
 
 use super::*;
+use crate::input::{PointerEvent, PointerKind};
 use crate::store::StoreData;
 
 /// What the Settings panel, a menu or the PIN dialog sends for a change.
@@ -67,6 +68,73 @@ pub(super) fn a_locked_channel_plays_only_after_the_pin() {
     // Open for the session now: OK again plays it full screen without the PIN.
     s.press("OK");
     assert_eq!(s.open(), 0);
+}
+
+/// The event log as the loop writes it (`run` in lib.rs): each edge's line is asked of the shell
+/// before it takes the edge.
+#[derive(Default)]
+struct EventLog(Vec<String>);
+
+impl EventLog {
+    fn key(&mut self, s: &mut Sim, name: &str, edge: Edge) {
+        let ev = s.key_event(name, edge);
+        self.0.extend(s.shell.key_line(&ev));
+        s.shell.key(ev);
+    }
+
+    fn press(&mut self, s: &mut Sim, name: &str) {
+        self.key(s, name, Edge::Down);
+        s.t += 50;
+        self.key(s, name, Edge::Up);
+        s.run(500);
+    }
+
+    fn pointer(&mut self, s: &mut Sim, kind: PointerKind) {
+        let ev = PointerEvent {
+            kind,
+            x: 960.0,
+            y: 540.0,
+            at_ms: s.t as u32,
+        };
+        self.0.extend(s.shell.pointer_line(&ev));
+        s.shell.pointer(ev);
+        s.t += 100;
+    }
+}
+
+#[test]
+fn a_pin_typed_with_keys_or_picked_with_the_wheel_leaves_no_digit_in_the_event_log() {
+    let mut s = Sim::new();
+    lock_channel(&mut s, 0);
+    let mut log = EventLog::default();
+    log.press(&mut s, "OK");
+    assert_eq!(s.open(), 2, "the PIN dialog over the guide");
+    assert_eq!(log.0, ["remote: OK"]);
+    // A wrong PIN from the number keys, then 0 picked with Up and Down and taken with OK.
+    for d in ["1", "2", "3", "4", "Up", "Down", "OK"] {
+        log.press(&mut s, d);
+    }
+    // Three more 0s from the wheel and a click.
+    for _ in 0..3 {
+        log.pointer(&mut s, PointerKind::Wheel { up: true });
+        log.pointer(&mut s, PointerKind::Wheel { up: false });
+        log.pointer(&mut s, PointerKind::Move);
+        log.pointer(&mut s, PointerKind::Down);
+        log.pointer(&mut s, PointerKind::Up);
+        s.run(500);
+    }
+    assert_eq!(s.open(), 1, "the PIN took: the dialog closed");
+    let opened_now = opened(&s);
+    assert!(
+        opened_now.len() == 1 && opened_now[0].starts_with("open live Channel 1 "),
+        "{opened_now:?}"
+    );
+    // Only the release of the click that closed the dialog came after it.
+    assert_eq!(log.0, ["remote: OK", "pointer: up 960,540"]);
+    // With the dialog gone the log notes the remote again.
+    log.press(&mut s, "Down");
+    log.pointer(&mut s, PointerKind::Wheel { up: true });
+    assert_eq!(&log.0[2..], ["remote: Down", "pointer: wheel up"]);
 }
 
 #[test]

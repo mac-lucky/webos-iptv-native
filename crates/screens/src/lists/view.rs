@@ -23,6 +23,7 @@ use crate::data::Logos;
 use crate::draw::{self, channel_number, Cached, HAlign, Piece};
 use crate::groups::Frame;
 use crate::icons::Icon;
+use crate::point::{Spot, Spots};
 use crate::theme::{self, radius, size, space};
 use crate::time::{self, When, DAY};
 
@@ -291,11 +292,17 @@ impl RowCache {
     }
 }
 
+/// [`Spot`] areas of the channel list: its three columns.
+pub(super) const CHANNELS: u8 = 0;
+pub(super) const PROGRAMMES: u8 = 1;
+pub(super) const DAYS: u8 = 2;
+
 /// The channel list's display list.
 #[derive(Default)]
 pub(crate) struct ChannelListView {
     cached: Cached,
     rows: RowCache,
+    spots: Spots,
 }
 
 impl ChannelListView {
@@ -306,10 +313,11 @@ impl ChannelListView {
 
     /// Lay the list out again when it changed.
     pub fn prepare(&mut self, l: &ChannelList, m: &dyn Measure) {
-        let rows = &mut self.rows;
+        let (rows, spots) = (&mut self.rows, &mut self.spots);
         self.cached.prepare(l.generation(), |pieces| {
             let mut out = Out { m, pieces };
             let at = layout(l.mode(), l.column());
+            list_spots(l, at, spots);
             if let Some((x, _)) = at.channels {
                 channel_column(&mut out, l, rows, x);
             }
@@ -326,6 +334,68 @@ impl ChannelListView {
     /// Paint what [`prepare`](Self::prepare) laid out.
     pub fn draw(&self, p: Painter, logos: &dyn Logos) {
         self.cached.paint(p, logos);
+    }
+
+    /// The row under the pointer in the last layout.
+    pub fn spot(&self, x: f32, y: f32) -> Option<Spot> {
+        self.spots.at(x, y)
+    }
+
+    /// A column the pointer cannot focus is under it in the last layout.
+    pub fn dead(&self, x: f32, y: f32) -> bool {
+        self.spots.dead_at(x, y)
+    }
+}
+
+/// What the pointer can focus in the channel list: the rows of each column that stays where it
+/// is when the focus moves into it. The groups panel's rows are its own, and the channels beside
+/// it are dead; in preview mode the programmes move right of the days when they take the focus
+/// back, so only the days are pointed at there and the programmes are dead.
+fn list_spots(l: &ChannelList, at: Layout, spots: &mut Spots) {
+    spots.clear();
+    let column = |(x0, w): (f32, f32)| Rect::new(x0, 0.0, w, 1080.0);
+    if l.column() == Column::Groups {
+        if let Some(channels) = at.channels {
+            spots.dead(column(channels));
+        }
+        return;
+    }
+    if let (Some(programmes), None) = (at.programmes, at.channels) {
+        spots.dead(column(programmes));
+    }
+    if let Some((x0, w)) = at.channels {
+        let c = l.cursor();
+        for i in c.visible(l.channels().len(), rows::CHANNELS) {
+            let y = geom::HEADER_H + (i - c.top) as f32 * geom::ROW_H;
+            spots.add(Rect::new(x0, y, w, geom::ROW_H), Spot::row(CHANNELS, i));
+        }
+    }
+    let focused = l.focused_channel().map(|c| c.key);
+    let epg = l.epg().filter(|e| Some(e.key) == focused);
+    if let (Some((x0, w)), Some(e), Some(_)) = (at.programmes, epg, at.channels) {
+        let top = programme_top(l, e);
+        let end = (top + rows::PROGRAMMES).min(e.programmes().len());
+        for j in top..end {
+            let y = geom::PROG_Y + (j - top) as f32 * geom::PROG_H;
+            spots.add(Rect::new(x0, y, w, geom::PROG_H), Spot::row(PROGRAMMES, j));
+        }
+    }
+    if let (Some((x0, w)), Some(e)) = (at.days, epg) {
+        let c = e.day_cursor;
+        for k in c.visible(e.days.len(), rows::DAYS) {
+            let y = geom::PROG_Y + (k - c.top) as f32 * geom::PROG_H;
+            spots.add(Rect::new(x0, y, w, geom::PROG_H), Spot::row(DAYS, k));
+        }
+    }
+}
+
+/// The first programme row shown: centred on the focus while the channels have it, the list's
+/// own scroll once it is entered.
+pub(super) fn programme_top(l: &ChannelList, epg: &super::channels::Epg) -> usize {
+    if l.column() == Column::Channels {
+        centred_top(epg.cursor.index, epg.programmes().len(), rows::PROGRAMMES)
+    } else {
+        epg.cursor.top
     }
 }
 
@@ -508,11 +578,7 @@ fn programme_column(out: &mut Out, l: &ChannelList, (x0, w): (f32, f32)) {
         return;
     }
     let focus = l.column() == Column::Programmes;
-    let top = if l.column() == Column::Channels {
-        centred_top(epg.cursor.index, list.len(), rows::PROGRAMMES)
-    } else {
-        epg.cursor.top
-    };
+    let top = programme_top(l, epg);
     let end = (top + rows::PROGRAMMES).min(list.len());
     for (j, p) in list.iter().enumerate().take(end).skip(top) {
         let y = geom::PROG_Y + (j - top) as f32 * geom::PROG_H;
@@ -611,10 +677,15 @@ fn details(out: &mut Out, l: &ChannelList) {
     }
 }
 
+/// [`Spot`] areas of History: an entry's row, and the delete button on the focused one.
+pub(super) const ENTRY: u8 = 0;
+pub(super) const TRASH: u8 = 1;
+
 /// History's display list.
 #[derive(Default)]
 pub(crate) struct HistoryView {
     cached: Cached,
+    spots: Spots,
 }
 
 impl HistoryView {
@@ -625,12 +696,39 @@ impl HistoryView {
 
     /// Lay History out again when it changed.
     pub fn prepare(&mut self, h: &History, m: &dyn Measure) {
-        self.cached
-            .prepare(h.generation(), |pieces| history(&mut Out { m, pieces }, h));
+        let spots = &mut self.spots;
+        self.cached.prepare(h.generation(), |pieces| {
+            history(&mut Out { m, pieces }, h);
+            history_spots(h, spots);
+        });
     }
 
     pub fn draw(&self, p: Painter, logos: &dyn Logos) {
         self.cached.paint(p, logos);
+    }
+
+    /// The entry (or the delete button) under the pointer in the last layout.
+    pub fn spot(&self, x: f32, y: f32) -> Option<Spot> {
+        self.spots.at(x, y)
+    }
+}
+
+/// What the pointer can focus in History: each entry's row on screen, and the focused row's
+/// delete button.
+fn history_spots(h: &History, spots: &mut Spots) {
+    spots.clear();
+    let c = h.cursor();
+    for k in c.visible(h.lines().len(), history::ROWS) {
+        if let Line::Entry(_) = h.lines()[k] {
+            let y = geom::H_TOP + (k - c.top) as f32 * geom::H_ROW;
+            spots.add(
+                Rect::new(geom::H_X, y, geom::H_W, geom::H_ROW),
+                Spot::row(ENTRY, k),
+            );
+            if k == c.index {
+                spots.add(trash_rect(y), Spot::row(TRASH, k));
+            }
+        }
     }
 }
 
@@ -714,6 +812,11 @@ fn history(out: &mut Out, h: &History) {
     }
 }
 
+/// The delete button on the focused History row at `y`.
+fn trash_rect(y: f32) -> Rect {
+    Rect::new(geom::H_TRASH_X, y + 28.0, geom::H_TRASH_W, geom::H_TRASH_W)
+}
+
 fn history_row(out: &mut Out, h: &History, i: usize, focused: bool, y: f32) {
     let e = &h.entries()[i];
     let Some(facts) = h.facts(i) else {
@@ -784,7 +887,7 @@ fn history_row(out: &mut Out, h: &History, i: usize, focused: bool, y: f32) {
     );
     out.text(name, r, HAlign::Left, size::BODY, true, ink);
     if focused {
-        let r = Rect::new(geom::H_TRASH_X, y + 28.0, geom::H_TRASH_W, geom::H_TRASH_W);
+        let r = trash_rect(y);
         let tint = if h.on_delete() {
             out.push(Piece::solid(r, geom::H_TRASH_W * 0.5, theme::FOCUS));
             theme::TEXT_ON_FOCUS
@@ -803,7 +906,7 @@ fn history_row(out: &mut Out, h: &History, i: usize, focused: bool, y: f32) {
 mod tests {
     use super::*;
     use crate::data::fake::{FakeData as Fixture, Mono};
-    use crate::data::{Group, HistoryEntry, Playback, Screen};
+    use crate::data::{Group, HistoryEntry, Output, Playback, Screen};
     use crate::input::{Key, Press};
     use crate::lists::{key_of, Nav, PREVIEW_RECT};
     use std::cell::RefCell;
@@ -1325,5 +1428,139 @@ mod tests {
             logos[0],
             (Some(l.channels()[0].key), "C1".into(), theme::CELL_ROW)
         );
+    }
+
+    /// The pointer at `(x, y)`, then the frame it draws.
+    fn point(s: &mut dyn Screen, d: &Fixture, x: f32, y: f32, now_ms: u64) -> Output {
+        let out = s.point(x, y, d, now_ms);
+        draw(s, &Mono);
+        out
+    }
+
+    /// The middle of the `row`th row on screen in a list starting at `top`, `h` apart.
+    fn row_y(top: f32, h: f32, row: usize) -> f32 {
+        top + (row as f32 + 0.5) * h
+    }
+
+    #[test]
+    fn the_pointer_focuses_rows_in_each_column_of_the_channel_list() {
+        let d = Fixture::new(NOW, 30);
+        let mut l = list(&d, Mode::Overlay, &[]);
+        let y = row_y(geom::HEADER_H, geom::ROW_H, 3);
+        let out = point(&mut l, &d, 100.0, y, 0);
+        assert!(out.redraw && out == Output::redraw());
+        assert_eq!(l.cursor().index, 3);
+        assert!(
+            l.epg().is_none(),
+            "the programmes load once the pointer rests"
+        );
+        assert!(!point(&mut l, &d, 140.0, y, 10).redraw, "the same row");
+        assert!(l.tick(&d, super::super::channels::SETTLE_MS).redraw);
+        draw(&mut l, &Mono);
+        assert_eq!(l.epg().unwrap().key, d.channels[3].key);
+        // A programme row takes the focus into its column; the list stays where it showed.
+        let passive_top = programme_top(&l, l.epg().unwrap());
+        let y = row_y(geom::PROG_Y, geom::PROG_H, 2);
+        assert!(point(&mut l, &d, geom::PROG_X + 50.0, y, 400).redraw);
+        assert_eq!(l.column(), Column::Programmes);
+        let e = l.epg().unwrap();
+        assert_eq!(
+            (e.cursor.top, e.cursor.index),
+            (passive_top, passive_top + 2)
+        );
+        assert_eq!(
+            l.detail().map(|p| p.start),
+            Some(e.focused().unwrap().start)
+        );
+        // The keys carry on from there.
+        l.key(Key::Down, Press::Short, &d, 500);
+        assert_eq!(l.epg().unwrap().cursor.index, passive_top + 3);
+        // The days column, then a channel row again: back to the channels on today.
+        l.key(Key::Right, Press::Short, &d, 600);
+        draw(&mut l, &Mono);
+        assert_eq!(l.column(), Column::Days);
+        let today = l.epg().unwrap().day_cursor;
+        let y = row_y(geom::PROG_Y, geom::PROG_H, today.index - today.top - 1);
+        assert!(point(&mut l, &d, geom::DAYS_X + 50.0, y, 700).redraw);
+        let e = l.epg().unwrap();
+        assert_eq!((e.day, e.day_cursor.top), (-1, today.top));
+        let y = row_y(geom::HEADER_H, geom::ROW_H, 5);
+        assert!(point(&mut l, &d, 100.0, y, 800).redraw);
+        assert_eq!((l.column(), l.cursor().index), (Column::Channels, 5));
+        // Nothing on the details card.
+        assert!(!point(&mut l, &d, geom::CARD_X + 50.0, 100.0, 900).redraw);
+    }
+
+    #[test]
+    fn in_preview_mode_the_pointer_leaves_the_programmes_beside_the_days_alone() {
+        let d = Fixture::new(NOW, 30);
+        let mut l = list(&d, Mode::Preview, &[Nav::Right, Nav::Right]);
+        assert_eq!(l.column(), Column::Days);
+        // The programmes moved left of the days: pointing at them would move them back, and a
+        // click on them does nothing. The days and the video are no dead spots.
+        let y = row_y(geom::PROG_Y, geom::PROG_H, 1);
+        assert!(!point(&mut l, &d, 100.0, y, 0).redraw);
+        assert_eq!(l.column(), Column::Days);
+        assert!(l.dead(100.0, y));
+        assert!(!l.dead(geom::PREVIEW_DAYS_X + 50.0, y));
+        let video = PREVIEW_RECT;
+        assert!(!l.dead((video.x + 20) as f32, (video.y + 20) as f32));
+    }
+
+    #[test]
+    fn the_pointer_in_the_channel_lists_groups_panel_shows_the_group() {
+        let d = Fixture::new(NOW, 9);
+        let mut l = list(&d, Mode::Overlay, &[Nav::Left]);
+        assert_eq!(l.column(), Column::Groups);
+        let pill = GROUPS.pill(3);
+        let out = point(&mut l, &d, pill.x + 20.0, pill.y + 20.0, 0);
+        let news = Group::Playlist("News".into());
+        assert_eq!(
+            out.commands,
+            [crate::data::Command::ShowGroup(news.clone())]
+        );
+        assert_eq!(l.group(), &news);
+        // The channels beside the panel are not pointed at while it has the focus, and a click
+        // on them does nothing (not OK on the group).
+        let y = row_y(geom::HEADER_H, geom::ROW_H, 1);
+        assert!(!point(&mut l, &d, GROUPS.w + 50.0, y, 0).redraw);
+        assert_eq!(l.column(), Column::Groups);
+        assert!(l.dead(GROUPS.w + 50.0, y));
+        assert!(!l.dead(pill.x + 20.0, pill.y + 20.0));
+        // Back in the channels, they are live again.
+        l.key(Key::Right, Press::Short, &d, 0);
+        draw(&mut l, &Mono);
+        assert!(!l.dead(GROUPS.w + 50.0, y) && !l.dead(50.0, y));
+    }
+
+    #[test]
+    fn the_pointer_focuses_a_history_entry_and_its_delete_button() {
+        let d = history_fixture();
+        let mut h = history_drawn(&d, &[]);
+        let last = h.cursor().index;
+        assert_eq!(h.lines()[last - 2], Line::Entry(0), "{:?}", h.lines());
+        // The older entry, two lines up (Today's header between them).
+        let y = row_y(geom::H_TOP, geom::H_ROW, last - 2 - h.cursor().top);
+        assert!(point(&mut h, &d, geom::H_X + 50.0, y, 0).redraw);
+        assert_eq!(h.focused(), Some(0));
+        // A day header is no entry.
+        let y = row_y(geom::H_TOP, geom::H_ROW, last - 1 - h.cursor().top);
+        assert!(!point(&mut h, &d, geom::H_X + 50.0, y, 0).redraw);
+        // Its delete button, drawn on the focused row, then OK removes the entry.
+        let y = geom::H_TOP + (last - 2 - h.cursor().top) as f32 * geom::H_ROW + 40.0;
+        assert!(point(&mut h, &d, geom::H_TRASH_X + 10.0, y, 0).redraw);
+        assert!(h.on_delete());
+        let out = h.key(Key::Ok, Press::Short, &d, 0);
+        assert!(matches!(
+            out.commands[..],
+            [crate::data::Command::RemoveHistory { .. }]
+        ));
+        // Back on the row's text: the button lets go of the focus.
+        draw(&mut h, &Mono);
+        let y = row_y(geom::H_TOP, geom::H_ROW, h.cursor().index - h.cursor().top);
+        h.nav(Nav::Right);
+        draw(&mut h, &Mono);
+        assert!(point(&mut h, &d, geom::H_X + 50.0, y, 0).redraw);
+        assert!(!h.on_delete());
     }
 }

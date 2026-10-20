@@ -3,7 +3,8 @@
 //! Like TiviMate the list reads oldest first, so Today is the last group, and it opens on the
 //! most recent entry. OK resumes the programme at the saved position (from the start once it was
 //! watched to the end) in full screen; Right focuses the row's delete button, OK there removes the
-//! entry. Which entries exist (watched >= 10 s, kept 7 days, both settings) is storage's business:
+//! entry. The pointer focuses the entry it rests on, or the focused one's delete button. Which
+//! entries exist (watched >= 10 s, kept 7 days, both settings) is storage's business:
 //! this screen shows what [`TvData::history`] returns.
 
 use std::rc::Rc;
@@ -13,7 +14,7 @@ use tv_machine::machine::Measure;
 use tv_ui::Painter;
 
 use super::cursor::Cursor;
-use super::view::HistoryView;
+use super::view::{self, HistoryView};
 use super::{Clock, Nav};
 use crate::data::{Command, HistoryEntry, Logos, Navigate, Output, Screen, Stream, TvData};
 use crate::input::{Hold, Key, Press};
@@ -290,6 +291,23 @@ impl Screen for History {
             redraw: out.redraw || moved,
             ..out
         }
+    }
+
+    fn point(&mut self, x: f32, y: f32, _data: &dyn TvData, _now_ms: u64) -> Output {
+        let before = (self.cursor, self.on_delete);
+        match self.view.spot(x, y) {
+            Some(s) if s.area == view::TRASH => self.on_delete = s.index == self.cursor.index,
+            Some(s) => {
+                self.cursor.point(s.index, self.lines.len(), ROWS);
+                self.on_delete = false;
+            }
+            None => {}
+        }
+        if (self.cursor, self.on_delete) == before {
+            return Output::default();
+        }
+        self.generation += 1;
+        Output::redraw()
     }
 
     fn tick(&mut self, data: &dyn TvData, now_ms: u64) -> Output {

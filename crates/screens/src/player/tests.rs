@@ -5,6 +5,7 @@ use crate::data::{MediaInfo, Playback};
 use crate::draw::HAlign;
 use iptv::model::Timestamp;
 use std::cell::Cell;
+use tv_platform::i18n::msg;
 
 // 2026-08-27 15:12:00 UTC, a Thursday.
 const T: Timestamp = 1_787_843_520;
@@ -604,18 +605,281 @@ fn next_wake_is_the_soonest_deadline() {
     assert_eq!(s.overlay(), Overlay::Banner);
     assert_eq!(s.next_wake(3_000), Some(38_000));
     short(&mut s, &w, Key::Digit(4), 4_000);
-    assert_eq!(s.next_wake(4_000), Some(4_000 + NUMBER_TIMEOUT_MS));
-    s.tick(&w, 4_000 + NUMBER_TIMEOUT_MS);
+    assert_eq!(s.next_wake(4_000), Some(4_000 + crate::number::TIMEOUT_MS));
+    s.tick(&w, 4_000 + crate::number::TIMEOUT_MS);
     assert_eq!(s.next_wake(6_000), Some(6_000 + 35_000));
+}
+
+// ---- Left and Right skip in full screen (task 71) ----
+
+#[test]
+fn left_and_right_skip_catch_up_as_one_seek() {
+    let mut w = world();
+    w.catchup(ON_AIR - 2 * SLOT, 600);
+    let mut s = screen();
+    for i in 0..3 {
+        let out = short(&mut s, &w, Key::Left, 100 * i);
+        assert!(out.commands.is_empty() && out.toast.is_none());
+    }
+    assert_eq!(s.overlay(), Overlay::Playback);
+    assert_eq!(s.transport_focus(), Focus::Seek);
+    assert_eq!(s.readout().offset, "[-00:30]");
+    assert!(s.tick(&w, 200 + COMMIT_MS - 1).commands.is_empty());
+    assert_eq!(
+        s.tick(&w, 200 + COMMIT_MS).commands,
+        [Command::SeekTo { position_secs: 570 }]
+    );
+    // Right by the forward step; held on the seek bar, faster.
+    short(&mut s, &w, Key::Right, 1_000);
+    assert_eq!(
+        s.tick(&w, 1_000 + COMMIT_MS).commands,
+        [Command::SeekTo { position_secs: 630 }]
+    );
+    short(&mut s, &w, Key::Right, 2_000);
+    s.key(Key::Right, Press::Repeat, &w, 2_100);
+    let forward = PlayerSettings::default().skip_forward_secs;
+    assert_eq!(
+        s.tick(&w, 2_100 + COMMIT_MS).commands,
+        [Command::SeekTo {
+            position_secs: 600 + forward + FAST * forward
+        }]
+    );
+}
+
+#[test]
+fn left_on_live_plays_the_archive_from_that_far_behind_now() {
+    let mut w = world();
+    let mut s = screen();
+    short(&mut s, &w, Key::Left, 0);
+    assert_eq!(s.overlay(), Overlay::Playback);
+    assert_eq!(s.readout().offset, "[-00:10]");
+    // 15:12 is 12 minutes into the slot on air: the archive from 15:11:50.
+    assert_eq!(
+        s.tick(&w, COMMIT_MS).commands,
+        [archive(w.key(0), slot(ON_AIR), 720 - 10)]
+    );
+    // Playing it, the panel says how far behind live it is.
+    w.catchup(ON_AIR, 710);
+    s.tick(&w, COMMIT_MS + 100);
+    assert_eq!(s.overlay(), Overlay::Playback);
+    assert_eq!(s.readout().offset, "[-00:10]");
+    assert_eq!(s.readout().elapsed, "11:50");
+}
+
+#[test]
+fn right_on_live_takes_back_a_pending_left_and_stays_live_at_the_edge() {
+    let w = world();
+    let mut s = screen();
+    // Nothing ahead of live: the panel shows where live is, nothing is asked.
+    short(&mut s, &w, Key::Right, 0);
+    assert_eq!(s.overlay(), Overlay::Playback);
+    assert_eq!(s.readout().elapsed, "12:00");
+    assert!(s.tick(&w, COMMIT_MS).commands.is_empty());
+    // Back four steps, forward one (30 s): ten seconds behind.
+    for i in 0..4 {
+        short(&mut s, &w, Key::Left, 1_000 + i);
+    }
+    short(&mut s, &w, Key::Right, 1_010);
+    assert_eq!(
+        s.tick(&w, 1_010 + COMMIT_MS).commands,
+        [archive(w.key(0), slot(ON_AIR), 720 - 10)]
+    );
+    // Back and forward again before it is sent: still live.
+    short(&mut s, &w, Key::Left, 3_000);
+    short(&mut s, &w, Key::Right, 3_010);
+    assert_eq!(s.readout().offset, "[+00:00]");
+    assert!(s.tick(&w, 3_010 + COMMIT_MS).commands.is_empty());
+}
+
+#[test]
+fn right_on_a_time_shift_returns_to_live_at_the_live_edge() {
+    let mut w = world();
+    let mut s = screen();
+    // 10 s behind: the forward step reaches the edge.
+    w.catchup(ON_AIR, 710);
+    short(&mut s, &w, Key::Right, 0);
+    assert_eq!(s.readout().elapsed, "12:00");
+    assert_eq!(s.tick(&w, COMMIT_MS).commands, [Command::ReturnToLive]);
+    // 30 s behind with a 25 s step: within the slack of the edge, live too. (The panel stays
+    // up, following playback every second.)
+    s.settings.skip_forward_secs = 25;
+    w.catchup(ON_AIR, 690);
+    s.tick(&w, 900);
+    short(&mut s, &w, Key::Right, 1_000);
+    assert_eq!(
+        s.tick(&w, 1_000 + COMMIT_MS).commands,
+        [Command::ReturnToLive]
+    );
+    // Further behind: a seek inside the time shift.
+    w.catchup(ON_AIR, 600);
+    s.tick(&w, 1_900);
+    short(&mut s, &w, Key::Right, 2_000);
+    assert_eq!(
+        s.tick(&w, 2_000 + COMMIT_MS).commands,
+        [Command::SeekTo { position_secs: 625 }]
+    );
+    // Back from the time shift never goes live.
+    w.catchup(ON_AIR, 715);
+    s.tick(&w, 2_900);
+    short(&mut s, &w, Key::Left, 3_000);
+    assert_eq!(
+        s.tick(&w, 3_000 + COMMIT_MS).commands,
+        [Command::SeekTo { position_secs: 705 }]
+    );
+}
+
+#[test]
+fn a_time_shift_past_its_programmes_end_still_reaches_live_and_plays_on() {
+    // The programme ended seven seconds ago and the shift plays its last three seconds: Right
+    // returns to live, not two seconds back.
+    let mut w = world();
+    w.now = ON_AIR + 7;
+    w.catchup(ON_AIR - SLOT, SLOT - 3);
+    let mut s = screen();
+    short(&mut s, &w, Key::Right, 0);
+    assert_eq!(s.readout().offset, "[+00:10]");
+    assert_eq!(s.tick(&w, COMMIT_MS).commands, [Command::ReturnToLive]);
+    // Five minutes behind: Right goes on into the programme on air, from the archive.
+    let mut w = world();
+    w.now = ON_AIR + 300;
+    w.catchup(ON_AIR - SLOT, SLOT - 20);
+    let mut s = screen();
+    short(&mut s, &w, Key::Right, 0);
+    assert_eq!(s.readout().elapsed, "30:00", "the knob at the end");
+    assert_eq!(
+        s.tick(&w, COMMIT_MS).commands,
+        [archive(w.key(0), slot(ON_AIR), 10)]
+    );
+    // A programme the one on air does not follow keeps its end guard.
+    let mut w = world();
+    w.catchup(ON_AIR - 2 * SLOT, SLOT - 3);
+    let mut s = screen();
+    short(&mut s, &w, Key::Right, 0);
+    assert_eq!(
+        s.tick(&w, COMMIT_MS).commands,
+        [Command::SeekTo {
+            position_secs: SLOT - transport::END_GUARD_SECS
+        }]
+    );
+}
+
+#[test]
+fn left_under_the_zap_banner_counts_from_now() {
+    let mut w = world();
+    let mut s = screen();
+    short(&mut s, &w, Key::ChannelUp, 0);
+    assert_eq!(s.overlay(), Overlay::Banner);
+    w.playback.channel = Some(w.key(1));
+    s.tick(&w, 100);
+    // Four seconds later, the banner still up: ten seconds behind that moment.
+    w.now = T + 4;
+    short(&mut s, &w, Key::Left, 4_000);
+    assert_eq!(
+        s.tick(&w, 4_000 + COMMIT_MS).commands,
+        [archive(w.key(1), slot(ON_AIR), 720 + 4 - 10)]
+    );
+}
+
+#[test]
+fn a_burst_is_sent_against_the_programme_it_started_in() {
+    // Left in the last second of the programme on air, sent once the next one is on: its
+    // archive, not live.
+    let mut w = world();
+    w.now = ON_AIR + SLOT - 1;
+    let mut s = screen();
+    short(&mut s, &w, Key::Left, 0);
+    w.now = ON_AIR + SLOT;
+    s.tick(&w, 500);
+    assert_eq!(
+        s.tick(&w, COMMIT_MS).commands,
+        [archive(w.key(0), slot(ON_AIR), SLOT - 1 - 10)]
+    );
+    // Rewind in an archive programme, the next one playing by the time it is sent: the seek
+    // lands in the one it was counted in.
+    let mut w = world();
+    w.catchup(ON_AIR - SLOT, 600);
+    let mut s = screen();
+    short(&mut s, &w, Key::Rewind, 0);
+    w.catchup(ON_AIR, 0);
+    s.tick(&w, 500);
+    assert_eq!(
+        s.tick(&w, COMMIT_MS).commands,
+        [archive(w.key(0), slot(ON_AIR - SLOT), 590)]
+    );
+}
+
+#[test]
+fn left_and_right_without_catch_up_say_so_and_seek_nothing() {
+    let mut w = world();
+    w.playback.channel = Some(w.key(2)); // no archive
+    let mut s = screen();
+    for k in [Key::Left, Key::Right, Key::Rewind, Key::FastForward] {
+        let out = short(&mut s, &w, k, 0);
+        assert_eq!(
+            out.toast.as_deref(),
+            Some(msg::player_no_catchup()),
+            "{k:?}"
+        );
+        assert!(out.commands.is_empty() && !out.redraw);
+        assert_eq!(s.overlay(), Overlay::Hidden);
+        assert!(s.tick(&w, COMMIT_MS).commands.is_empty());
+    }
+    // Held, they still open the channel list.
+    assert_eq!(
+        s.key(Key::Left, Press::Long, &w, 0).navigate,
+        [Navigate::ChannelList { preview: false }]
+    );
+    // An archive, but no guide to seek in.
+    let mut w = FakeData::new(T, 6).with_schedule(|_, _, _| Vec::new());
+    w.playback.channel = Some(w.key(0));
+    let out = short(&mut screen(), &w, Key::Left, 0);
+    assert_eq!(out.toast.as_deref(), Some(msg::epg_catchup_unavailable()));
+    // Nothing playing: nothing to say.
+    w.playback.channel = None;
+    assert_eq!(short(&mut screen(), &w, Key::Left, 0).toast, None);
+}
+
+#[test]
+fn held_left_right_and_channel_keys_keep_the_moved_actions() {
+    use crate::input::Hold;
+    let mut w = world();
+    w.recents = vec![w.key(0), w.key(4)];
+    let mut s = screen();
+    for k in [Key::Left, Key::Right, Key::ChannelUp, Key::ChannelDown] {
+        assert_eq!(s.hold(k), Hold::Long, "{k:?}");
+    }
+    let held = |s: &mut PlayerScreen, k| s.key(k, Press::Long, &w, 0);
+    assert_eq!(
+        held(&mut s, Key::Left).navigate,
+        [Navigate::ChannelList { preview: false }]
+    );
+    assert_eq!(
+        held(&mut s, Key::ChannelDown).navigate,
+        [Navigate::ChannelList { preview: true }]
+    );
+    assert_eq!(held(&mut s, Key::Right).commands, [live(w.key(4))]);
+    let mut s = screen();
+    assert!(held(&mut s, Key::ChannelUp).navigate.is_empty());
+    assert_eq!(s.overlay(), Overlay::Card { index: 0 });
+    // Short CH+ and CH- still zap.
+    let mut s = screen();
+    assert_eq!(
+        short(&mut s, &w, Key::ChannelUp, 0).commands,
+        [live(w.key(1))]
+    );
+    // Over the zap banner too: Left skips.
+    assert_eq!(s.overlay(), Overlay::Banner);
+    short(&mut s, &w, Key::Left, 10);
+    assert_eq!(s.overlay(), Overlay::Playback);
 }
 
 // ---- card, zap, last channel, number entry (task 29) ----
 
 #[test]
-fn long_right_opens_the_programme_card_and_right_steps_on() {
+fn long_ch_plus_opens_the_programme_card_and_right_steps_on() {
     let w = world();
     let mut s = screen();
-    s.key(Key::Right, Press::Long, &w, 0);
+    s.key(Key::ChannelUp, Press::Long, &w, 0);
     assert_eq!(s.overlay(), Overlay::Card { index: 0 });
     let c = s.card();
     assert_eq!(c.channel, "1  Channel 1");
@@ -644,7 +908,7 @@ fn the_card_starts_at_the_catch_up_programme() {
     let mut w = world();
     w.catchup(ON_AIR - 4 * SLOT, 60);
     let mut s = screen();
-    s.key(Key::Right, Press::Long, &w, 0);
+    s.key(Key::ChannelUp, Press::Long, &w, 0);
     assert_eq!(s.card().title, "Show 13:00");
 }
 
@@ -679,7 +943,8 @@ fn a_channel_from_outside_the_group_zaps_through_every_channel() {
     s.zap_through(news, Some(w.key(0)), &w);
     w.recents = vec![w.key(0), w.key(3)];
     // the last channel is in the group: zapping stays in it
-    assert_eq!(short(&mut s, &w, Key::Right, 0).commands, [live(w.key(3))]);
+    let last = s.key(Key::Right, Press::Long, &w, 0);
+    assert_eq!(last.commands, [live(w.key(3))]);
     assert_eq!(s.group(), &Group::Playlist("News".into()));
     // channel 3 is not: zapping goes on through every channel, from it
     short(&mut s, &w, Key::Digit(3), 10);
@@ -701,16 +966,17 @@ fn a_group_picked_over_the_player_is_zapped_through_while_it_lists_the_channel()
 }
 
 #[test]
-fn short_right_toggles_the_last_channel() {
+fn long_right_toggles_the_last_channel() {
     let mut w = world();
     let mut s = screen();
-    assert!(short(&mut s, &w, Key::Right, 0).commands.is_empty());
+    let long_right = |s: &mut PlayerScreen, w: &FakeData, ms| s.key(Key::Right, Press::Long, w, ms);
+    assert!(long_right(&mut s, &w, 0).commands.is_empty());
     w.recents = vec![w.key(0), w.key(4)];
-    assert_eq!(short(&mut s, &w, Key::Right, 0).commands, [live(w.key(4))]);
+    assert_eq!(long_right(&mut s, &w, 0).commands, [live(w.key(4))]);
     w.playback.channel = Some(w.key(4));
     w.recents = vec![w.key(4), w.key(0)];
     s.tick(&w, 10);
-    assert_eq!(short(&mut s, &w, Key::Right, 20).commands, [live(w.key(0))]);
+    assert_eq!(long_right(&mut s, &w, 20).commands, [live(w.key(0))]);
 }
 
 #[test]
@@ -720,11 +986,11 @@ fn back_opens_the_guide_and_other_keys_navigate() {
     let nav = |s: &mut PlayerScreen, k, p| s.key(k, p, &w, 0).navigate;
     assert_eq!(nav(&mut s, Key::Back, Press::Short), [Navigate::Guide]);
     assert_eq!(
-        nav(&mut s, Key::Left, Press::Short),
+        nav(&mut s, Key::Left, Press::Long),
         [Navigate::ChannelList { preview: false }]
     );
     assert_eq!(
-        nav(&mut s, Key::Left, Press::Long),
+        nav(&mut s, Key::ChannelDown, Press::Long),
         [Navigate::ChannelList { preview: true }]
     );
     assert_eq!(nav(&mut s, Key::Up, Press::Long), [Navigate::History]);
@@ -738,6 +1004,28 @@ fn back_opens_the_guide_and_other_keys_navigate() {
     short(&mut s, &w, Key::Ok, 0);
     assert_eq!(nav(&mut s, Key::Down, Press::Short), [Navigate::PlayerMenu]);
     assert_eq!(s.overlay(), Overlay::Hidden);
+    assert_eq!(nav(&mut s, Key::Down, Press::Long), [Navigate::Settings]);
+}
+
+#[test]
+fn long_down_opens_settings_and_back_is_never_held() {
+    use crate::input::Hold;
+    let w = world();
+    let mut s = screen();
+    // Down acts on release, as Up does: short zaps, long opens Settings. Back acts at once.
+    assert_eq!(s.hold(Key::Down), Hold::Long);
+    assert_eq!(s.hold(Key::Back), Hold::Once);
+    assert_eq!(short(&mut s, &w, Key::Down, 0).commands, [live(w.key(5))]);
+    let out = s.key(Key::Down, Press::Long, &w, 0);
+    assert!(out.commands.is_empty());
+    assert_eq!(out.navigate, [Navigate::Settings]);
+    // With a panel up Down keeps its own meaning.
+    short(&mut s, &w, Key::Ok, 0);
+    assert_eq!(s.hold(Key::Down), Hold::Once);
+    assert_eq!(
+        short(&mut s, &w, Key::Down, 0).navigate,
+        [Navigate::PlayerMenu]
+    );
 }
 
 #[test]
@@ -811,9 +1099,11 @@ fn keys_ask_the_input_layer_for_long_press_or_repeat() {
     let w = world();
     let mut s = screen();
     assert_eq!(s.hold(Key::Right), Hold::Long);
-    assert_eq!(s.hold(Key::Down), Hold::Once);
+    assert_eq!(s.hold(Key::Down), Hold::Long);
+    assert_eq!(s.hold(Key::Back), Hold::Once);
     short(&mut s, &w, Key::Ok, 0);
     assert_eq!(s.hold(Key::Right), Hold::Repeat);
+    assert_eq!(s.hold(Key::ChannelUp), Hold::Once);
     assert_eq!(s.hold(Key::Ok), Hold::Long);
     short(&mut s, &w, Key::Up, 0);
     assert_eq!(s.hold(Key::Left), Hold::Repeat);
@@ -993,7 +1283,7 @@ fn banner_playback_card_and_number_lay_out_on_screen() {
 
     short(&mut s, &w, Key::Back, 0);
     short(&mut s, &w, Key::Back, 0);
-    s.key(Key::Right, Press::Long, &w, 0);
+    s.key(Key::ChannelUp, Press::Long, &w, 0);
     assert!(texts(s.layout(&Mono)).iter().any(|x| x == "Show 14:00"));
     on_screen(s.layout(&Mono));
 
@@ -1013,4 +1303,181 @@ fn long_text_is_fitted_to_the_panel() {
     short(&mut s, &w, Key::Back, 0);
     short(&mut s, &w, Key::Ok, 0);
     on_screen(s.layout(&Mono));
+}
+
+/// `s` and `w` at `secs` after T: the world's clock and the shell's milliseconds together.
+fn at(s: &mut PlayerScreen, w: &mut FakeData, secs: i64) -> u64 {
+    w.now = T + secs;
+    let ms = secs as u64 * 1000;
+    s.tick(w, ms);
+    ms
+}
+
+/// The app opening a seek of the slot on air at `target`: the archive starts `early` seconds
+/// before it, shows its first frame two seconds after the press at `pressed`, and plays on until
+/// `until`, where the panel reads it.
+fn opens(
+    s: &mut PlayerScreen,
+    w: &mut FakeData,
+    target: i64,
+    early: i64,
+    pressed: i64,
+    until: i64,
+) {
+    w.catchup(ON_AIR, target - early);
+    at(s, w, pressed + 1);
+    at(s, w, pressed + 2);
+    w.catchup(ON_AIR, target - early + (until - pressed - 2));
+    at(s, w, until);
+}
+
+#[test]
+fn back_taps_one_at_a_time_and_one_forward_return_to_live_past_the_archives_lag() {
+    // The C1 on 2026-10-19: three Lefts a few seconds apart, each its own seek, then one Right.
+    // Every seek opened on a segment start before the moment it asked for and showed its first
+    // frame two seconds after the press, so the time shift trailed live by more than the 30 s
+    // asked, and the Right (30 s) landed outside LIVE_SLACK_SECS of the edge: it seeked instead
+    // of going live.
+    let mut w = world();
+    let mut s = screen();
+    let ms = at(&mut s, &mut w, 0);
+    short(&mut s, &w, Key::Left, ms);
+    let out = s.tick(&w, ms + COMMIT_MS);
+    assert_eq!(out.commands, [archive(w.key(0), slot(ON_AIR), 710)]);
+    opens(&mut s, &mut w, 710, 4, 0, 4);
+    assert_eq!(
+        s.transport.lag.secs(),
+        6,
+        "4 s early, 2 s to the first frame"
+    );
+
+    for (pressed, target, early) in [(4, 698, 5), (8, 685, 1)] {
+        let ms = pressed as u64 * 1000;
+        short(&mut s, &w, Key::Left, ms);
+        let out = s.tick(&w, ms + COMMIT_MS);
+        assert_eq!(
+            out.commands,
+            [Command::SeekTo {
+                position_secs: target
+            }]
+        );
+        opens(&mut s, &mut w, target, early, pressed, pressed + 4);
+    }
+    assert_eq!(s.transport.lag.secs(), 6 + 7 + 3);
+    let edge = w.now - ON_AIR;
+    assert_eq!(
+        edge - w.playback.position_secs,
+        30 + 16,
+        "30 s asked, 16 s of lag"
+    );
+
+    // Right lands 16 s short of the edge, as far as the archive put playback back: live.
+    let ms = 12_000;
+    short(&mut s, &w, Key::Right, ms);
+    assert!(edge - (w.playback.position_secs + 30) > transport::LIVE_SLACK_SECS);
+    assert_eq!(s.tick(&w, ms + COMMIT_MS).commands, [Command::ReturnToLive]);
+    w.playback.catchup = None;
+    at(&mut s, &mut w, 14);
+    assert_eq!(s.transport.lag.secs(), 0, "live ends the time shift");
+}
+
+#[test]
+fn a_pause_is_the_viewers_and_does_not_count_as_lag() {
+    let mut w = world();
+    let mut s = screen();
+    let ms = at(&mut s, &mut w, 0);
+    short(&mut s, &w, Key::Left, ms);
+    s.tick(&w, ms + COMMIT_MS);
+    opens(&mut s, &mut w, 710, 4, 0, 4);
+    assert_eq!(s.transport.lag.secs(), 6);
+    // A minute paused: 76 s behind live, 6 of them the archive's.
+    w.playback.position_secs = 709;
+    w.playback.paused = true;
+    at(&mut s, &mut w, 5);
+    at(&mut s, &mut w, 64);
+    w.playback.paused = false;
+    at(&mut s, &mut w, 65);
+    assert_eq!(s.transport.lag.secs(), 6);
+    assert_eq!(w.now - ON_AIR - w.playback.position_secs, 10 + 6 + 60);
+    // Right (30 s) still leaves 46 s behind: a seek, not live.
+    short(&mut s, &w, Key::Right, 65_000);
+    assert_eq!(
+        s.tick(&w, 65_000 + COMMIT_MS).commands,
+        [Command::SeekTo {
+            position_secs: w.playback.position_secs + 30
+        }]
+    );
+}
+
+#[test]
+fn a_clock_set_back_before_the_bursts_programme_keeps_the_seek_inside_it() {
+    // Left on live starts a burst in the programme on air, and Prev plays the one before it
+    // while the burst waits. Then the clock is set back (an NTP correction after boot) into the
+    // earlier programme: the burst's own programme has not started by the new clock.
+    let mut w = world();
+    let mut s = screen();
+    let ms = at(&mut s, &mut w, 0);
+    short(&mut s, &w, Key::Left, ms);
+    short(&mut s, &w, Key::Down, ms + 100);
+    assert_eq!(s.transport_focus(), Focus::Button(Button::Prev));
+    let out = short(&mut s, &w, Key::Ok, ms + 200);
+    assert_eq!(out.commands, [archive(w.key(0), slot(ON_AIR - SLOT), 0)]);
+    w.catchup(ON_AIR - SLOT, 0);
+    w.now = ON_AIR - 60;
+    s.tick(&w, ms + 300);
+    short(&mut s, &w, Key::Up, ms + 400);
+    short(&mut s, &w, Key::Left, ms + 500);
+    assert_eq!(s.transport.shown_position(&s.ctx), 0);
+}
+
+#[test]
+fn time_away_from_the_app_never_counts_as_the_archives_lag() {
+    // Left on live and the panel hidden at once, then the app in the background before the
+    // archive showed its first frame. Five minutes later it plays on where it was kept, and
+    // Right asks for 30 s on: 300 s behind live is the viewer's, not the archive's.
+    let mut w = world();
+    let mut s = screen();
+    let ms = at(&mut s, &mut w, 0);
+    short(&mut s, &w, Key::Left, ms);
+    let out = s.tick(&w, ms + COMMIT_MS);
+    assert_eq!(out.commands, [archive(w.key(0), slot(ON_AIR), 710)]);
+    short(&mut s, &w, Key::Back, ms + COMMIT_MS + 100);
+    assert_eq!(s.overlay(), Overlay::Hidden);
+    for (secs, pos) in [(300, 706), (301, 707), (302, 708)] {
+        w.catchup(ON_AIR, pos);
+        at(&mut s, &mut w, secs);
+    }
+    short(&mut s, &w, Key::Right, 302_000);
+    assert_eq!(
+        s.tick(&w, 302_000 + COMMIT_MS).commands,
+        [Command::SeekTo { position_secs: 738 }]
+    );
+}
+
+#[test]
+fn the_archives_lag_is_read_behind_a_hidden_panel() {
+    // Four Lefts on live (40 s) and Back at once: the archive opens 4 s early with its first
+    // frame 2 s after the press, behind the hidden panel. A minute later Right (30 s) lands
+    // 16 s behind live, all of it past what was asked the archive's: live.
+    let mut w = world();
+    let mut s = screen();
+    let ms = at(&mut s, &mut w, 0);
+    for i in 0..4 {
+        short(&mut s, &w, Key::Left, ms + i * 100);
+    }
+    let out = s.tick(&w, ms + 300 + COMMIT_MS);
+    assert_eq!(out.commands, [archive(w.key(0), slot(ON_AIR), 680)]);
+    short(&mut s, &w, Key::Back, ms + 1_100);
+    assert_eq!(s.overlay(), Overlay::Hidden);
+    opens(&mut s, &mut w, 680, 4, 0, 4);
+    w.playback.position_secs += 1;
+    at(&mut s, &mut w, 5);
+    assert_eq!(s.transport.lag.secs(), 6);
+    w.playback.position_secs += 55;
+    at(&mut s, &mut w, 60);
+    short(&mut s, &w, Key::Right, 60_000);
+    assert_eq!(
+        s.tick(&w, 60_000 + COMMIT_MS).commands,
+        [Command::ReturnToLive]
+    );
 }

@@ -46,6 +46,8 @@ pub struct MediaPlayer {
     notice: Option<String>,
     /// The TV took the decoder back while we were in front: the next key resumes.
     taken: bool,
+    /// The time shift playing reached its programme's end ([`Player::take_ended`]).
+    ended: bool,
 }
 
 impl MediaPlayer {
@@ -61,6 +63,7 @@ impl MediaPlayer {
             subtitles_seen: None,
             notice: None,
             taken: false,
+            ended: false,
         }
     }
 
@@ -181,8 +184,14 @@ fn viewport(rect: Option<Rect>) -> Option<Viewport> {
     })
 }
 
-/// `programme` on `channel` as `tv_media` plays it from the archive, or `None` without one.
-fn catchup(channel: &Channel, programme: &Programme, offset_secs: i64) -> Option<Catchup> {
+/// `programme` on `channel` as `tv_media` plays it from the archive, or `None` without one; a
+/// time shift (`time_shift`) plays on at its end, any other goes live.
+fn catchup(
+    channel: &Channel,
+    programme: &Programme,
+    offset_secs: i64,
+    time_shift: bool,
+) -> Option<Catchup> {
     let (start, end) = (programme.start, programme.stop);
     let now = unix_now();
     let exact = archive_url(channel, Times { start, end, now }, utc_offset_at)?;
@@ -214,7 +223,11 @@ fn catchup(channel: &Channel, programme: &Programme, offset_secs: i64) -> Option
         shift,
         live_url: channel.url.clone(),
         headers: headers(channel),
-        at_end: AtEnd::ReturnToLive,
+        at_end: if time_shift {
+            AtEnd::Continue
+        } else {
+            AtEnd::ReturnToLive
+        },
     })
 }
 
@@ -227,13 +240,15 @@ impl Player for MediaPlayer {
                 channel,
                 programme,
                 offset_secs,
-            } => match catchup(channel, programme, *offset_secs) {
+                shift,
+            } => match catchup(channel, programme, *offset_secs, *shift) {
                 Some(c) => self.pb.play_catchup(c),
                 None => self.notice = Some(msg::epg_catchup_unavailable().to_owned()),
             },
         }
         self.tracks_stale = true;
         self.status_at = 0;
+        self.ended = false;
     }
 
     fn open_vod(&mut self, item: &VodItem, offset_secs: i64, rect: Option<Rect>) {
@@ -302,7 +317,7 @@ impl Player for MediaPlayer {
                 }
                 Event::FirstFrame { .. } | Event::Recovered => self.tracks_stale = true,
                 Event::DecoderTaken => self.taken = true,
-                Event::ProgrammeEnded => {}
+                Event::ProgrammeEnded => self.ended = true,
             }
         }
         if due && (self.pb.tick_interval_ms().is_some() || self.state != State::Idle) {
@@ -310,6 +325,10 @@ impl Player for MediaPlayer {
             changed |= self.fold(playback);
         }
         changed
+    }
+
+    fn take_ended(&mut self) -> bool {
+        std::mem::take(&mut self.ended)
     }
 
     fn next_wake_ms(&self, now_ms: u64) -> Option<u64> {
@@ -398,7 +417,7 @@ mod tests {
         let derived = format!("{url}?utc={{utc}}&lutc={{lutc}}");
         let c = channel(url, CatchupMode::Shift, Some(&derived));
         let p = programme(1_700_000_000, 1_700_003_600);
-        let cu = catchup(&c, &p, 60).unwrap();
+        let cu = catchup(&c, &p, 60, false).unwrap();
         assert_eq!(
             cu.window.as_deref(),
             Some("http://h.example/ch/mono-1700000000-3600.m3u8")
@@ -415,9 +434,22 @@ mod tests {
         let derived = format!("{url}?utc={{utc}}&lutc={{lutc}}");
         let c = channel(url, CatchupMode::Shift, Some(&derived));
         let now = unix_now();
-        let cu = catchup(&c, &programme(now - 600, now + 600), 0).unwrap();
+        let cu = catchup(&c, &programme(now - 600, now + 600), 0, true).unwrap();
         assert_eq!(cu.window, None);
         assert!(cu.shift.is_some());
+    }
+
+    #[test]
+    fn a_time_shift_plays_on_at_its_end_and_any_other_archive_goes_live() {
+        let url = "http://h.example/ch/mono.m3u8";
+        let derived = format!("{url}?utc={{utc}}&lutc={{lutc}}");
+        let c = channel(url, CatchupMode::Shift, Some(&derived));
+        let p = programme(1_700_000_000, 1_700_003_600);
+        assert_eq!(catchup(&c, &p, 0, true).unwrap().at_end, AtEnd::Continue);
+        assert_eq!(
+            catchup(&c, &p, 0, false).unwrap().at_end,
+            AtEnd::ReturnToLive
+        );
     }
 
     #[test]
@@ -427,14 +459,14 @@ mod tests {
             CatchupMode::Default,
             Some("http://h.example/timeshift/{duration:60}/{Y}-{m}-{d}:{H}-{M}/1.ts"),
         );
-        let cu = catchup(&c, &programme(1_700_000_000, 1_700_003_600), 0).unwrap();
+        let cu = catchup(&c, &programme(1_700_000_000, 1_700_003_600), 0, false).unwrap();
         assert!(cu
             .window
             .unwrap()
             .starts_with("http://h.example/timeshift/60/"));
         assert!(cu.shift.is_none());
         let none = channel("http://h.example/live/1.ts", CatchupMode::Default, None);
-        assert!(catchup(&none, &programme(0, 60), 0).is_none());
+        assert!(catchup(&none, &programme(0, 60), 0, false).is_none());
     }
 
     #[test]

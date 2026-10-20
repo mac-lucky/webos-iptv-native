@@ -487,7 +487,7 @@ fn the_long_press_threshold_follows_its_setting() {
 }
 
 #[test]
-fn settings_open_from_the_main_menu_and_long_back_and_back_walks_out_a_level_at_a_time() {
+fn settings_open_from_the_main_menu_and_long_down_and_back_walks_out_a_level_at_a_time() {
     let mut s = Sim::new();
     assert_eq!(s.open(), 1, "the guide");
     s.shell.navigate(Navigate::MainMenu, None);
@@ -524,8 +524,8 @@ fn settings_open_from_the_main_menu_and_long_back_and_back_walks_out_a_level_at_
     s.shell.navigate(Navigate::Player, None);
     s.shell.settle(s.t);
     assert_eq!(s.open(), 0);
-    s.long("Back");
-    assert_eq!(s.open(), 1, "long Back in the player: Settings");
+    s.long("Down");
+    assert_eq!(s.open(), 1, "long Down in the player: Settings");
     s.press("OK");
     s.press("OK");
     assert!(!s.shell.settings.flag(keys::LAST_CHANNEL_ON_START));

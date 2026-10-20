@@ -86,7 +86,7 @@ pub struct Grid {
     pub mode: Mode,
     /// What the preview plays: what the guide asked for last, until playback reports otherwise.
     pub shown: Option<Shown>,
-    /// What played when the guide opened; long Back goes back to it.
+    /// What played when the guide opened; leaving for the player goes back to it.
     pub original: Playback,
     /// Favourite toggles sent but not yet seen through [`TvData`].
     flips: HashMap<ChannelKey, bool>,
@@ -355,11 +355,52 @@ impl Grid {
         self.resolve(data);
     }
 
+    /// Focus `channel`'s row, keeping the time as Up and Down keep it. Returns whether the rows
+    /// list it.
+    pub fn focus_channel(&mut self, data: &dyn TvData, channel: ChannelKey) -> bool {
+        let Some(row) = self.channels.iter().position(|c| c.key == channel) else {
+            return false;
+        };
+        self.focus_row(row);
+        self.resolve(data);
+        true
+    }
+
     /// Move focus by `rows` (a page) without wrapping.
     pub fn page(&mut self, data: &dyn TvData, rows: isize) {
         self.cursor
             .step(rows, self.channels.len(), geom::ROWS, false);
         self.resolve(data);
+    }
+
+    /// The pointer on row `index` (one whole on screen), on the programme starting at `start`
+    /// when it rests on a cell: focus there as the arrows would, without scrolling the rows or
+    /// moving the window. On the channel column the time is kept, as Up and Down keep it.
+    /// Returns whether the focus moved.
+    pub fn point(&mut self, data: &dyn TvData, index: usize, start: Option<Timestamp>) -> bool {
+        let before = (self.cursor.index, self.focus.as_ref().map(|p| p.start));
+        if index != before.0 && !self.cursor.point(index, self.channels.len(), geom::ROWS) {
+            return false;
+        }
+        let cell = start.and_then(|s| {
+            let row = self.rows.iter().find(|r| r.index == index)?;
+            row.programmes.iter().find(|p| p.start == s).cloned()
+        });
+        match cell {
+            Some(p) => {
+                // Live only where Back would not move the window back to live.
+                let live = p.is_on_air(self.now) && self.window == self.live_window();
+                self.anchor = if live {
+                    Anchor::Live
+                } else {
+                    Anchor::At(p.start)
+                };
+                self.focus = Some(p);
+            }
+            None if index != before.0 => self.resolve(data),
+            None => {}
+        }
+        (self.cursor.index, self.focus.as_ref().map(|p| p.start)) != before
     }
 
     /// Whether `p` on the focused row has ended and can be played from the archive. A programme
@@ -527,9 +568,10 @@ impl Grid {
         true
     }
 
-    /// Long Back: whatever played when the guide opened, the player zapping through `group`
-    /// (the one it had then) again. Live is asked for even while it still plays, which only
-    /// gives the group back; a programme still playing from the archive plays on.
+    /// Leaving for the player: whatever played when the guide opened, the player zapping
+    /// through `group` (the one it had then) again. Live is asked for even while it still
+    /// plays, which only gives the group back; a programme still playing from the archive
+    /// plays on.
     pub fn restore(&self, group: &Group) -> Option<Command> {
         let original = &self.original;
         let channel = original.channel?;

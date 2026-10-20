@@ -1958,11 +1958,23 @@ fn teardown(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
     } else {
         release_native_object_timed(pa.mt(), eng.native_epoch, &mut sp);
     }
-    // 4. drain + destroy both queues (drain_aq also clears both pendings)
+    // 4. drain + destroy both queues (drain_aq also clears both pendings). A real stop after
+    // queues that held a lot (an archive read ahead to the cap) hands the freed heap back: the
+    // next session, live, needs a fraction of it (`aq::release_freed_memory`). A reload refills
+    // the same queues at once, so it keeps it.
     if stream {
+        let peak: c_long = [eng.aq_video.as_mut(), eng.aq_audio.as_mut()]
+            .into_iter()
+            .flatten()
+            .map(|q| crate::aq::aq_peak_bytes(&mut **q))
+            .sum();
         drain_aq(&mut eng);
         for q in [eng.aq_video.as_mut(), eng.aq_audio.as_mut()].into_iter().flatten() {
             crate::aq::aq_destroy(&mut **q);
+        }
+        if !for_reload && peak >= crate::aq::RELEASE_AFTER_PEAK_BYTES {
+            log(&format!("memory: the queues peaked at {} MB; returning the freed heap", peak >> 20));
+            crate::aq::release_freed_memory();
         }
     }
     sp.mark("drain_aq");

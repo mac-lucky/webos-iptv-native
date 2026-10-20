@@ -69,7 +69,7 @@ fn ok_on_the_channel_in_the_window_plays_it_full_screen() {
 }
 
 #[test]
-fn back_takes_the_video_back_into_the_preview_and_long_back_full_screen() {
+fn back_takes_the_video_back_into_the_preview_then_out_to_full_screen() {
     let (mut s, _menu) = menu_over_the_player();
     s.press("OK");
     s.calls.take();
@@ -79,7 +79,12 @@ fn back_takes_the_video_back_into_the_preview_and_long_back_full_screen() {
     s.shell.navigate(Navigate::Pip, None);
     s.shell.settle(s.t);
     assert_eq!(s.calls.take(), moved(Some(WINDOW)));
-    s.long("Back");
+    // Back to the preview, Back to the groups panel, Back to the player.
+    s.press("Back");
+    assert_eq!(s.calls.take(), moved(Some(PREVIEW)));
+    s.press("Back");
+    assert_eq!((s.open(), s.shell.rect), (1, Some(PREVIEW)));
+    s.press("Back");
     assert_eq!((s.open(), s.shell.rect), (0, None));
 }
 

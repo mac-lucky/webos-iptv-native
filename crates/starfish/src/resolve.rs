@@ -66,6 +66,11 @@ pub(crate) const FEED_COW: &CStr = c"_ZN17StarfishMediaAPIs4FeedEPKc";
 /// `std::basic_string<char>::~basic_string()` of the firmware's own libstdc++: a COW reply's buffer
 /// is a refcounted heap rep and must go back through it.
 pub(crate) const COW_STRING_DTOR: &CStr = c"_ZNSsD1Ev";
+/// `std::__cxx11::basic_string<char>::~basic_string()` of the same libstdc++ (GLIBCXX_3.4.21): a
+/// cxx11 reply longer than the 15-byte inline buffer owns a heap buffer. webOS 25 answers every
+/// Feed `{"returnValue":"Ok"}` (20 bytes), so without it each Feed leaked one.
+pub(crate) const CXX11_STRING_DTOR: &CStr =
+    c"_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEED1Ev";
 
 /// The Feed ABI this firmware has.
 pub(crate) struct FeedAbi<F, D> {
@@ -73,11 +78,13 @@ pub(crate) struct FeedAbi<F, D> {
     /// Set when the COW name is the one that resolved. Kept apart from `reply_dtor` because that
     /// can be missing on a COW library, and the ABI is then still COW.
     pub(crate) cow: bool,
+    /// The destructor of the resolved Feed's string ABI, which every reply goes through.
     pub(crate) reply_dtor: Option<D>,
 }
 
 impl<F, D> FeedAbi<F, D> {
-    /// The log's name for it; `cow` with no destructor means every Feed reply leaks its string rep.
+    /// The log's name for it; with no destructor every Feed reply that does not fit the string's
+    /// inline buffer (all of them under COW) leaks.
     pub(crate) fn label(&self) -> &'static str {
         match (&self.feed, self.cow) {
             (None, _) => "NONE",
@@ -87,9 +94,9 @@ impl<F, D> FeedAbi<F, D> {
     }
 }
 
-/// The cxx11 name first, the COW name only when it is missing, and the COW destructor only for a
-/// COW library. Both names are looked up at run time: a strong reference to the cxx11 name is a
-/// lazily bound PLT slot that kills the process at the first Feed on webOS 3.4.0.
+/// The cxx11 name first, the COW name only when it is missing, and the destructor of whichever
+/// string ABI resolved. Both names are looked up at run time: a strong reference to the cxx11 name
+/// is a lazily bound PLT slot that kills the process at the first Feed on webOS 3.4.0.
 pub(crate) fn resolve_feed<F, D>(
     lookup_feed: impl Fn(&CStr) -> Option<F>,
     lookup_dtor: impl FnOnce(&CStr) -> Option<D>,
@@ -98,7 +105,7 @@ pub(crate) fn resolve_feed<F, D>(
         return FeedAbi {
             feed: Some(feed),
             cow: false,
-            reply_dtor: None,
+            reply_dtor: lookup_dtor(CXX11_STRING_DTOR),
         };
     }
     match lookup_feed(FEED_COW) {
@@ -187,15 +194,30 @@ mod tests {
         }
     }
 
+    /// The webOS 25 reply, `{"returnValue":"Ok"}`, is past the cxx11 string's inline buffer: a
+    /// cxx11 Feed without its destructor leaked a heap buffer per access unit.
     #[test]
-    fn cxx11_feed_is_preferred_and_needs_no_destructor() {
+    fn cxx11_feed_is_preferred_and_carries_its_destructor() {
         let asked = RefCell::new(Vec::new());
-        let abi = resolve_feed(lookup(&[FEED_CXX11, FEED_COW], &asked), |_| -> Option<u8> {
-            panic!("looked up the COW destructor on a cxx11 library")
+        let abi = resolve_feed(lookup(&[FEED_CXX11, FEED_COW], &asked), |name| {
+            assert_eq!(
+                name, CXX11_STRING_DTOR,
+                "the cxx11 string's destructor, never the COW one"
+            );
+            Some(7u8)
         });
-        assert!(abi.feed.is_some() && !abi.cow && abi.reply_dtor.is_none());
+        assert!(abi.feed.is_some() && !abi.cow);
+        assert_eq!(abi.reply_dtor, Some(7));
         assert_eq!(abi.label(), "cxx11");
         assert_eq!(*asked.borrow(), [FEED_CXX11.to_str().unwrap()]);
+    }
+
+    #[test]
+    fn cxx11_without_a_destructor_is_still_cxx11() {
+        let asked = RefCell::new(Vec::new());
+        let abi = resolve_feed(lookup(&[FEED_CXX11], &asked), |_| None::<u8>);
+        assert!(abi.feed.is_some() && !abi.cow && abi.reply_dtor.is_none());
+        assert_eq!(abi.label(), "cxx11");
     }
 
     #[test]

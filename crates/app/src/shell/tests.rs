@@ -17,14 +17,16 @@ mod backup;
 mod nav;
 mod pip;
 mod playback;
+mod pointer;
 mod settings;
 mod userfeat;
 mod vod;
 
 /// Every player call, as text; `ends` makes the next poll end the archive programme, as the
-/// player does at its end (it goes live by itself).
+/// player does at its end (it goes live by itself), and `shift_ends` report the end of a time
+/// shift's programme (it plays on).
 #[derive(Clone, Default)]
-struct Calls(Rc<RefCell<Vec<String>>>, Rc<Cell<bool>>);
+struct Calls(Rc<RefCell<Vec<String>>>, Rc<Cell<bool>>, Rc<Cell<bool>>);
 
 impl Calls {
     fn take(&self) -> Vec<String> {
@@ -36,7 +38,12 @@ impl Player for Calls {
     fn open(&mut self, stream: &Open<'_>, rect: Option<Rect>) {
         let (what, channel) = match stream {
             Open::Live(c) => ("live", c),
-            Open::Catchup { channel, .. } => ("archive", channel),
+            Open::Catchup {
+                channel,
+                shift: false,
+                ..
+            } => ("archive", channel),
+            Open::Catchup { channel, .. } => ("time shift", channel),
         };
         let line = format!("open {what} {} {rect:?}", channel.name);
         self.0.borrow_mut().push(line);
@@ -52,6 +59,9 @@ impl Player for Calls {
     }
     fn poll(&mut self, _now_ms: u64, playback: &mut Playback) -> bool {
         self.1.take() && playback.catchup.take().is_some()
+    }
+    fn take_ended(&mut self) -> bool {
+        self.2.take()
     }
     fn set_paused(&mut self, paused: bool) {
         self.0.borrow_mut().push(format!("paused {paused}"));
@@ -211,14 +221,20 @@ impl Sim {
         std::mem::take(&mut self.seen.borrow_mut())
     }
 
-    fn edge(&mut self, name: &str, edge: Edge) {
+    /// The remote's key `name` (as [`REMOTE`] names it) on `edge`, now.
+    fn key_event(&self, name: &str, edge: Edge) -> KeyEvent {
         let &(_, sym, wcode) = REMOTE.iter().find(|r| r.0 == name).unwrap();
-        self.shell.key(KeyEvent {
+        KeyEvent {
             sym,
             wcode,
             edge,
             at_ms: self.t as u32,
-        });
+        }
+    }
+
+    fn edge(&mut self, name: &str, edge: Edge) {
+        let ev = self.key_event(name, edge);
+        self.shell.key(ev);
     }
 
     fn press(&mut self, name: &str) {
@@ -397,7 +413,7 @@ fn the_keyboard_is_up_while_the_screen_in_front_edits() {
     field.0.editing.set(true);
     s.press("Down");
     assert_eq!(s.shell.take_text_input(), Some(true));
-    assert!(s.shell.typing());
+    assert!(s.shell.typing);
     s.shell.text("news", s.t);
     assert_eq!(s.seen(), ["field key Down", "field text news"]);
     // Typing keys while the keyboard is up are text, not remote keys ('q' would be Back).
@@ -418,7 +434,7 @@ fn the_keyboard_is_up_while_the_screen_in_front_edits() {
         None,
         "already up: not raised again"
     );
-    assert!(s.shell.typing());
+    assert!(s.shell.typing);
     s.shell.navigate(Navigate::Player, None);
     s.shell.settle(s.t);
     assert_eq!(
@@ -504,7 +520,7 @@ fn the_channel_list_opens_its_groups_on_left_and_takes_the_picked_group() {
     let mut s = Sim::new();
     s.press("OK");
     s.press("OK");
-    s.press("Left");
+    s.long("Left");
     assert_eq!(
         (s.open(), s.shell.rect),
         (1, None),
@@ -527,13 +543,14 @@ fn the_channel_list_opens_its_groups_on_left_and_takes_the_picked_group() {
 #[test]
 fn the_guide_and_the_channel_list_share_the_group_a_panel_shows() {
     let mut s = Sim::new();
-    // The guide's panel (Back at live) down to Sport, then long Back to the player without
-    // playing anything.
+    // The guide's panel (Back at live) down to Sport, then the player without playing anything
+    // (with nothing playing no key leaves the guide for it).
     s.press("Back");
     for _ in 0..3 {
         s.press("Down");
     }
-    s.long("Back");
+    s.shell.navigate(Navigate::Player, None);
+    s.shell.settle(s.t);
     assert_eq!(s.open(), 0);
     s.calls.take();
     // The channel list opens on Sport: channels 2, 5, 8 and 11.
@@ -545,7 +562,7 @@ fn the_guide_and_the_channel_list_share_the_group_a_panel_shows() {
     assert_eq!(s.open(), 0);
     // The list's panel over to Movies (channels 3, 6, 9 and 12) and the list closed: the guide
     // opens on Movies, focused on its first channel since Channel 2 is not in it.
-    s.press("Left");
+    s.long("Left");
     s.press("Left");
     s.press("Down");
     s.press("Back");
@@ -569,7 +586,7 @@ fn the_preview_list_moves_the_video_and_back_returns_it() {
     s.press("OK");
     s.press("OK");
     s.calls.take();
-    s.long("Left");
+    s.long("CH-");
     assert_eq!(s.shell.rect, Some(PREVIEW_RECT));
     assert_eq!(s.calls.take(), [format!("rect {:?}", Some(PREVIEW_RECT))]);
     s.press("Down");
@@ -809,7 +826,7 @@ fn manage_favorites_over_the_channel_list_opens_the_guide_in_that_mode() {
     let mut s = Sim::new();
     s.press("OK");
     s.press("OK");
-    s.press("Left");
+    s.long("Left");
     assert_eq!(s.open(), 1, "the channel list");
     // The group menu (long OK in the list's groups panel) answers its Manage favorites row.
     let menu = s.push("menu");
@@ -937,6 +954,42 @@ fn an_archive_programme_played_to_its_end_is_finished_in_history_and_live_plays(
         s.calls.take().iter().all(|c| !c.starts_with("open live")),
         "no second zap"
     );
+}
+
+#[test]
+fn a_time_shift_plays_on_into_the_next_programme_at_its_end() {
+    let mut s = Sim::new();
+    let key = s.key(0);
+    let at = |s: &Sim, t| s.shell.store.now_next(key, t).0.unwrap();
+    let on_air = at(&s, NOW);
+    let before = at(&s, on_air.start - 1);
+    let earlier = at(&s, before.start - 1);
+    // The programme on air from its archive is a time shift.
+    s.catchup(key, &on_air, 60);
+    assert!(s.calls.take()[0].starts_with("open time shift Channel 1 "));
+    // One two programmes back that started as a time shift (Left, then a long pause): at its
+    // end the next one plays from its start, a time shift too though it has ended as well.
+    s.catchup(key, &earlier, 1_000);
+    assert!(s.calls.take()[0].starts_with("open archive Channel 1 "));
+    s.shell.shift = true;
+    s.calls.2.set(true);
+    s.run(1_000);
+    assert!(s.calls.take()[0].starts_with("open time shift Channel 1 "));
+    let pb = s.playing();
+    assert_eq!((pb.catchup.as_ref(), pb.position_secs), (Some(&before), 0));
+    s.calls.2.set(true);
+    s.run(1_000);
+    assert!(s.calls.take()[0].starts_with("open time shift Channel 1 "));
+    assert_eq!(s.playing().catchup, Some(on_air));
+    // The one after the programme on air has not aired: live.
+    s.calls.2.set(true);
+    s.run(1_000);
+    assert_eq!(s.calls.take(), ["go live"]);
+    assert_eq!(s.playing().catchup, None);
+    // Any other archive programme is no time shift: its end goes live in the player itself.
+    s.catchup(key, &earlier, 1_000);
+    s.calls.take();
+    assert!(!s.shell.shift);
 }
 
 /// Serves a one-channel playlist at any URL.

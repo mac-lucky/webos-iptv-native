@@ -128,8 +128,8 @@ type CallbackHookFn = unsafe extern "C" fn(*mut c_void, c_int, i64, *const c_cha
 /// `std::string StarfishMediaAPIs::Feed(const char *)`: on ARM the hidden sret slot comes first
 /// (r0), then `this` (r1), then the argument.
 type FeedFn = unsafe extern "C" fn(*mut c_void, *mut c_void, *const c_char);
-/// `std::basic_string<char>::~basic_string()` (COW build).
-type CowStringDtorFn = unsafe extern "C" fn(*mut c_void);
+/// `std::basic_string<char>::~basic_string()` of the library's string ABI (COW or cxx11).
+type StringDtorFn = unsafe extern "C" fn(*mut c_void);
 
 const HOOK_SYMBOL: &CStr = c"_ZN17StarfishMediaAPIs20callbackFunctionHookEixPKc";
 /// Callback-context overload, device-proven on webOS 4.10.2: it stores cb at object+0x9c and ctx
@@ -553,18 +553,18 @@ pub unsafe extern "C" fn sf_set_content_info(position_ns: i64) -> c_int {
     1
 }
 
-static FEED: OnceLock<FeedAbi<FeedFn, CowStringDtorFn>> = OnceLock::new();
+static FEED: OnceLock<FeedAbi<FeedFn, StringDtorFn>> = OnceLock::new();
 
 /// Feed returns std::string, so its mangled name carries the library's string ABI (`resolve`).
-/// Either way the hidden sret slot starts with the char pointer, so the reply reads the same; only
-/// the COW string must be released through the firmware's own destructor.
-fn feed_abi() -> &'static FeedAbi<FeedFn, CowStringDtorFn> {
+/// Either way the hidden sret slot starts with the char pointer, so the reply reads the same, and
+/// either way the string goes back through the firmware's own destructor for that ABI.
+fn feed_abi() -> &'static FeedAbi<FeedFn, StringDtorFn> {
     FEED.get_or_init(|| {
         let abi = resolve::resolve_feed(
             // SAFETY: RTLD_DEFAULT; both Feed names have FeedFn's ABI (sret, this, const char *).
             |name| unsafe { dlsym_fn::<FeedFn>(libc::RTLD_DEFAULT, name) },
             // SAFETY: RTLD_DEFAULT; a destructor takes only `this`.
-            |name| unsafe { dlsym_fn::<CowStringDtorFn>(libc::RTLD_DEFAULT, name) },
+            |name| unsafe { dlsym_fn::<StringDtorFn>(libc::RTLD_DEFAULT, name) },
         );
         elog!(
             "feed abi: {} fn={} dtor={}",
@@ -605,8 +605,8 @@ pub unsafe extern "C" fn sf_feed(p: *const u8, size: c_uint, pts: i64, es_data: 
     unsafe { feed(slot.cast(), object, json.as_ptr()) };
     // SAFETY: the string's `_M_p` is at offset 0 under both ABIs; `slot` is aligned for it.
     let s = unsafe { slot.cast::<*const c_char>().read() };
-    // SAFETY: a non-NULL `_M_p` points at the string's NUL-terminated buffer (SSO inside `sret`, or
-    // the COW heap rep), alive until the destructor below.
+    // SAFETY: a non-NULL `_M_p` points at the string's NUL-terminated buffer (SSO inside `sret`, a
+    // cxx11 heap buffer or the COW heap rep), alive until the destructor below.
     let reply = (!s.is_null()).then(|| unsafe { CStr::from_ptr(s) });
     if crate::EVENT_LOG.get().is_some() && FEED_REPLIES_LOGGED.load(Relaxed) < 3 {
         FEED_REPLIES_LOGGED.fetch_add(1, Relaxed);
@@ -616,12 +616,13 @@ pub unsafe extern "C" fn sf_feed(p: *const u8, size: c_uint, pts: i64, es_data: 
         );
     }
     let verdict = text::feed_verdict(reply);
-    // The COW destructor reads the rep header just below `_M_p`, so a NULL `_M_p` (Feed returned
-    // without constructing its result) would fault. A cxx11 reply gets no destructor, as in the C:
-    // "Ok"/"BufferFull" fit the 15-byte SSO buffer and own no heap memory; a longer reply would
-    // leak its buffer.
+    // Every reply is destroyed, cxx11 ones too (`resolve::CXX11_STRING_DTOR`: webOS 25's reply
+    // outgrows the SSO buffer). The COW destructor reads the rep header just below `_M_p`, so a
+    // NULL `_M_p` (Feed returned without constructing its result) is skipped.
     if let (false, Some(dtor)) = (s.is_null(), abi.reply_dtor) {
-        // SAFETY: a COW std::string the firmware constructed in `slot`, destroyed exactly once.
+        // SAFETY: a std::string of the ABI `dtor` belongs to (`resolve_feed` pairs them), which
+        // the firmware constructed in `slot`; destroyed exactly once. An SSO reply's `_M_p` points
+        // into `slot` itself, which the destructor recognises and does not free.
         unsafe { dtor(slot.cast()) };
     }
     verdict as c_char

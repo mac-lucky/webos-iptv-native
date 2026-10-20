@@ -21,6 +21,7 @@ pub struct AuQueue {
     head: *mut AuNode,
     tail: *mut AuNode,
     queued_bytes: c_long,
+    peak_bytes: c_long, // the most `queued_bytes` has been: what the session's AUs took from the heap
     max_bytes: c_long, // per-queue backpressure cap: `base_bytes` + any headroom granted
     base_bytes: c_long, // the cap the caller chose at aq_new; headroom is granted on top of it
     releasing: c_int, // headroom released but not yet drained: `aq_pop` walks `max_bytes` down
@@ -271,6 +272,7 @@ fn aq_push_park(
         }
         (*q).tail = n;
         (*q).queued_bytes += len as c_long;
+        (*q).peak_bytes = (*q).peak_bytes.max((*q).queued_bytes);
         libc::pthread_cond_signal(ptr::addr_of_mut!((*q).not_empty));
         libc::pthread_mutex_unlock(ptr::addr_of_mut!((*q).m));
         0
@@ -500,6 +502,44 @@ pub fn aq_bytes(q: *mut AuQueue) -> c_long {
     }
 }
 
+/// The most the queue has held at once since it was made, bytes.
+pub fn aq_peak_bytes(q: *mut AuQueue) -> c_long {
+    if q.is_null() {
+        return 0;
+    }
+    unsafe {
+        libc::pthread_mutex_lock(ptr::addr_of_mut!((*q).m));
+        let b = (*q).peak_bytes;
+        libc::pthread_mutex_unlock(ptr::addr_of_mut!((*q).m));
+        b
+    }
+}
+
+/// A session whose queues held at least this much at once leaves that much freed heap behind.
+pub const RELEASE_AFTER_PEAK_BYTES: c_long = 8 * 1024 * 1024;
+
+/// **Hand the heap's freed pages back to the system**, after a session whose queues peaked at
+/// [`RELEASE_AFTER_PEAK_BYTES`] or more. Every AU is its own `malloc` on the demux thread, freed
+/// as it is fed and at teardown, so nothing stays in use (`playback_e2e_tests`: +3 kB in use after
+/// an archive read ahead to the 48 MiB cap). But glibc keeps the freed blocks of the demux thread's
+/// arena resident: the C1 stayed ~80 MB higher back on live after a catch-up, and the
+/// same pattern on armv7 glibc keeps 32 of 50 MB until `malloc_trim`, which returns the free pages
+/// of every arena. Off the calling thread: on a set with many freed heaps it takes milliseconds,
+/// and the frame loop is what calls teardown. Nothing to do on the desktop host: macOS's pressure
+/// relief found nothing to return after the same session.
+pub fn release_freed_memory() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        // SAFETY: glibc's trim takes each arena's own lock; any thread may call it at any time.
+        let trim = || unsafe {
+            libc::malloc_trim(0);
+        };
+        if std::thread::Builder::new().name("mem-trim".into()).spawn(trim).is_err() {
+            trim();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -555,6 +595,7 @@ mod tests {
     fn pop_one(q: *mut AuQueue) {
         let n = aq_pop(q, ptr::null_mut());
         assert!(!n.is_null(), "the queue had an AU to pop");
+        // SAFETY: a popped node is the caller's, one malloc'd block; freed once, here.
         unsafe { libc::free(n as *mut c_void) };
     }
 
@@ -869,5 +910,28 @@ mod tests {
         unsafe { libc::free(n as *mut c_void) };
         assert_eq!(worker.join().unwrap(), 0);
         aq_destroy(&mut *q);
+    }
+
+    /// The peak a teardown reads to decide whether the freed heap goes back
+    /// ([`release_freed_memory`]) is the most the queue held at once, not what it holds now.
+    #[test]
+    fn the_peak_is_the_most_the_queue_held_at_once() {
+        let mut q = aq_new(1 << 20);
+        let qp = &mut *q as *mut AuQueue;
+        let data = [7u8; 300];
+        for len in [100, 300, 200] {
+            assert_eq!(aq_push(qp, data.as_ptr(), len, 0, 1, 1), 0);
+        }
+        assert_eq!((aq_bytes(qp), aq_peak_bytes(qp)), (600, 600));
+        for _ in 0..2 {
+            pop_one(qp);
+        }
+        assert_eq!(aq_push(qp, data.as_ptr(), 50, 0, 1, 1), 0);
+        assert_eq!((aq_bytes(qp), aq_peak_bytes(qp)), (250, 600), "drained since: the peak stays");
+        for _ in 0..2 {
+            pop_one(qp);
+        }
+        assert_eq!(aq_peak_bytes(ptr::null_mut()), 0);
+        aq_destroy(qp);
     }
 }

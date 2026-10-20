@@ -292,6 +292,15 @@ impl Screen for LibraryPanel {
         }
     }
 
+    /// An entry takes the remote's keys alone, and a Reorder page carries its row with Up and
+    /// Down, which the pointer does not.
+    fn point(&mut self, x: f32, y: f32, _: &dyn TvData, _: u64) -> Output {
+        match self.state.views.last() {
+            Some(View::Entry(_) | View::Reorder(_)) => Output::default(),
+            _ => self.panel.point(x, y),
+        }
+    }
+
     fn closing(&self) -> bool {
         self.panel.closing()
     }

@@ -120,13 +120,6 @@ impl Context {
             (None, None) => 0,
         }
     }
-
-    /// The furthest position inside the current programme that has aired.
-    pub fn live_edge_secs(&self) -> i64 {
-        self.current
-            .as_ref()
-            .map_or(0, |p| (self.now - p.start).clamp(0, p.duration_secs()))
-    }
 }
 
 /// The badges after the channel name. Resolutions and surround layouts are the same marks in
@@ -281,7 +274,7 @@ pub fn tiles(data: &dyn TvData, playing: Option<ChannelKey>) -> Vec<Tile> {
     out
 }
 
-/// The programme card (long Right): one programme of the channel playing.
+/// The programme card (long CH+): one programme of the channel playing.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Card {
     pub channel: String,

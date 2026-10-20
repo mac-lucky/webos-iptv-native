@@ -18,7 +18,10 @@
 //! - **Catch-up** ([`Catchup`]). The shell builds the URLs (`iptv::catchup`): the exact-programme
 //!   window when the server has one, and a shift URL builder for the rest. A window that does not
 //!   load falls back to shift; shift answers a fixed span (3 h on Flussonic), so a longer
-//!   programme is played in parts, each requested from where the last one ended; a redirect to
+//!   programme is played in parts, each requested from where the last one ended; a part of the
+//!   programme on air ends at the archive's edge, so it is followed past it (the same request
+//!   asked again as the edge grows, `hls::HlsSource::follow_until`) and a time shift plays as
+//!   one stream, not one Load per delay behind live; a redirect to
 //!   the "no archive" stub is [`State::NoArchive`]; at the programme's end playback returns to
 //!   live or reports [`Event::ProgrammeEnded`] ([`AtEnd`]). Positions are programme time.
 //! - **VOD** ([`Vod`]). A movie or an episode is one file or VOD playlist: it seeks anywhere, a
@@ -378,8 +381,9 @@ impl Playback {
         let offset = v.offset_secs.max(0);
         player::log(&format!("vod: from {offset}s"));
         self.watchdog = Watchdog::default();
-        self.start(&v.url, &v.headers, Some(offset));
+        let (url, headers) = (v.url.clone(), v.headers.clone());
         self.current = Some(Current::Vod(Box::new(VodPlay { req: v, resume_s: offset, duration_ms: 0 })));
+        self.start(&url, &headers, Some(offset));
     }
 
     /// Seek a catch-up programme to `position_ms` from its start (live streams do not seek). Inside
@@ -659,9 +663,16 @@ impl Playback {
     /// Start `url`: live (`archive` `None`) at its edge, an archive part at `Some(seconds)` of its
     /// playlist time. The archive position is armed here and nowhere else, even at 0, so an EVENT
     /// playlist that is still growing (the programme on air) plays from there rather than from its
-    /// live edge. Every start is probed (no declaration), so the arm lands before its Load.
+    /// live edge. Every start is probed (no declaration), so the arm lands before its Load. A part
+    /// of the catch-up playing ([`Self::current`] is set first) whose programme is on air is
+    /// followed past the archive's edge ([`follow_until_us`]).
     fn start(&mut self, url: &str, headers: &RequestHeaders, archive: Option<i64>) {
         crate::hls::note_failure(None);
+        let follow_us = match (&self.current, archive) {
+            (Some(Current::Catchup(cp)), Some(_)) => follow_until_us(cp, unix_now()),
+            _ => None,
+        };
+        crate::ff::follow_archive(follow_us);
         let mut start = PlaybackStart::new(url);
         start.headers = headers.clone();
         start.tracks = Some(self.tracks.clone());
@@ -765,7 +776,7 @@ impl Playback {
             return true;
         }
         let pos_s = programme_s(cp, &self.pl.session);
-        let now_unix = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+        let now_unix = unix_now();
         let view = PartView {
             pos_s,
             part_s: cp.part_s,
@@ -862,6 +873,24 @@ fn part_for(c: &Catchup, fell_back: bool, offset_s: i64) -> Option<(Source, i64)
         return Some((Source::Window, 0));
     }
     c.shift.as_ref().map(|_| (Source::Shift, offset_s.max(0) / SHIFT_SPAN_S * SHIFT_SPAN_S))
+}
+
+/// How far into its playlist time the part `cp` plays is followed past the archive's edge,
+/// microseconds (`ff::follow_archive`): to the programme's end, at most the [`SHIFT_SPAN_S`] a
+/// shift part answers, while the programme is on air at `now_unix`. `None` once it has ended: its
+/// archive is whole, and a part that ends short of it has a hole the next part goes on from.
+fn follow_until_us(cp: &CatchupPlay, now_unix: i64) -> Option<u64> {
+    if cp.req.end <= now_unix {
+        return None;
+    }
+    let left_s = cp.req.end - cp.req.start - cp.part_s;
+    let left_s = if cp.source == Source::Shift { left_s.min(SHIFT_SPAN_S) } else { left_s };
+    u64::try_from(left_s).ok().filter(|&s| s > 0).map(|s| s * 1_000_000)
+}
+
+/// Seconds since the Unix epoch, now.
+fn unix_now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
 }
 
 /// The URL of the part `source` from `part_s`.

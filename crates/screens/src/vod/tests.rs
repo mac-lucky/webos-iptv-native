@@ -494,3 +494,38 @@ fn an_idle_section_sleeps_and_the_player_panel_times_out() {
     s.player().unwrap().build(&Mono, &mut out);
     assert!(texts(&out).contains(&"Northern Lights".to_owned()));
 }
+
+/// The middle of a pointer spot of the section once drawn.
+fn spot_point(s: &mut VodScreen, area: u8, index: usize) -> (f32, f32) {
+    crate::panels::testing::draw(s);
+    let r = s
+        .spots
+        .rects()
+        .find(|(_, x)| *x == crate::point::Spot::row(area, index));
+    let r = r.expect("a spot").0;
+    (r.x + r.w * 0.5, r.y + r.h * 0.5)
+}
+
+#[test]
+fn the_pointer_focuses_rows_in_both_columns() {
+    let d = data();
+    let mut s = VodScreen::new(VodSection::Movies, &d, settings());
+    assert!(s.wheel());
+    // A movie on the right: the list takes the focus.
+    let (x, y) = spot_point(&mut s, view::RIGHT, 2);
+    assert_eq!(s.point(x, y, &d, 0), Output::redraw());
+    assert_eq!((s.focus(), s.item()), (Focus::Items, 2));
+    assert_eq!(s.point(x, y + 1.0, &d, 0), Output::default());
+    // A category on the left shows its movies from the first.
+    let (x, y) = spot_point(&mut s, view::LEFT, 1);
+    assert_eq!(s.point(x, y, &d, 0), Output::redraw());
+    assert_eq!(
+        (s.focus(), s.category(), s.item()),
+        (Focus::Categories, 1, 0)
+    );
+    // The keys carry on from there.
+    press(&mut s, &d, &[Key::Down, Key::Right]);
+    assert_eq!((s.focus(), s.category(), s.item()), (Focus::Items, 2, 0));
+    // Nowhere near a row.
+    assert_eq!(s.point(10.0, 10.0, &d, 0), Output::default());
+}

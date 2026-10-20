@@ -66,6 +66,16 @@ impl Cursor {
         self.set(to as usize, len, rows);
     }
 
+    /// The pointer on row `index`: focus it when it is on screen, without scrolling (the next
+    /// key scrolls if its context is off screen). Returns whether the focus moved.
+    pub fn point(&mut self, index: usize, len: usize, rows: impl Into<Rows>) -> bool {
+        if index == self.index || !self.visible(len, rows).contains(&index) {
+            return false;
+        }
+        self.index = index;
+        true
+    }
+
     /// Re-establish the scroll after `index` or `len` changed.
     pub fn scroll(&mut self, len: usize, rows: impl Into<Rows>) {
         let rows = rows.into();
@@ -171,6 +181,23 @@ mod tests {
         assert!(c.visible(10, 2).contains(&5));
         assert_eq!(Rows::from(2), Rows::new(2, 0));
         assert_eq!(Rows::from(8), Rows::new(8, 1));
+    }
+
+    #[test]
+    fn the_pointer_focuses_rows_on_screen_and_never_scrolls() {
+        let mut c = Cursor { index: 4, top: 3 };
+        assert!(c.point(3, 20, 5), "the top row, inside the context margin");
+        assert_eq!(c, Cursor { index: 3, top: 3 });
+        assert!(!c.point(3, 20, 5), "already focused");
+        assert!(c.point(7, 20, 5));
+        assert_eq!(c, Cursor { index: 7, top: 3 });
+        assert!(!c.point(8, 20, 5), "off screen");
+        assert!(!c.point(2, 20, 5));
+        assert!(!c.point(1, 2, 5), "past the end");
+        assert_eq!(c, Cursor { index: 7, top: 3 });
+        // The next key restores the context margin.
+        c.step(1, 20, 5, false);
+        assert_eq!(c, Cursor { index: 8, top: 5 });
     }
 
     #[test]

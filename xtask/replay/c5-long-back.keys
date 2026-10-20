@@ -1,0 +1,37 @@
+# The actions TiviMate puts on a held Back, reached without holding it, for cargo
+# xtask tv-replay on the C5.
+#
+# webOS keeps BACK while it is held and closes the app after a long hold, and webOS 25 gives it
+# to the app only on release (after about 1.5 s the C5 closes the app), so nothing here holds
+# Back that long: its two held Backs (800 ms, past the 500 ms long-press threshold) must each act
+# as one short Back. Every action is reached without a held Back.
+# The C1 (webOS 6.5) closes the app on a held Back too, after a hold not measured
+# yet: there the two `hold Back 800` lines may close the app. The host runs this file as it is,
+# with BACK handed over on release, and checks every shot:
+# crates/app/src/shell/tests/nav.rs (the_c5_replay_script_reaches_each_long_back_action).
+#
+# Start: a channel playing full screen with nothing over it, the long-press threshold at its
+# default (Settings > Remote, 500 ms). What each shot should show is beside it.
+
+shot start          # the channel full screen, nothing over it
+long Down           # held Down: Settings
+shot settings       # Settings over the picture, General focused
+Back                # Settings closes
+shot player         # the same channel, nothing over it
+hold Back 800       # handed over on release: one short Back, the guide (not Settings)
+shot guide          # the guide on the playing channel at live
+Down                # the next channel
+OK                  # previewed in the corner
+Left                # one programme back
+shot moved          # the next channel previewed, the grid in the past
+Back                # back to the current time
+Back                # the groups panel over the left of the guide
+shot groups
+Back                # back to the player with the channel that played before the guide
+shot player-again   # the first channel full screen again (its zap banner may show)
+long Left           # held Left: the channel list over the picture (a tap skips back)
+Left                # its groups panel beside the channels
+hold Back 800       # one short Back: back to the channels, the list stays
+shot list           # the channel list, focus on the channels
+Back                # the list closes
+shot player-last    # the first channel full screen, nothing over it

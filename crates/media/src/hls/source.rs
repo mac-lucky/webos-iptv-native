@@ -19,7 +19,10 @@
 //!   with an error;
 //! - a live playlist reload that fails is retried on the §6.3.4 cadence, at most
 //!   [`MAX_RELOAD_FAILURES`] times in a row, and a live playlist that stops growing is declared
-//!   dead ([`super::live::Schedule::stalled`]).
+//!   dead ([`super::live::Schedule::stalled`]);
+//! - a finite archive playlist followed past its end ([`HlsSource::follow_until`]) is asked for
+//!   again on the same cadence, and its end becomes the stream's, without an error, once it stops
+//!   growing or its reloads keep failing.
 //!
 //! Once a read has failed, every later read fails with the same error: the demuxer may retry a
 //! read, and it must see the same answer.
@@ -28,7 +31,10 @@ use super::aes::{sequence_iv, Block, CbcDecryptor, CbcError};
 use super::live::{self, Locate, Schedule};
 use super::playlist::{self, Encryption, InitSection, MediaPlaylist, ParseError, Playlist, Segment};
 use super::select::{self, NoPlayableVariant};
+use super::timeline;
 use crate::headers::RequestHeaders;
+use std::collections::VecDeque;
+use std::sync::Arc;
 
 /// Requests of one segment, key or init section before it is given up on.
 pub const ATTEMPTS: u32 = 3;
@@ -403,7 +409,7 @@ pub struct HlsSource<T: Transport, C: Clock> {
     scratch: Vec<u8>,
     active: Option<Active>,
     /// The initialization section last put on the stream.
-    map_now: Option<InitSection>,
+    map_now: Option<Arc<InitSection>>,
     keys: Vec<(String, Block)>,
     reload_failures: u32,
     skips_in_row: u32,
@@ -423,6 +429,20 @@ pub struct HlsSource<T: Transport, C: Clock> {
     playlist_time: bool,
     /// The end was logged (the demuxer asks again after it).
     end_logged: bool,
+    /// Where each run of segments between two discontinuities begins in the delivered stream,
+    /// `(byte offset, run)`, oldest first: the last [`timeline::RUNS_KEPT`] (see [`Self::run_at`]).
+    runs: VecDeque<(u64, u64)>,
+    /// The discontinuity sequence of the segment begun last.
+    dseq_now: Option<u64>,
+    /// A reload found the media sequence gone backwards: the next segment begun begins a run.
+    restarted: bool,
+    /// A finite archive playlist is followed past its end up to this playlist time (see
+    /// [`Self::follow_until`]); `None` once its end is the stream's.
+    follow_us: Option<u64>,
+    /// The end was reached once and the playlist is being asked for again.
+    following: bool,
+    /// A reload grew the finite playlist since [`Self::take_grown`] was last asked.
+    grown: bool,
 }
 
 /// The most a recording keeps; a probe that read more is not replayed.
@@ -538,6 +558,12 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
             start_us: if from_position { live::start_of(&playlist, index) } else { 0 },
             playlist_time: from_position,
             end_logged: false,
+            runs: VecDeque::new(),
+            dseq_now: None,
+            restarted: false,
+            follow_us: None,
+            following: false,
+            grown: false,
             t,
             clock,
             media_url,
@@ -638,6 +664,26 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
         }
     }
 
+    /// **Follow a finite archive playlist past its end**, up to `until_us` of its playlist time.
+    /// An archive request for the programme on air (Flussonic's shift answer, `EVENT` +
+    /// `ENDLIST`) ends where the archive did when it was asked, a time shift's delay behind live.
+    /// Instead of ending the stream there, the same URL is asked for again on the live cadence and
+    /// the segments it gained play on, so a time shift is one stream rather than one Load per
+    /// delay. The stream ends as before once the playlist reaches `until_us`, stops growing
+    /// ([`Schedule::follow_limit_ms`]), answers another window (or one without its end), or keeps
+    /// failing to load; the playback's part logic takes over from there. No effect on a live
+    /// playlist.
+    pub fn follow_until(&mut self, until_us: u64) {
+        if !self.live {
+            self.follow_us = Some(until_us);
+        }
+    }
+
+    /// The finite playlist's duration, microseconds, once after each reload that grew it.
+    pub fn take_grown(&mut self) -> Option<u64> {
+        std::mem::take(&mut self.grown).then(|| self.playlist.duration_us())
+    }
+
     /// Where in the VOD playlist's time the stream begins (the start of the segment holding the
     /// requested position), microseconds; 0 for a live one.
     pub fn start_us(&self) -> u64 {
@@ -675,6 +721,13 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
 
     pub fn delivered(&self) -> u64 {
         self.delivered
+    }
+
+    /// The run of segments between two discontinuities (0 at the stream's start, counting up)
+    /// that delivered stream byte `pos`: the newest for a byte not delivered yet, the oldest
+    /// remembered for one before it. The demuxer's packet positions are these byte offsets.
+    pub fn run_at(&self, pos: u64) -> u64 {
+        timeline::newest_at(&self.runs, pos).unwrap_or(0)
     }
 
     #[cfg(test)]
@@ -751,7 +804,7 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
                 self.next_seq = self.playlist.media_sequence;
                 Ok(Step::Progress)
             }
-            Locate::Ahead if !self.playlist.is_live() => Ok(Step::End),
+            Locate::Ahead if !self.playlist.is_live() => Ok(if self.follow()? { Step::Progress } else { Step::End }),
             Locate::Ahead => {
                 // A reload that is already due runs before anything is judged: a client that
                 // spent a while on one slow segment has not seen the playlist grow since.
@@ -769,50 +822,125 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
         }
     }
 
+    /// Load the media playlist again: its text and what it says.
+    fn load_media(&mut self) -> Result<(String, MediaPlaylist), HlsError> {
+        let (text, eff) = Self::fetch_text(&mut self.t, &self.media_url).map_err(HlsError::Playlist)?;
+        match parse_secure(&text, &eff)? {
+            Playlist::Media(m) => Ok((text, m)),
+            Playlist::Master(_) => Err(HlsError::NestedMaster),
+        }
+    }
+
+    /// The finite playlist is played to its end: ask for it again when it is followed
+    /// ([`Self::follow_until`]). `false`: its end is the stream's.
+    fn follow(&mut self) -> Result<bool, HlsError> {
+        let Some(until_us) = self.follow_us else { return Ok(false) };
+        let now = self.clock.now_ms();
+        let have_us = self.playlist.duration_us();
+        if !std::mem::replace(&mut self.following, true) {
+            self.schedule.watch_growth_from(now);
+            if have_us < until_us {
+                tv_base::eventlog::log(&format!(
+                    "hls: the archive ends at {} s of the {} s wanted; following its edge",
+                    have_us / 1_000_000,
+                    until_us / 1_000_000
+                ));
+            }
+        }
+        // As on live, a reload that is already due runs before growth is judged: a reader held back
+        // by full queues takes as long to read what a reload added as the archive took to add it.
+        let due = self.schedule.reload_due_ms();
+        let stop = if have_us >= until_us {
+            Some("reached the end wanted".to_owned())
+        } else if now < due && self.schedule.since_growth_ms(now) >= self.schedule.follow_limit_ms() {
+            Some(format!("has not grown for {} s", self.schedule.since_growth_ms(now) / 1000))
+        } else {
+            None
+        };
+        if let Some(why) = stop {
+            tv_base::eventlog::log(&format!("hls: the archive {why}; the stream ends at {} s", have_us / 1_000_000));
+            self.follow_us = None;
+            return Ok(false);
+        }
+        Self::wait(&self.t, &self.clock, due)?;
+        let began = self.clock.now_ms();
+        match self.load_media() {
+            // An answer without its end is another window too: followed, it would play as live,
+            // past the end wanted.
+            Ok((_, m)) if m.is_live() || !extends(&self.playlist, &m) => {
+                tv_base::eventlog::log("hls: the archive answered another window; the stream ends where the first one did");
+                self.follow_us = None;
+                Ok(false)
+            }
+            Ok((text, m)) => {
+                self.grown |= m.segments.len() > self.playlist.segments.len();
+                self.adopt(text, m, began);
+                Ok(true)
+            }
+            Err(HlsError::Playlist(FetchError::Aborted)) => Err(HlsError::Aborted),
+            // Not a transient answer: what was played stays, nothing more is asked for.
+            Err(HlsError::Insecure) => {
+                self.follow_us = None;
+                Ok(false)
+            }
+            Err(e) => {
+                let spent = self.reload_failed(&e, began, "archive");
+                if spent {
+                    self.follow_us = None;
+                }
+                Ok(!spent)
+            }
+        }
+    }
+
     /// Reload the live media playlist.
     fn reload(&mut self) -> Result<(), HlsError> {
         let began = self.clock.now_ms();
-        let loaded = Self::fetch_text(&mut self.t, &self.media_url).map_err(HlsError::Playlist).and_then(|(text, eff)| {
-            match parse_secure(&text, &eff)? {
-                Playlist::Media(m) => Ok((text, m)),
-                Playlist::Master(_) => Err(HlsError::NestedMaster),
-            }
-        });
-        match loaded {
+        match self.load_media() {
             Ok((text, m)) => {
-                let changed = text != self.last_text;
                 if m.media_sequence < self.playlist.media_sequence {
                     tv_base::eventlog::log(&format!(
                         "hls: the media sequence went backwards ({} -> {}); following the new window",
                         self.playlist.media_sequence, m.media_sequence
                     ));
                     self.next_seq = m.media_sequence + live::live_start_index(&m) as u64;
+                    // A packager that restarted numbers its discontinuities and timestamps afresh
+                    // too, with no tag to say so.
+                    self.restarted = true;
                 }
-                self.schedule.reloaded(&m, began, changed);
                 if !m.is_live() {
                     tv_base::eventlog::log("hls: the live playlist ended (EXT-X-ENDLIST)");
                 }
-                self.playlist = m;
-                self.last_text = text;
-                self.reload_failures = 0;
+                self.adopt(text, m, began);
                 Ok(())
             }
             Err(HlsError::Playlist(FetchError::Aborted)) => Err(HlsError::Aborted),
             // Not a transient answer: the playlist itself turned unsafe.
             Err(HlsError::Insecure) => Err(HlsError::Insecure),
             Err(e) => {
-                self.reload_failures += 1;
-                self.schedule.failed(began);
-                tv_base::eventlog::log(&format!(
-                    "hls: playlist reload failed ({e}), {} of {MAX_RELOAD_FAILURES}",
-                    self.reload_failures
-                ));
-                if self.reload_failures >= MAX_RELOAD_FAILURES {
+                if self.reload_failed(&e, began, "playlist") {
                     return Err(e);
                 }
                 Ok(())
             }
         }
+    }
+
+    /// Take `m`, answered with `text` by a reload that began at `began_ms`, as the playlist.
+    fn adopt(&mut self, text: String, m: MediaPlaylist, began_ms: u64) {
+        self.schedule.reloaded(&m, began_ms, text != self.last_text);
+        self.playlist = m;
+        self.last_text = text;
+        self.reload_failures = 0;
+    }
+
+    /// Count a reload of the `what` playlist that began at `began_ms` and failed with `e`; it is
+    /// retried on the schedule's cadence. `true` once [`MAX_RELOAD_FAILURES`] failed in a row.
+    fn reload_failed(&mut self, e: &HlsError, began_ms: u64, what: &str) -> bool {
+        self.reload_failures += 1;
+        self.schedule.failed(began_ms);
+        tv_base::eventlog::log(&format!("hls: {what} reload failed ({e}), {} of {MAX_RELOAD_FAILURES}", self.reload_failures));
+        self.reload_failures >= MAX_RELOAD_FAILURES
     }
 
     /// The AES-128 key at `uri`, fetched once per URI.
@@ -869,6 +997,22 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
                 "hls: discontinuity before segment {} (discontinuity sequence {})",
                 seg.sequence, seg.discontinuity_sequence
             ));
+        }
+        // A new run begins at a tagged segment, and where the discontinuity sequence goes up past a
+        // tag not played (on a gap, or expired), at the next byte delivered: `read` steps only once
+        // `out` is drained. Not where it goes down: a live playlist without
+        // `EXT-X-DISCONTINUITY-SEQUENCE` counts its tags from its first segment, so the count drops
+        // as a tag leaves the window. And at the first segment after the media sequence went
+        // backwards (a packager restart, [`Self::reload`]).
+        let restarted = std::mem::take(&mut self.restarted);
+        let new_run = self.runs.is_empty()
+            || seg.discontinuity
+            || restarted
+            || self.dseq_now.is_some_and(|d| seg.discontinuity_sequence > d);
+        self.dseq_now = Some(seg.discontinuity_sequence);
+        if new_run {
+            let run = self.runs.back().map_or(0, |&(_, run)| run + 1);
+            timeline::remember(&mut self.runs, (self.delivered, run));
         }
         let key = self.cipher_for(&seg.key, seg.sequence)?;
         if seg.map != self.map_now {
@@ -1026,6 +1170,14 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
         }
         Err(HlsError::Segment { sequence, error: e })
     }
+}
+
+/// Does `new` list every segment `old` did, at the same playlist times, and perhaps more: the same
+/// archive window asked for again later. Another window, or one numbered afresh, is not followed.
+fn extends(old: &MediaPlaylist, new: &MediaPlaylist) -> bool {
+    new.media_sequence == old.media_sequence
+        && new.segments.len() >= old.segments.len()
+        && live::start_of(new, old.segments.len()).abs_diff(old.duration_us()) <= 500_000
 }
 
 /// Parse a playlist answered from `effective`, refusing an https one that names a plaintext URI

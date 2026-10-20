@@ -3,9 +3,11 @@
 //! The full-screen [`PlayerScreen`] is always at the bottom; the guide, the channel list,
 //! History and the panels open over it, and only the topmost one still open gets keys and text.
 //! Remote edges go through [`Remote`] with that screen's own [`Hold`](tv_screens::input::Hold)
-//! for each key, so short, long and repeated presses are the screens' decision. What a screen
-//! returns runs in order: its commands, its message for the screen under it, its navigation. A
-//! closed screen that still animates out stays in the stack, drawn but deaf, until it is gone.
+//! for each key, so short, long and repeated presses are the screens' decision. The Magic
+//! Remote's pointer goes to the same screen ([`pointer`]): it focuses what it points at, its
+//! click is OK and its wheel Up and Down. What a screen returns runs in order: its commands, its
+//! message for the screen under it, its navigation. A closed screen that still animates out
+//! stays in the stack, drawn but deaf, until it is gone.
 //! Every [`Command`] ends here: storage writes go to the [`Store`], playback to the [`Player`].
 //!
 //! After every change the rest follows from the screens: the video is where the topmost screen
@@ -44,6 +46,7 @@ use crate::store::Store;
 
 mod backup;
 mod gate;
+mod pointer;
 mod remind;
 mod sleep;
 mod watch;
@@ -137,6 +140,11 @@ pub struct Shell {
     held: Option<Held>,
     /// Programme reminders, and when the next one starts.
     reminders: Reminders,
+    /// The Magic Remote's pointer ([`pointer`]).
+    pointer: pointer::Pointer,
+    /// The archive programme playing is a time shift: at its end it plays on into the next one
+    /// ([`play_on`](Self::play_on)).
+    shift: bool,
 }
 
 impl Shell {
@@ -174,6 +182,8 @@ impl Shell {
             told: (DisplayMode::Normal, 0),
             held: None,
             reminders: Reminders::default(),
+            pointer: pointer::Pointer::default(),
+            shift: false,
         };
         shell.follow_settings();
         shell
@@ -200,6 +210,36 @@ impl Shell {
         self.settle(now);
     }
 
+    /// The event log's line for key edge `ev`, asked before [`key`](Self::key) takes it: a
+    /// press by its name, or its codes when the remote table does not name it (how a new
+    /// firmware's codes are learnt). While the keyboard types, only its own control keys
+    /// ([`input::loggable_while_typing`](crate::input::loggable_while_typing)), every edge, never
+    /// a typed character; while a secret is entered, nothing.
+    pub fn key_line(&self, ev: &KeyEvent) -> Option<String> {
+        if self.secret() {
+            return None;
+        }
+        // Not `key:`: the log redactor masks the value of any `...key: value` label.
+        if self.typing {
+            return crate::input::loggable_while_typing(ev.sym).then(|| {
+                format!(
+                    "keyboard: key sym={} wcode={} {:?}",
+                    ev.sym, ev.wcode, ev.edge
+                )
+            });
+        }
+        (ev.edge == Edge::Down).then(|| match crate::input::name(ev.wcode) {
+            Some(name) => format!("remote: {name}"),
+            None => format!("remote: sym={} wcode={}", ev.sym, ev.wcode),
+        })
+    }
+
+    /// The screen in front takes a secret ([`Screen::secret`]): the parental PIN, whose digits
+    /// the keys, the wheel and a click pick, so the event log notes none of them.
+    fn secret(&self) -> bool {
+        self.top().is_some_and(|i| self.stack[i].screen.secret())
+    }
+
     /// One key edge from the remote (or the TV keyboard's Enter, delete and clear-all keys).
     pub fn key(&mut self, ev: KeyEvent) {
         // A printable key while the keyboard is up is typing: it arrives as text.
@@ -217,6 +257,9 @@ impl Shell {
         };
         let action = match edge {
             Edge::Down => {
+                if !self.key_down(key, ev.at_ms) {
+                    return;
+                }
                 let hold = self.screen(self.top()).0.hold(key);
                 self.remote.down(key, ev.at_ms, hold)
             }
@@ -254,6 +297,9 @@ impl Shell {
         }
         if self.player.poll(now, self.store.playback_mut()) {
             self.playback_moved = true;
+        }
+        if self.player.take_ended() {
+            self.play_on(now);
         }
         if let Some(text) = self.player.take_notice() {
             self.toast(text, now);
@@ -298,11 +344,6 @@ impl Shell {
         .chain(screens)
         .flatten()
         .min()
-    }
-
-    /// The TV keyboard is up: keys are typing, not remote presses.
-    pub fn typing(&self) -> bool {
-        self.typing
     }
 
     /// The keyboard change the loop must make, once.
@@ -603,7 +644,8 @@ impl Shell {
                 return;
             }
             Navigate::Guide | Navigate::Pip => {
-                // Open on the zap group (long Back gives it back), showing the shared one.
+                // Open on the zap group (leaving for the player gives it back), showing the
+                // shared one.
                 let zap = self.bottom.screen.group().clone();
                 let mut guide = GuideScreen::new(&*self.store, zap.clone());
                 let group = self.shown_group();
@@ -883,10 +925,16 @@ impl Shell {
         if stream == Stream::Live(key) && pb.channel == Some(key) && pb.catchup.is_none() {
             return;
         }
+        // The end of the programme a time shift on this channel plays: the one after it goes on
+        // with the shift (its end, or Next on the panel).
+        let shift_ends = (self.shift && pb.channel == Some(key))
+            .then(|| pb.catchup.as_ref().map(|p| p.stop))
+            .flatten();
         let Some(channel) = self.store.channel(key) else {
             log(&format!("play: channel {} is gone", key.hex()));
             return;
         };
+        let now_secs = self.store.now();
         let open = match &stream {
             Stream::Live(_) => player::Stream::Live(&channel),
             Stream::Catchup {
@@ -897,12 +945,15 @@ impl Shell {
                 channel: &channel,
                 programme,
                 offset_secs: *offset_secs,
+                shift: programme.stop > now_secs
+                    || shift_ends.is_some_and(|stop| programme.start >= stop),
             },
             Stream::Catchup { .. } => {
                 log(&format!("play: channel {} has no archive", key.hex()));
                 return;
             }
         };
+        self.shift = matches!(open, player::Stream::Catchup { shift: true, .. });
         self.watch.begin(&stream, &mut *self.store, now);
         // The channel's own audio offset, before its first sound is fed.
         self.tell_player(Some(key));
@@ -922,6 +973,33 @@ impl Shell {
             ..Playback::default()
         };
         self.playback_moved = true;
+    }
+
+    /// The time shift playing reached the end of its programme: play on into the next one from
+    /// the archive, from its start, so the shift (and a pause taken in it) is kept; live when
+    /// the guide has none the archive keeps.
+    fn play_on(&mut self, now: u64) {
+        let pb = self.store.playback_mut();
+        let (Some(key), Some(ended)) = (pb.channel, pb.catchup.as_ref().map(|p| p.stop)) else {
+            return;
+        };
+        let (at, after) = self.store.now_next(key, ended);
+        let next = at.or(after).filter(|p| {
+            self.store
+                .channel(key)
+                .is_some_and(|c| iptv::catchup::in_archive(&c, p, self.store.now()))
+        });
+        match next {
+            Some(programme) => {
+                let stream = Stream::Catchup {
+                    channel: key,
+                    programme,
+                    offset_secs: 0,
+                };
+                self.play(stream, None, now);
+            }
+            None => self.run(Command::ReturnToLive, now),
+        }
     }
 
     fn set_setting(&mut self, key: &str, value: String) {

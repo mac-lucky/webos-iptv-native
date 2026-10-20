@@ -174,7 +174,7 @@ enum Step {
 /// ```text
 /// Left            a short press
 /// Left x3         three of them
-/// long Back       held past the long-press threshold
+/// long OK         held past the long-press threshold
 /// hold Down 2000  held 2 s (a key that repeats acts again while held)
 /// wait 1500       nothing for 1.5 s
 /// shot groups     a screenshot, saved as NN-groups.png (NN counts the shots)
@@ -742,7 +742,7 @@ mod tests {
     #[test]
     fn scripts_parse_into_presses_waits_and_shots() {
         let s = steps(
-            "# comment\n\nLeft\nRight x2  # trailing comment\nlong Back\nhold Down 2000\n\
+            "# comment\n\nLeft\nRight x2  # trailing comment\nlong OK\nhold Down 2000\n\
              wait 1500\nshot\nshot groups-panel\nCH+\n",
         );
         assert_eq!(
@@ -751,7 +751,7 @@ mod tests {
                 key("Left", 105, PRESS_MS),
                 key("Right", 106, PRESS_MS),
                 key("Right", 106, PRESS_MS),
-                key("Back", 412, LONG_MS),
+                key("OK", 28, LONG_MS),
                 key("Down", 108, 2000),
                 Step::Wait(1500),
                 Step::Shot("01-shot".into()),
@@ -818,11 +818,7 @@ mod tests {
             })
             .collect();
         let keys = keys.join(" ");
-        for seq in [
-            "Left Left Left hold Left",
-            "Back Back Back Left Back",
-            "long Back",
-        ] {
+        for seq in ["Left Left Left hold Left", "Back Back Back Left Back"] {
             assert!(keys.contains(seq), "{seq:?} in {keys:?}");
         }
         assert!(s.iter().filter(|s| matches!(s, Step::Shot(_))).count() >= 4);
@@ -832,13 +828,14 @@ mod tests {
     fn the_program_carries_the_steps_and_no_unsafe_text() {
         let t = Target::television("/tmp/webosiptv-events.log".into());
         let p = program(
-            &steps("Left\nlong Back\nshot a"),
+            &steps("Left\nBack\nlong OK\nshot a"),
             "io.github.maclucky.webosiptv",
             &t,
         );
         assert!(p.starts_with("# cargo xtask tv-replay\nAPP = \"io.github.maclucky.webosiptv\"\n"));
         assert!(p.contains("    (\"key\", 105, 100, \"Left\"),\n"));
-        assert!(p.contains("    (\"key\", 412, 1500, \"Back\"),\n"));
+        assert!(p.contains("    (\"key\", 412, 100, \"Back\"),\n"));
+        assert!(p.contains("    (\"key\", 28, 1500, \"OK\"),\n"));
         assert!(p.contains("    (\"shot\", \"01-a.png\"),\n"));
         assert!(p.contains("DEVICE = \"LGE M-RCU - Builtin [2]\"\n"));
         assert!(p.contains("LOG = \"/tmp/webosiptv-events.log\"\n"));

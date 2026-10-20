@@ -384,6 +384,10 @@ impl Screen for ContextMenu {
             .handle(key, |panel, item| menu.activate(panel, item))
     }
 
+    fn point(&mut self, x: f32, y: f32, _: &dyn TvData, _: u64) -> Output {
+        self.panel.point(x, y)
+    }
+
     fn closing(&self) -> bool {
         self.panel.closing()
     }

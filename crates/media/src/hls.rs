@@ -25,19 +25,22 @@
 //! - [`live`]: the live window and reload arithmetic, pure.
 //! - [`aes`]: AES-128-CBC/PKCS#7, verified against FIPS-197 and SP 800-38A.
 //! - [`source`]: the client, over an injectable transport and clock.
+//! - [`timeline`]: one timeline across the stream's discontinuities, for the demuxer, pure.
 //!
 //! **Seeking.** A live stream does not seek: the pump drops the request. A VOD
 //! stream (a catch-up programme) seeks by segment: the pump reloads the engine at the target and
 //! `ff::open_hls` opens the playlist at the segment holding it, because neither demuxer can be
 //! repositioned inside a byte stream that has no byte addresses (the AVIO is unseekable on
 //! purpose). Its positions are playlist time (`Shared::hls_vod_base_ns`), whatever timestamps the
-//! segments carry.
+//! segments carry. An archive of the programme on air ends where the archive did when it was asked
+//! for; the playback has it followed past that end ([`source::HlsSource::follow_until`]).
 
 pub mod aes;
 pub mod live;
 pub mod playlist;
 pub mod select;
 pub mod source;
+pub mod timeline;
 
 /// Also the loopback origin `ff_hls_tests.rs` serves its streams from.
 #[cfg(test)]
@@ -45,6 +48,7 @@ pub mod source;
 pub(crate) mod loopback_tests;
 
 pub use source::{CurlHls, CurlTransport, FetchError, HlsError, HlsSource, SystemClock};
+pub use timeline::Timeline;
 
 /// Does `url` name an HLS playlist by its path (`....m3u8`, case-insensitive, query and fragment
 /// ignored)? The cheap test, made before anything is requested.

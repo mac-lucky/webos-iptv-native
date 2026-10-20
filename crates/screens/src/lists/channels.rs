@@ -13,9 +13,15 @@
 //! - preview: the video stays in [`PREVIEW_RECT`] while the list is open; OK plays the choice
 //!   there; OK again on the same choice, or Back on the channels, closes, committing the live
 //!   channel previewed when it is not the one the list opened on.
+//! - either mode: with nothing playing, Back on the channels opens the guide ([`Navigate::Guide`])
+//!   instead of closing onto an empty player.
 //!
 //! Only what is on screen is read: the programme on air of each channel row as it comes into
 //! view or ends, and the focused channel's programme list once the focus rests on it.
+//!
+//! The pointer focuses the row it rests on in any column that does not move when it takes the
+//! focus ([`Screen::point`]); a channel focused that way loads its programmes once the pointer
+//! rests, as a held key does.
 
 use std::ops::Range;
 use std::rc::Rc;
@@ -28,10 +34,12 @@ use super::cursor::Cursor;
 use super::view::{self, ChannelListView};
 use super::{Clock, Nav};
 use crate::data::{
-    Command, GridProgramme, Group, Logos, Output, Rect, Screen, ScreenMessage, Stream, TvData,
+    Command, GridProgramme, Group, Logos, Navigate, Output, Rect, Screen, ScreenMessage, Stream,
+    TvData,
 };
 use crate::groups::{Act, GroupsPanel};
 use crate::input::{Hold, Key, Press};
+use crate::point::Spot;
 use crate::time::{self, When, DAY};
 
 /// Where preview mode puts the video: top right, 16:9, on the 1920x1080 plane.
@@ -583,6 +591,11 @@ impl ChannelList {
                     return self.choose(Showing::Live(key), None);
                 }
             }
+            // With nothing playing Back goes to the guide, as the guide's groups panel stays in
+            // the guide (no empty player).
+            Nav::Back if data.playback().channel.is_none() => {
+                return Output::navigate(Navigate::Guide)
+            }
             Nav::Back => return self.close(),
         }
         Output::default()
@@ -596,14 +609,7 @@ impl ChannelList {
             return Output::default();
         };
         match panel.key(key, long) {
-            Act::Moved => {
-                self.generation += 1;
-                let shown = panel.shown().filter(|g| **g != self.group).cloned();
-                if let Some(group) = shown {
-                    self.show(group.clone(), data);
-                    return Output::command(Command::ShowGroup(group));
-                }
-            }
+            Act::Moved => return self.panel_moved(data),
             // A locked group shows nothing until the PIN opens it.
             Act::Enter if data.group_locked(&self.group) => {
                 return crate::parental::ask_to_open(&self.group)
@@ -614,11 +620,63 @@ impl ChannelList {
                 self.groups = None;
                 self.column = Column::Channels;
             }
-            Act::Close => return self.close(),
             Act::Go(nav) => return Output::navigate(nav),
             Act::None => {}
         }
         Output::default()
+    }
+
+    /// The groups panel's focus moved: show its group here and, from now on, in the guide.
+    fn panel_moved(&mut self, data: &dyn TvData) -> Output {
+        self.generation += 1;
+        let shown = self.groups.as_ref().and_then(GroupsPanel::shown);
+        match shown.filter(|g| **g != self.group).cloned() {
+            Some(group) => {
+                self.show(group.clone(), data);
+                Output::command(Command::ShowGroup(group))
+            }
+            None => Output::default(),
+        }
+    }
+
+    /// The pointer on `spot` of the view: focus it as the keys would, without scrolling.
+    fn point_at(&mut self, spot: Spot, now_ms: u64) {
+        match spot.area {
+            view::CHANNELS => {
+                if self.column != Column::Channels {
+                    self.leave_programmes();
+                }
+                if self
+                    .cursor
+                    .point(spot.index, self.channels.len(), rows::CHANNELS)
+                {
+                    self.epg = None;
+                    self.epg_due = Some(now_ms + SETTLE_MS);
+                }
+            }
+            view::PROGRAMMES => {
+                let top = self.epg.as_ref().map(|e| view::programme_top(self, e));
+                let Some((epg, top)) = self.epg.as_mut().zip(top) else {
+                    return;
+                };
+                // The list stays where it showed while the channels had the focus.
+                epg.cursor.top = top;
+                epg.cursor
+                    .point(spot.index, epg.programmes().len(), rows::PROGRAMMES);
+                self.column = Column::Programmes;
+            }
+            view::DAYS => {
+                let Some(epg) = self.epg.as_mut() else {
+                    return;
+                };
+                let mut c = epg.day_cursor;
+                if c.point(spot.index, epg.days.len(), rows::DAYS) {
+                    epg.select_day(epg.days[c.index], self.clock.now, self.utc_offset);
+                    epg.day_cursor.top = c.top;
+                }
+            }
+            _ => {}
+        }
     }
 
     fn key_programmes(&mut self, key: Nav, data: &dyn TvData) -> Output {
@@ -781,6 +839,38 @@ impl Screen for ChannelList {
         }
     }
 
+    /// The channels beside the open groups panel, the programmes left of the days in preview
+    /// mode and the groups panel's cut row.
+    fn dead(&self, x: f32, y: f32) -> bool {
+        self.view.dead(x, y)
+            || (self.column == Column::Groups && self.groups.as_ref().is_some_and(|g| g.dead(x, y)))
+    }
+
+    fn point(&mut self, x: f32, y: f32, data: &dyn TvData, now_ms: u64) -> Output {
+        let (before, generation) = (self.look(), self.generation);
+        let out = if self.column == Column::Groups {
+            match self.groups.as_mut().map(|g| g.point(x, y)) {
+                Some(Act::Moved) => self.panel_moved(data),
+                _ => return Output::default(),
+            }
+        } else {
+            let Some(spot) = self.view.spot(x, y) else {
+                return Output::default();
+            };
+            self.point_at(spot, now_ms);
+            Output::default()
+        };
+        if self.look() == before && self.generation == generation {
+            return out;
+        }
+        self.load(data, now_ms);
+        self.generation += 1;
+        Output {
+            redraw: true,
+            ..out
+        }
+    }
+
     fn tick(&mut self, data: &dyn TvData, now_ms: u64) -> Output {
         let generation = self.generation;
         // What really plays: a pick the shell held back for the parental PIN did not, and Back
@@ -876,7 +966,7 @@ impl ChannelList {
 mod tests {
     use super::*;
     use crate::data::fake::FakeData;
-    use crate::data::{Navigate, Playback};
+    use crate::data::Playback;
     use crate::lists::key_of;
     use std::cell::RefCell;
 
@@ -1008,6 +1098,24 @@ mod tests {
         assert_eq!(out.navigate, [Navigate::Close]);
     }
 
+    /// With nothing playing Back on the channels opens the guide instead of closing onto an
+    /// empty player; once a preview plays, Back closes onto it.
+    #[test]
+    fn back_with_nothing_playing_opens_the_guide() {
+        let mut d = fake(10);
+        for mode in [Mode::Overlay, Mode::Preview] {
+            let mut l = open(&d, mode);
+            let out = press(&mut l, &d, &[Nav::Back]);
+            assert_eq!(out, Output::navigate(Navigate::Guide), "{mode:?}");
+        }
+        let mut l = open(&d, Mode::Preview);
+        press(&mut l, &d, &[Nav::Down, Nav::Ok]);
+        playing(&mut d, 1);
+        let out = press(&mut l, &d, &[Nav::Back]);
+        assert_eq!(out.commands, [live(&d, 1)]);
+        assert_eq!(out.navigate, [Navigate::Close]);
+    }
+
     /// One key with a press, as the remote sends it.
     fn send(l: &mut ChannelList, d: &FakeData, key: Key, press: Press) -> Output {
         l.key(key, press, d, 0)
@@ -1080,9 +1188,11 @@ mod tests {
         let out = send(&mut l, &d, Key::Ok, Press::Short);
         assert_eq!(out.navigate, [Navigate::History]);
         assert_eq!(l.column(), Column::Groups);
-        // Long Back closes the list.
-        let out = send(&mut l, &d, Key::Back, Press::Long);
-        assert_eq!(out.navigate, [Navigate::Close]);
+        // Back to the channels, Back again leaves the list: for the guide, as nothing plays.
+        send(&mut l, &d, Key::Back, Press::Short);
+        assert_eq!(l.column(), Column::Channels);
+        let out = send(&mut l, &d, Key::Back, Press::Short);
+        assert_eq!(out.navigate, [Navigate::Guide]);
     }
 
     #[test]

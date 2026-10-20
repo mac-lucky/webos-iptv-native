@@ -85,6 +85,23 @@ fn start_over_on_the_programme_on_air_returns_to_live_once_it_catches_up() {
     assert_eq!(next_step(&c, v), Step::NextPart(1800), "ten minutes behind: the archive has more by now");
 }
 
+/// A part of the programme on air is followed past the archive's edge to the programme's end:
+/// one stream for a time shift instead of one Load per delay behind live.
+#[test]
+fn a_part_of_the_programme_on_air_is_followed_to_the_programme_end() {
+    let part = |req: Catchup, source: Source, part_s: i64| CatchupPlay { source, part_s, ..play(req) };
+    let half_way = START + 1800;
+    let shift = part(programme(3600, false, true, AtEnd::Continue), Source::Shift, 0);
+    assert_eq!(follow_until_us(&shift, half_way), Some(3_600_000_000), "to the programme's end");
+    let later = part(programme(3600, false, true, AtEnd::Continue), Source::Shift, 1500);
+    assert_eq!(follow_until_us(&later, half_way), Some(2_100_000_000), "in the part's own playlist time");
+    let long = part(programme(5 * 3600, false, true, AtEnd::Continue), Source::Shift, 0);
+    assert_eq!(follow_until_us(&long, half_way), Some(SHIFT_SPAN_S as u64 * 1_000_000), "a shift answer spans 3 h at most");
+    let window = part(programme(5 * 3600, true, true, AtEnd::Continue), Source::Window, 0);
+    assert_eq!(follow_until_us(&window, half_way), Some(5 * 3_600_000_000));
+    assert_eq!(follow_until_us(&shift, START + 3600), None, "an ended programme's archive is whole");
+}
+
 fn obs(now: u32, pos: i64) -> Observation {
     Observation { now, failed: false, frame: true, held: false, position_ns: pos }
 }

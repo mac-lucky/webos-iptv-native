@@ -4,7 +4,8 @@
 //!
 //! Channels are matched here, by name. Programmes come from [`TvData::search`], which can take
 //! longer than a frame: the panel asks again on every tick until the answer is in, and keeps the
-//! results it has meanwhile.
+//! results it has meanwhile. While the keyboard is down the pointer focuses the field or the
+//! result it rests on.
 
 use std::ffi::CString;
 use std::rc::Rc;
@@ -22,6 +23,7 @@ use crate::draw::cstr;
 use crate::icons::{self, Icon};
 use crate::input::{Action, Hold, Key, Press};
 use crate::lists::{Cursor, Rows};
+use crate::point::{Spot, Spots};
 use crate::time::{self, hhmm, weekday, When};
 
 const MAX_CHANNEL_HITS: usize = 50;
@@ -79,6 +81,8 @@ pub struct Search {
     cursor: Cursor,
     /// When the programme hits were found.
     now: Timestamp,
+    /// The field and the results in the frame drawn last, for the pointer.
+    spots: Spots,
 }
 
 impl Search {
@@ -97,6 +101,7 @@ impl Search {
             on_field: true,
             cursor: Cursor::default(),
             now: data.now(),
+            spots: Spots::default(),
         };
         search.index(data);
         search.show_field();
@@ -306,12 +311,15 @@ impl Search {
         self.shown = cstr(text);
     }
 
-    fn paint(&self, p: Painter) {
+    fn paint(&mut self, p: Painter) {
         let full = Rect::new(0.0, 0.0, style::SCREEN_W, style::SCREEN_H);
         p.rect(full, 0.0, style::SCREEN_BG, style::SCREEN_BG, 0.0);
         let x = MARGIN;
         let w = style::SCREEN_W - 2.0 * MARGIN;
-        self.draw_field(p, Rect::new(x, FIELD_Y, w, FIELD_H));
+        let field = Rect::new(x, FIELD_Y, w, FIELD_H);
+        self.draw_field(p, field);
+        self.spots.clear();
+        self.spots.add(field, Spot::row(FIELD, 0));
         let mut y = FIELD_Y + FIELD_H + style::GAP;
         if self.is_empty() && !self.query.is_empty() && self.pending.is_none() {
             line(
@@ -326,7 +334,9 @@ impl Search {
         }
         for i in self.cursor.visible(self.len(), ROWS) {
             let Some(hit) = self.hit(i) else { break };
-            self.draw_hit(p, Rect::new(x, y, w, ROW_H), hit, self.focus() == Some(i));
+            let r = Rect::new(x, y, w, ROW_H);
+            self.draw_hit(p, r, hit, self.focus() == Some(i));
+            self.spots.add(r, Spot::row(RESULT, i));
             y += ROW_H;
         }
     }
@@ -451,6 +461,27 @@ impl Screen for Search {
         self.field.editing()
     }
 
+    /// The field or a result, while the keyboard is down.
+    fn point(&mut self, x: f32, y: f32, _: &dyn TvData, _: u64) -> Output {
+        if self.field.editing() {
+            return Output::default();
+        }
+        let before = self.focus();
+        match self.spots.at(x, y) {
+            Some(s) if s.area == RESULT => {
+                self.cursor.point(s.index, self.len(), ROWS);
+                self.on_field = false;
+            }
+            Some(_) => self.on_field = true,
+            None => {}
+        }
+        if self.focus() == before {
+            return Output::default();
+        }
+        tv_machine::idle::invalidate();
+        Output::redraw()
+    }
+
     fn tick(&mut self, data: &dyn TvData, _: u64) -> Output {
         if self.poll(data) {
             Output::redraw()
@@ -490,6 +521,9 @@ const FIELD_H: f32 = 88.0;
 const ROW_H: f32 = 92.0;
 /// Result rows below the field; the focus may sit on the first and the last.
 const ROWS: Rows = Rows::new(9, 0);
+/// [`Spot`] areas: the field and the results.
+const FIELD: u8 = 0;
+const RESULT: u8 = 1;
 
 #[cfg(test)]
 mod tests {
@@ -719,6 +753,36 @@ mod tests {
         keys(&mut search, &data, &[Key::Back]);
         assert!(!search.editing());
         assert_eq!(keys(&mut search, &data, &[Key::Back]), Output::close());
+    }
+
+    #[test]
+    fn the_pointer_focuses_a_result_or_the_field_while_the_keyboard_is_down() {
+        let data = guide();
+        let mut search = open(&data);
+        type_text(&mut search, &data, "wiadomosci");
+        let row = |i: usize| FIELD_Y + FIELD_H + style::GAP + (i as f32 + 0.5) * ROW_H;
+        let x = MARGIN + 40.0;
+        assert_eq!(
+            search.point(x, row(1), &data, 0),
+            Output::default(),
+            "typing"
+        );
+        keys(&mut search, &data, &[Key::Back]);
+        draw(&mut search);
+        assert_eq!(search.point(x, row(1), &data, 0), Output::redraw());
+        assert_eq!(search.focus(), Some(1));
+        assert_eq!(search.point(x, row(1) + 5.0, &data, 0), Output::default());
+        // Up carries on from the pointed result; the field takes the focus back.
+        keys(&mut search, &data, &[Key::Up]);
+        draw(&mut search);
+        assert_eq!(search.focus(), Some(0));
+        assert_eq!(search.point(x, FIELD_Y + 10.0, &data, 0), Output::redraw());
+        assert_eq!(search.focus(), None);
+        assert_eq!(
+            search.point(x, row(8), &data, 0),
+            Output::default(),
+            "no row"
+        );
     }
 
     #[test]

@@ -136,6 +136,7 @@ impl VodPlayer {
         let step = self.settings.skip_secs(dir);
         let position = self.playback.position_secs;
         let b = self.burst.get_or_insert(Burst {
+            programme: (),
             base: position,
             delta: 0,
             commit_at_ms: 0,

@@ -19,9 +19,28 @@
 //! of [`super::live`] never accumulates float error.
 //!
 //! Errors carry a line number and a kind, never the line: a playlist URI may carry a credential.
+//!
+//! **What a parse keeps is bounded by its text**: a URI is at most [`URI_CAP`] bytes, all of a
+//! playlist's together at most [`URI_BUDGET`], a media playlist at most [`MAX_SEGMENTS`] segments
+//! long, and the key and initialization section in force are shared by every segment they cover,
+//! so one tag is one allocation however many segments follow it.
 
+use std::cell::Cell;
+use std::sync::Arc;
 use tv_net::net::origin::Origin;
 use tv_net::stream::redirect::{resolve_location, Target};
+
+/// The longest URI a playlist may name, as resolved: a signed CDN URL is a kilobyte or two.
+pub const URI_CAP: usize = 8 << 10;
+
+/// The most segments a media playlist may list: a day of 3 s segments. Every segment keeps its
+/// own resolved URI, which a long base URL makes far longer than its line.
+pub const MAX_SEGMENTS: usize = 30_000;
+
+/// The most bytes of URIs one playlist may keep, all of them together: four times the largest
+/// playlist read (`source::PLAYLIST_CAP`). A redirect to a long path resolves every relative line
+/// to a URI as long, so the text alone does not bound them.
+pub const URI_BUDGET: usize = 16 << 20;
 
 /// Which playlist a text is.
 #[derive(Clone, Debug, PartialEq)]
@@ -103,7 +122,7 @@ pub struct InitSection {
     pub uri: String,
     pub range: Option<ByteRange>,
     /// The key in force where the tag appears.
-    pub key: Encryption,
+    pub key: Arc<Encryption>,
 }
 
 /// One media segment.
@@ -119,9 +138,10 @@ pub struct Segment {
     pub discontinuity: bool,
     /// The discontinuity sequence number this segment belongs to.
     pub discontinuity_sequence: u64,
-    pub key: Encryption,
-    /// The initialization section in force, if any.
-    pub map: Option<InitSection>,
+    /// The key in force: the one its tag made, shared with every other segment it covers.
+    pub key: Arc<Encryption>,
+    /// The initialization section in force, if any, shared the same way.
+    pub map: Option<Arc<InitSection>>,
     /// `EXT-X-GAP`: the segment is absent and must not be fetched.
     pub gap: bool,
 }
@@ -186,6 +206,12 @@ pub enum ParseError {
     ByteRangeWithoutBase { line: usize },
     /// A segment URI with no `EXTINF` before it.
     MissingDuration { line: usize },
+    /// A URI longer than [`URI_CAP`].
+    UriTooLong { line: usize },
+    /// A segment past the [`MAX_SEGMENTS`]th.
+    TooManySegments { line: usize },
+    /// A URI that takes the playlist's past [`URI_BUDGET`].
+    UriBudget { line: usize },
 }
 
 impl std::fmt::Display for ParseError {
@@ -199,6 +225,9 @@ impl std::fmt::Display for ParseError {
                 write!(f, "playlist line {line}: a byte range without an offset has no previous range to follow")
             }
             ParseError::MissingDuration { line } => write!(f, "playlist line {line}: a segment without EXTINF"),
+            ParseError::UriTooLong { line } => write!(f, "playlist line {line}: a URI longer than {URI_CAP} bytes"),
+            ParseError::TooManySegments { line } => write!(f, "playlist line {line}: more than {MAX_SEGMENTS} segments"),
+            ParseError::UriBudget { line } => write!(f, "playlist line {line}: its URIs add up to more than {URI_BUDGET} bytes"),
         }
     }
 }
@@ -302,21 +331,31 @@ pub fn resolve(base: &str, uri: &str) -> Option<String> {
 /// Parse `text`, answered from `url` (the EFFECTIVE URL, after redirects).
 pub fn parse(text: &str, url: &str) -> Result<Playlist, ParseError> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    // Walked twice (a master is told by its tag), never collected: a text of line breaks makes a
+    // vector many times its size.
     let mut lines = text.lines().map(str::trim).enumerate().map(|(i, l)| (i + 1, l));
     match lines.find(|(_, l)| !l.is_empty()) {
         Some((_, first)) if first.starts_with("#EXTM3U") => {}
         _ => return Err(ParseError::NotAPlaylist),
     }
     let base = base_of(url);
+    let kept = Cell::new(0usize);
     let resolve_at = |uri: &str, line: usize| -> Result<String, ParseError> {
         let b = base.as_ref().ok_or(ParseError::BadUri { line })?;
-        resolve_location(b, uri).map(|t| t.url()).ok_or(ParseError::BadUri { line })
+        let url = resolve_location(b, uri).map(|t| t.url()).ok_or(ParseError::BadUri { line })?;
+        if url.len() > URI_CAP {
+            return Err(ParseError::UriTooLong { line });
+        }
+        kept.set(kept.get() + url.len());
+        if kept.get() > URI_BUDGET {
+            return Err(ParseError::UriBudget { line });
+        }
+        Ok(url)
     };
-    let lines: Vec<(usize, &str)> = lines.collect();
-    if lines.iter().any(|(_, l)| l.starts_with("#EXT-X-STREAM-INF")) {
-        parse_master(&lines, &resolve_at).map(Playlist::Master)
+    if lines.clone().any(|(_, l)| l.starts_with("#EXT-X-STREAM-INF")) {
+        parse_master(lines, &resolve_at).map(Playlist::Master)
     } else {
-        parse_media(&lines, &resolve_at).map(Playlist::Media)
+        parse_media(lines, &resolve_at).map(Playlist::Media)
     }
 }
 
@@ -330,10 +369,10 @@ fn tag_value<'a>(line: &'a str, tag: &str) -> Option<&'a str> {
     rest.strip_prefix(':')
 }
 
-fn parse_master(lines: &[(usize, &str)], resolve: &Resolver<'_>) -> Result<MasterPlaylist, ParseError> {
+fn parse_master<'a>(lines: impl Iterator<Item = (usize, &'a str)>, resolve: &Resolver<'_>) -> Result<MasterPlaylist, ParseError> {
     let mut m = MasterPlaylist::default();
     let mut pending: Option<(usize, Variant)> = None;
-    for &(n, line) in lines {
+    for (n, line) in lines {
         if line.is_empty() {
             continue;
         }
@@ -419,7 +458,7 @@ fn key_of(v: &str, n: usize, resolve: &Resolver<'_>) -> Result<(Encryption, bool
     Ok((Encryption::Aes128 { uri: resolve(uri.text(), n)?, iv }, true))
 }
 
-fn parse_media(lines: &[(usize, &str)], resolve: &Resolver<'_>) -> Result<MediaPlaylist, ParseError> {
+fn parse_media<'a>(lines: impl Iterator<Item = (usize, &'a str)>, resolve: &Resolver<'_>) -> Result<MediaPlaylist, ParseError> {
     let mut target: Option<u64> = None;
     let mut media_sequence = 0u64;
     let mut discontinuity_sequence = 0u64;
@@ -432,20 +471,20 @@ fn parse_media(lines: &[(usize, &str)], resolve: &Resolver<'_>) -> Result<MediaP
     let mut range: Option<(usize, u64, Option<u64>)> = None;
     let mut discontinuity = false;
     let mut gap = false;
-    // State that applies until changed.
-    let mut key = Encryption::Clear;
+    // State that applies until changed, shared by the segments it applies to.
+    let mut key = Arc::new(Encryption::Clear);
     // Several `EXT-X-KEY` tags in a row may describe the SAME segments for different key systems
     // (an identity key beside a DRM one); the identity one wins whatever the order. So a DRM
     // system's tag does not displace an identity tag of its own group (the key tags since the last
     // segment); every other key tag replaces the key in force.
     let mut key_group_open = false;
     let mut key_is_identity = true;
-    let mut map: Option<InitSection> = None;
+    let mut map: Option<Arc<InitSection>> = None;
     // The resource and end of the last sub-range, for a range with no offset.
     let mut last_range: Option<(String, u64)> = None;
     let mut disc_seq_now: Option<u64> = None;
 
-    for &(n, line) in lines {
+    for (n, line) in lines {
         if line.is_empty() {
             continue;
         }
@@ -453,6 +492,9 @@ fn parse_media(lines: &[(usize, &str)], resolve: &Resolver<'_>) -> Result<MediaP
             let Some(d) = duration.take() else {
                 return Err(ParseError::MissingDuration { line: n });
             };
+            if segments.len() >= MAX_SEGMENTS {
+                return Err(ParseError::TooManySegments { line: n });
+            }
             let uri = resolve(line, n)?;
             let byte_range = match range.take() {
                 Some((_, len, Some(off))) => Some(ByteRange { length: len, offset: off }),
@@ -472,7 +514,7 @@ fn parse_media(lines: &[(usize, &str)], resolve: &Resolver<'_>) -> Result<MediaP
                 range: byte_range,
                 discontinuity,
                 discontinuity_sequence: dseq,
-                key: key.clone(),
+                key: Arc::clone(&key),
                 map: map.clone(),
                 gap,
             });
@@ -508,7 +550,7 @@ fn parse_media(lines: &[(usize, &str)], resolve: &Resolver<'_>) -> Result<MediaP
         } else if let Some(v) = tag_value(line, "#EXT-X-KEY") {
             let (k, identity) = key_of(v, n, resolve)?;
             if identity || !key_group_open || !key_is_identity {
-                key = k;
+                key = Arc::new(k);
                 key_is_identity = identity;
             }
             key_group_open = true;
@@ -522,7 +564,7 @@ fn parse_media(lines: &[(usize, &str)], resolve: &Resolver<'_>) -> Result<MediaP
                 }
                 None => None,
             };
-            map = Some(InitSection { uri: resolve(uri.text(), n)?, range, key: key.clone() });
+            map = Some(Arc::new(InitSection { uri: resolve(uri.text(), n)?, range, key: Arc::clone(&key) }));
         }
         // Every other tag, and comments, are skipped (RFC 8216 §6.3.1).
     }
@@ -704,7 +746,7 @@ mod tests {
              #EXT-X-KEY:METHOD=AES-128,URI=\"k7\"\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXT-X-KEY:METHOD=NONE\n\
              #EXTINF:6,\nnone-after-map.ts\n",
         );
-        let keys: Vec<&Encryption> = m.segments.iter().map(|s| &s.key).collect();
+        let keys: Vec<&Encryption> = m.segments.iter().map(|s| &*s.key).collect();
         assert_eq!(keys[0], &Encryption::Clear);
         let mut iv = [0u8; 16];
         for (i, b) in iv.iter_mut().enumerate() {
@@ -747,9 +789,9 @@ mod tests {
         );
         let m0 = m.segments[0].map.as_ref().unwrap();
         assert_eq!(m0.uri, "https://cdn.example:443/live/chan/init.mp4");
-        assert!(matches!(m0.key, Encryption::Aes128 { .. }));
+        assert!(matches!(*m0.key, Encryption::Aes128 { .. }));
         let m1 = m.segments[1].map.as_ref().unwrap();
-        assert_eq!((m1.uri.as_str(), &m1.key), ("https://cdn.example:443/live/chan/init2.mp4", &Encryption::Clear));
+        assert_eq!((m1.uri.as_str(), &*m1.key), ("https://cdn.example:443/live/chan/init2.mp4", &Encryption::Clear));
     }
 
     #[test]
@@ -764,6 +806,50 @@ mod tests {
         assert_eq!(parse("#EXTM3U\n#EXT-X-TARGETDURATION:-1\n", BASE), Err(ParseError::BadTag { line: 2 }));
         assert_eq!(parse("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=x\na.m3u8\n", BASE), Err(ParseError::BadTag { line: 2 }));
         assert_eq!(parse("#EXTM3U\n#EXT-X-STREAM-INF:CODECS=\"unterminated\na.m3u8\n", BASE), Err(ParseError::BadTag { line: 2 }));
+    }
+
+    /// What a parse keeps is bounded by its text: the key and initialization section in force are
+    /// one allocation for every segment they cover, and a URI past [`URI_CAP`] or a segment past
+    /// [`MAX_SEGMENTS`] is refused. A 1 MiB key URI over a quarter of a million `EXTINF:0` lines
+    /// (a 4 MiB playlist) used to be a copy of it per segment.
+    #[test]
+    fn a_parse_is_bounded_by_its_text() {
+        let playlist = |key_uri: &str, segments: usize| {
+            let mut t = format!(
+                "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-KEY:METHOD=AES-128,URI=\"{key_uri}\"\n#EXT-X-MAP:URI=\"init.mp4\"\n"
+            );
+            for _ in 0..segments {
+                t.push_str("#EXTINF:0,\na\n");
+            }
+            t
+        };
+        assert_eq!(parse(&playlist(&"k".repeat(URI_CAP), 1), BASE).err(), Some(ParseError::UriTooLong { line: 3 }));
+        let m = media(&playlist("k", MAX_SEGMENTS));
+        let (first, last) = (&m.segments[0], &m.segments[MAX_SEGMENTS - 1]);
+        assert!(Arc::ptr_eq(&first.key, &last.key), "one key for every segment");
+        assert_eq!(Arc::strong_count(&first.key), MAX_SEGMENTS + 1, "the segments and the init section");
+        let (fm, lm) = (first.map.as_ref().unwrap(), last.map.as_ref().unwrap());
+        assert!(Arc::ptr_eq(fm, lm), "one init section for every segment");
+        assert_eq!(
+            parse(&playlist("k", MAX_SEGMENTS + 1), BASE).err(),
+            Some(ParseError::TooManySegments { line: 6 + 2 * MAX_SEGMENTS })
+        );
+    }
+
+    /// A playlist answered from a long path (a redirect's) resolves every one-letter line to a URI
+    /// just under [`URI_CAP`]: what they add up to is refused past [`URI_BUDGET`], for a media
+    /// playlist and a master alike, while as many URIs as fit in it still parse.
+    #[test]
+    fn the_uris_a_parse_keeps_are_bounded_in_all() {
+        let base = format!("https://cdn.example:443/{}index.m3u8", "d/".repeat(3990));
+        let each = resolve(&base, "a").unwrap().len();
+        assert!(each < URI_CAP && each > URI_CAP - 200, "{each}");
+        let fit = URI_BUDGET / each;
+        let media_of = |n: usize| "#EXTM3U\n#EXT-X-TARGETDURATION:6\n".to_owned() + &"#EXTINF:6,\na\n".repeat(n);
+        assert!(matches!(parse(&media_of(fit), &base), Ok(Playlist::Media(m)) if m.segments.len() == fit));
+        assert_eq!(parse(&media_of(fit + 1), &base).err(), Some(ParseError::UriBudget { line: 3 + 2 * fit + 1 }));
+        let master = "#EXTM3U\n".to_owned() + &"#EXT-X-STREAM-INF:BANDWIDTH=1\na\n".repeat(fit + 1);
+        assert_eq!(parse(&master, &base).err(), Some(ParseError::UriBudget { line: 2 + 2 * fit + 1 }));
     }
 
     #[test]

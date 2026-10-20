@@ -3,8 +3,8 @@
 //! transport, and a loopback origin serving real MPEG-TS segments: a live channel as a sliding
 //! window of six 6 s segments, and archive playlists (`EVENT` + `ENDLIST`).
 //!
-//! Ignored by default: they run in real time (about six minutes together). They provision
-//! themselves and skip, saying why, when they cannot:
+//! Ignored by default: they run in real time (about twelve minutes together with the defaults
+//! below). They provision themselves and skip, saying why, when they cannot:
 //!
 //! - The demuxer's libraries: `WEBOSIPTV_APP_DIR` when set; else the bundled FFmpeg that
 //!   `cargo xtask ffmpeg --host` stages in `pkg/` (the exact build the TV ships); else `-wi` links
@@ -14,6 +14,8 @@
 //!   by the `ffmpeg` on `PATH` under `target/e2e-fixtures/` (35 min of 320x180 H.264 + AAC in 6 s
 //!   segments; 3 min with two AAC tracks tagged `pol` and `eng`) and reused.
 //! - `WEBOSIPTV_E2E_MINUTES`: how long the live channel plays (default 2; the soak is 30).
+//! - `WEBOSIPTV_E2E_PCM`: the memory tests decode the audio to PCM, as webOS 10+ does (macOS only:
+//!   they read libmalloc's heap in use).
 //!
 //! `cargo xtask ffmpeg --host`, then
 //! `cargo test -p tv_media --features hostsim e2e_ -- --ignored --test-threads=1 --nocapture`
@@ -54,7 +56,14 @@ fn fixture_from(var: &str, two_audio: bool, at_least: usize) -> Option<std::sync
             }
         },
     };
-    let list = std::fs::read_to_string(dir.join("full.m3u8")).ok()?;
+    // A relative path is read from the crate's directory, where cargo runs the tests.
+    let list = match std::fs::read_to_string(dir.join("full.m3u8")) {
+        Ok(list) => list,
+        Err(e) => {
+            eprintln!("skipped: no fixture playlist at {} ({e})", dir.join("full.m3u8").display());
+            return None;
+        }
+    };
     let segments: Vec<Vec<u8>> = list
         .lines()
         .filter(|l| l.ends_with(".ts"))
@@ -174,9 +183,19 @@ fn serve_segments(o: &Origin, fx: &Fixture, range: std::ops::Range<usize>) {
 
 /// A finite archive playlist of segments `range` (the provider's `EVENT` + `ENDLIST` shape).
 fn archive(range: std::ops::Range<usize>) -> Answer {
-    let mut p = format!("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:{}\n#EXT-X-PLAYLIST-TYPE:EVENT\n", range.start);
-    for i in range {
-        p.push_str(&format!("#EXTINF:6.000,\n{}\n", seg_path(i)));
+    archive_with_breaks(&[range])
+}
+
+/// [`archive`] of `runs`, an `EXT-X-DISCONTINUITY` before each run after the first.
+fn archive_with_breaks(runs: &[std::ops::Range<usize>]) -> Answer {
+    let mut p = format!("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:{}\n#EXT-X-PLAYLIST-TYPE:EVENT\n", runs[0].start);
+    for (n, run) in runs.iter().enumerate() {
+        if n > 0 {
+            p.push_str("#EXT-X-DISCONTINUITY\n");
+        }
+        for i in run.clone() {
+            p.push_str(&format!("#EXTINF:6.000,\n{}\n", seg_path(i)));
+        }
     }
     p.push_str("#EXT-X-ENDLIST\n");
     Answer::playlist(p)
@@ -570,6 +589,59 @@ fn e2e_a_programme_longer_than_one_shift_answer_is_played_in_parts() {
     rig.stop();
 }
 
+/// **A time shift of the programme on air plays on in one stream**. The shift answer
+/// ends at the archive's edge as it was when asked for (`EVENT` + `ENDLIST`, the edge advancing a
+/// segment per 6 s of wall time); 90 s behind live, the C1 played that as one Load per ~95 s
+/// part. Followed, the one part plays past its first answer's end with no second start.
+#[test]
+#[ignore]
+fn e2e_a_time_shift_of_the_programme_on_air_plays_past_the_archive_edge_without_a_reload() {
+    let Some(fx) = fixture() else { return };
+    let _serial = tv_base::testlock::serial();
+    let _sink = ClockSink::arm();
+    let o = Origin::spawn();
+    serve_segments(&o, &fx, 0..fx.segments.len());
+    // Ten minutes into a programme on air: segment 99 (594-600 s) is the archive's edge now.
+    let start = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64 - 600;
+    let base = o.url("/ch3/mono.m3u8?token=e2e-secret");
+    let (t0, last) = (Instant::now(), fx.segments.len() - 1);
+    o.route(&format!("/ch3/mono.m3u8?token=e2e-secret&utc={start}"), move || {
+        let edge = (99 + (t0.elapsed().as_secs_f64() / SEG_S) as usize).min(last);
+        let mut p =
+            String::from("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n");
+        for i in 0..=edge {
+            p.push_str(&format!("#EXTINF:6.000,\n{}\n", seg_path(i)));
+        }
+        p.push_str("#EXT-X-ENDLIST\n");
+        Answer::playlist(p)
+    });
+    let live = "/ch3/live.m3u8?token=e2e-secret";
+    serve_live(&o, live, &fx, 100);
+    let mut rig = Rig::new();
+    rig.pb.play_catchup(Catchup {
+        start,
+        end: start + 3600,
+        offset_secs: 510,
+        window: None,
+        shift: Some(Arc::new(move |utc| format!("{base}&utc={utc}"))),
+        live_url: o.url(live),
+        headers: crate::headers::RequestHeaders::none(),
+        at_end: AtEnd::Continue,
+    });
+    assert!(rig.run_until(Duration::from_secs(20), |s, _| s.state == State::Playing), "no picture within 20 s");
+    let played_on = rig.run_until(Duration::from_secs(120), |s, _| s.catchup.is_some_and(|c| c.position_ms >= 615_000));
+    let at = rig.pb.status().catchup.unwrap();
+    eprintln!("e2e: time shift at {} ms, {:?}", at.position_ms, rig.pb.status().state);
+    assert!(played_on, "did not play past the first answer's end (600 s): {} ms", at.position_ms);
+    let starts = rig.events.iter().filter(|(_, e)| matches!(e, Event::FirstFrame { .. })).count();
+    assert_eq!(starts, 1, "one start, no part reloads: {:?}", rig.events);
+    let playlists: Vec<String> = o.paths().into_iter().filter(|p| p.starts_with("/ch3/mono.m3u8")).collect();
+    assert!(playlists.iter().all(|p| p.ends_with(&format!("utc={start}"))), "only the one part asked for");
+    assert!(playlists.len() >= 3, "its playlist asked for again as the edge grew: {}", playlists.len());
+    assert_eq!(recovered(&rig.events), 0);
+    rig.stop();
+}
+
 /// **Zapping**: twenty channel changes between two channels, each a clean teardown and a fresh
 /// start with its own first frame; the last one plays on.
 #[test]
@@ -595,6 +667,202 @@ fn e2e_twenty_zaps_each_tear_down_and_start_with_a_first_frame() {
     assert!(player::playpos_ns() - p0 >= 4_000_000_000, "the last channel plays on");
     assert_eq!(recovered(&rig.events), 0);
     rig.stop();
+}
+
+/// The process's malloc heap in use, in kB: every zone, so FFmpeg's and curl's allocations as well
+/// as ours. `None` off macOS, where the memory tests skip.
+fn heap_kb() -> Option<usize> {
+    heap_stats_kb().map(|(used, _)| used)
+}
+
+/// The heap in use and what the allocator holds from the system for it (in use plus freed and
+/// kept), kB.
+fn heap_stats_kb() -> Option<(usize, usize)> {
+    #[cfg(target_os = "macos")]
+    {
+        #[repr(C)]
+        struct MStats {
+            bytes_total: usize,
+            chunks_used: usize,
+            bytes_used: usize,
+            chunks_free: usize,
+            bytes_free: usize,
+        }
+        extern "C" {
+            fn mstats() -> MStats;
+        }
+        // SAFETY: libmalloc's statistics call, no arguments; it sums every malloc zone.
+        let m = unsafe { mstats() };
+        Some((m.bytes_used / 1024, m.bytes_total / 1024))
+    }
+    #[cfg(not(target_os = "macos"))]
+    None
+}
+
+/// The memory tests' fixture (a short one will do), or `None` to skip, also off macOS.
+fn memory_fixture() -> Option<std::sync::Arc<Fixture>> {
+    let fx = fixture_from("WEBOSIPTV_E2E_HLS", false, 20)?;
+    if heap_kb().is_none() {
+        eprintln!("skipped: the heap is read on macOS only");
+        return None;
+    }
+    Some(fx)
+}
+
+/// Decode every audio track to PCM, as webOS 10+ does (`AudioFeed::SoftPcm`), when
+/// `WEBOSIPTV_E2E_PCM` is set: webOS 10 is published before anything reads the codec table.
+fn pcm_like_webos10() -> bool {
+    if std::env::var_os("WEBOSIPTV_E2E_PCM").is_none() {
+        return false;
+    }
+    tv_platform::tv::device::publish_info(tv_platform::tv::device::Info { major: 10, ..Default::default() });
+    tv_platform::devcaps::probe();
+    let feed = AudioFeed::decide("aac", 2, tv_platform::devcaps::caps(), SoftwareAudio::detected());
+    assert!(matches!(feed, AudioFeed::SoftPcm { .. }), "the AAC track decodes to PCM here: {feed:?}");
+    true
+}
+
+/// Stop, let the release finish, and read the heap ([`heap_stats_kb`]: in use, and held for it):
+/// what is left with nothing playing, so the queues' fill level (megabytes, varying by the
+/// second) is not in the number.
+fn stopped_heap_kb(rig: &mut Rig) -> (usize, usize) {
+    rig.stop();
+    let _ = rig.run_until(Duration::from_secs(2), |_, _| false);
+    heap_stats_kb().expect("measured on macOS")
+}
+
+/// What a session may leave behind on the heap: well under one segment of the C5's live stream,
+/// and far under the ~3 MB a 10-minute run there grew by.
+const RETAINED_BUDGET_KB: usize = 512;
+
+/// **Memory over a live run**: once a first play has made the one-time allocations, a
+/// live channel played for `WEBOSIPTV_E2E_MINUTES` leaves the heap where it was (stopped against
+/// stopped), and the heap in use while it plays is printed every 30 s. `WEBOSIPTV_E2E_PCM=1` plays
+/// it through the webOS 10+ software audio path. A fixture at the C5's rate (1080p25, ~6 Mbit/s)
+/// goes in `WEBOSIPTV_E2E_HLS`; it must outlast a minute plus the run.
+#[test]
+#[ignore]
+fn e2e_live_playback_retains_no_memory() {
+    let Some(fx) = memory_fixture() else { return };
+    let _serial = tv_base::testlock::serial();
+    let pcm = pcm_like_webos10();
+    let _sink = ClockSink::arm();
+    let minutes: u64 = std::env::var("WEBOSIPTV_E2E_MINUTES").ok().and_then(|m| m.parse().ok()).unwrap_or(2);
+    let o = Origin::spawn();
+    let live = "/ch9/mono.m3u8?token=e2e-secret";
+    serve_live(&o, live, &fx, 0);
+    let mut rig = Rig::new();
+    rig.pb.play_live(&o.url(live), crate::headers::RequestHeaders::none());
+    assert!(rig.run_until(Duration::from_secs(20), |s, _| s.first_frame_ms.is_some()), "no first frame within 20 s");
+    let _ = rig.run_until(Duration::from_secs(60), |_, _| false);
+    let (before, _) = stopped_heap_kb(&mut rig);
+    rig.pb.play_live(&o.url(live), crate::headers::RequestHeaders::none());
+    assert!(rig.run_until(Duration::from_secs(20), |s, _| s.first_frame_ms.is_some()), "no first frame within 20 s");
+    let (t0, mut next) = (Instant::now(), Duration::ZERO);
+    rig.run_until(Duration::from_secs(minutes * 60), |s, _| {
+        if t0.elapsed() >= next {
+            eprintln!("e2e: mem t={:>4} s heap={} kB pcm={pcm}", t0.elapsed().as_secs(), heap_kb().unwrap_or(0));
+            next += Duration::from_secs(30);
+        }
+        s.state != State::Playing
+    });
+    assert_eq!(rig.pb.status().state, State::Playing, "still playing at the end");
+    let (after, _) = stopped_heap_kb(&mut rig);
+    eprintln!("e2e: mem stopped before {before} kB, after {minutes} min {after} kB ({:+} kB) pcm={pcm}", after as i64 - before as i64);
+    assert!(after < before + RETAINED_BUDGET_KB, "{minutes} min of live play retained {} kB", after - before);
+}
+
+/// **Memory over a zap series** (the C5's ten-zap check): after a first zap, ten more
+/// between two channels, each played to its first frame and on for 3 s, leave the heap where the
+/// first left it (stopped against stopped). `WEBOSIPTV_E2E_PCM=1` as above.
+#[test]
+#[ignore]
+fn e2e_ten_zaps_retain_no_memory() {
+    let Some(fx) = memory_fixture() else { return };
+    let _serial = tv_base::testlock::serial();
+    let pcm = pcm_like_webos10();
+    let _sink = ClockSink::arm();
+    let o = Origin::spawn();
+    let (a, b) = ("/za/mono.m3u8?token=e2e-secret", "/zb/mono.m3u8?token=e2e-secret");
+    serve_live(&o, a, &fx, 0);
+    serve_live(&o, b, &fx, fx.segments.len() / 2);
+    let mut rig = Rig::new();
+    let zap = |rig: &mut Rig, i: usize| {
+        rig.pb.play_live(&o.url(if i.is_multiple_of(2) { a } else { b }), crate::headers::RequestHeaders::none());
+        assert!(rig.run_until(Duration::from_secs(15), |s, _| s.first_frame_ms.is_some()), "zap {i}: no first frame");
+        let _ = rig.run_until(Duration::from_secs(3), |_, _| false);
+    };
+    zap(&mut rig, 0);
+    let (before, _) = stopped_heap_kb(&mut rig);
+    for i in 1..=10 {
+        zap(&mut rig, i);
+        eprintln!("e2e: mem zap {i} heap={} kB", heap_kb().unwrap_or(0));
+    }
+    let (after, _) = stopped_heap_kb(&mut rig);
+    eprintln!("e2e: mem stopped after the first zap {before} kB, after ten more {after} kB ({:+} kB) pcm={pcm}", after as i64 - before as i64);
+    assert!(after < before + RETAINED_BUDGET_KB, "ten zaps retained {} kB", after - before);
+}
+
+/// **Memory after a catch-up** (the C1 stayed ~80 MB higher after one): an archive is
+/// read ahead to the video lane's cap (48 MiB), then the playback returns to live. Stopped, the
+/// heap in use is back where a live-only session left it, so nothing holds the queue's memory.
+/// What the allocator keeps mapped for it (`held`, about the queue's peak here) is printed beside
+/// it: on the TV that is the RSS glibc's arenas kept, which `aq::release_freed_memory` trims at
+/// the stop. The queue only fills with a
+/// fixture at a TV's bitrate in `WEBOSIPTV_E2E_HLS` (a 1080p one, say); the default
+/// one fills it to a few MB.
+#[test]
+#[ignore]
+fn e2e_a_catchup_and_the_return_to_live_retain_no_memory() {
+    let Some(fx) = memory_fixture() else { return };
+    let _serial = tv_base::testlock::serial();
+    let _sink = ClockSink::arm();
+    let o = Origin::spawn();
+    let live = "/ch8/mono.m3u8?token=e2e-secret";
+    serve_live(&o, live, &fx, 0);
+    let n = fx.segments.len().min(60);
+    serve_segments(&o, &fx, 0..n);
+    let window = format!("/ch8/mono-{PROGRAMME}-{}.m3u8?token=e2e-secret", n * 6);
+    o.put(&window, archive(0..n));
+    let mut rig = Rig::new();
+    let play_live = |rig: &mut Rig| {
+        rig.pb.play_live(&o.url(live), crate::headers::RequestHeaders::none());
+        assert!(rig.run_until(Duration::from_secs(20), |s, _| s.first_frame_ms.is_some()), "no first frame within 20 s");
+        let _ = rig.run_until(Duration::from_secs(15), |_, _| false);
+    };
+    play_live(&mut rig);
+    let _ = stopped_heap_kb(&mut rig);
+    play_live(&mut rig);
+    let (before, before_held) = stopped_heap_kb(&mut rig);
+    rig.pb.play_catchup(Catchup {
+        start: PROGRAMME,
+        end: PROGRAMME + n as i64 * 6,
+        offset_secs: 0,
+        window: Some(o.url(&window)),
+        shift: None,
+        live_url: o.url(live),
+        headers: crate::headers::RequestHeaders::none(),
+        at_end: AtEnd::ReturnToLive,
+    });
+    assert!(rig.run_until(Duration::from_secs(20), |s, _| s.state == State::Playing), "no picture within 20 s");
+    let mut peak = 0;
+    let _ = rig.run_until(Duration::from_secs(30), |_, _| {
+        peak = peak.max(heap_kb().unwrap_or(0));
+        false
+    });
+    let (during, during_held) = heap_stats_kb().unwrap();
+    rig.pb.go_live();
+    assert!(rig.run_until(Duration::from_secs(20), |s, _| s.mode == Mode::Live && s.first_frame_ms.is_some()), "live again");
+    let _ = rig.run_until(Duration::from_secs(15), |_, _| false);
+    let (live_again, live_held) = heap_stats_kb().unwrap();
+    let (after, after_held) = stopped_heap_kb(&mut rig);
+    eprintln!(
+        "e2e: mem catch-up: stopped before {before} kB (held {before_held}), catch-up peak {peak} kB, at 30 s {during} kB (held {during_held}), \
+         live again {live_again} kB (held {live_held}), stopped after {after} kB (held {after_held}); {:+} kB in use, {:+} kB held",
+        after as i64 - before as i64,
+        after_held as i64 - before_held as i64
+    );
+    assert!(after < before + RETAINED_BUDGET_KB, "a catch-up and the return to live retained {} kB", after - before);
 }
 
 /// **Suspend and resume** (the app in the background): the pipeline goes, the programme keeps
@@ -635,3 +903,7 @@ fn e2e_a_suspended_catchup_resumes_at_its_position() {
     assert!(after + 7_000 >= before && after <= before + 2_000, "resumed at the position (by segment): {before} -> {after}");
     rig.stop();
 }
+
+/// An archive whose ad breaks make its timestamps jump (`hls::timeline`), on this file's rig.
+#[path = "hls/discontinuity_e2e_tests.rs"]
+mod discontinuity;

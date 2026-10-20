@@ -1,7 +1,7 @@
 //! Drawing a VOD section and its player: [`build`] and [`player`] lay them out into a display
 //! list when the screen's generation moves, measuring and fitting text then, never while
 //! painting. Colours, type and spacing come from [`crate::theme`]; the seek bar is the catch-up
-//! playback panel's.
+//! playback panel's. [`spots`] says what the pointer can focus on the same layout.
 
 use std::rc::Rc;
 
@@ -19,6 +19,7 @@ use crate::data::VodSection;
 use crate::draw::{self, HAlign, Piece};
 use crate::icons::Icon;
 use crate::lists::Cursor;
+use crate::point::{Spot, Spots};
 use crate::theme::{self, radius, size, space};
 
 /// Between the parts of a row's second line.
@@ -160,6 +161,43 @@ pub fn build(s: &VodScreen, m: &dyn Measure, out: &mut Vec<Piece>) {
                 item_row(out, m, row, entry.poster(), &line, at_focus);
             }
         }
+    }
+}
+
+/// [`Spot`] areas of a section: the left column (categories or seasons) and the list on the
+/// right (movies, series or episodes).
+pub const LEFT: u8 = 0;
+pub const RIGHT: u8 = 1;
+
+/// What the pointer can focus: the rows on screen of both columns.
+pub fn spots(s: &VodScreen, out: &mut Spots) {
+    out.clear();
+    if s.catalog.entries.is_empty() {
+        return;
+    }
+    let (left, left_len, right, right_len) = match &s.series {
+        Some(series) => {
+            let episodes = series.seasons.get(s.seasons.index);
+            let episodes = episodes.map_or(0, |x| x.episodes.len());
+            (s.seasons, series.seasons.len(), s.episodes, episodes)
+        }
+        None => {
+            let items = s.catalog.list_len(s.categories.index);
+            (s.categories, s.catalog.categories.len(), s.items, items)
+        }
+    };
+    for (row, i) in left.visible(left_len, CATEGORY_ROWS).enumerate() {
+        let y = geom::TOP + row as f32 * geom::COL_ROW_H;
+        let r = Rect::new(geom::X, y, geom::COL_W, geom::COL_ROW_H);
+        out.add(r, Spot::row(LEFT, i));
+    }
+    let w = SCR_W - geom::LIST_X - geom::X;
+    for (row, i) in right.visible(right_len, ITEM_ROWS).enumerate() {
+        let y = geom::TOP + row as f32 * geom::ROW_H;
+        out.add(
+            Rect::new(geom::LIST_X, y, w, geom::ROW_H),
+            Spot::row(RIGHT, i),
+        );
     }
 }
 

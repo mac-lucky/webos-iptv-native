@@ -1,9 +1,11 @@
 //! TiviMate-style screens built on `tv_ui`.
 
-// Shared by every screen: look, icons, remote keys, time strings, display lists.
+// Shared by every screen: look, icons, remote keys and pointer, time strings, display lists.
 pub mod draw;
 pub mod icons;
 pub mod input;
+pub mod number;
+pub mod point;
 pub mod theme;
 pub mod time;
 

@@ -1799,7 +1799,13 @@ extern "C" fn read_cb(op: *mut c_void, dst: *mut u8, n: c_int) -> c_int {
                 // Retries, skips and the live wait are the HLS source's own; what reaches here is
                 // bytes, the end of a VOD stream, or a failure it has already named in the log.
                 Src::Hls(h) => match h.read(std::slice::from_raw_parts_mut(dst, n as usize)) {
-                    Ok(got) => got as c_int,
+                    Ok(got) => {
+                        // A followed archive grew: the part is longer than its first answer said.
+                        if let Some(us) = h.take_grown() {
+                            publish_hls_duration(us);
+                        }
+                        got as c_int
+                    }
                     Err(e) => {
                         hls_failed(&e);
                         -1
@@ -2090,6 +2096,27 @@ unsafe fn pts_ns_opt(pkt: *const AVPacket, st: *mut AVStream) -> Option<i64> {
         (*pkt).dts
     };
     (t != AV_NOPTS_VALUE).then(|| av_rescale_q(t, stream_time_base(st), NS_TB))
+}
+
+/// Put an HLS packet on the stream's one timeline across its discontinuities
+/// ([`crate::hls::timeline`]): its timestamps moved by the shift of `run`, the run of segments its
+/// bytes came from. `steers`: the video or the audio played, whose timestamps decide a new run's
+/// shift; any other stream follows. `pkt` is the packet just read, `st` its stream.
+unsafe fn hls_place(tl: &mut crate::hls::Timeline, run: u64, pkt: *mut AVPacket, st: *mut AVStream, steers: bool) {
+    let tb = stream_time_base(st);
+    let shift = match pts_ns_opt(pkt, st) {
+        Some(ts) if steers => tl.place(run, (*pkt).stream_index, ts, av_rescale_q((*pkt).duration.max(0), tb, NS_TB)),
+        _ => tl.shift_of(run),
+    };
+    if shift != 0 {
+        let d = av_rescale_q(shift, NS_TB, tb);
+        if (*pkt).pts != AV_NOPTS_VALUE {
+            (*pkt).pts = (*pkt).pts.saturating_add(d);
+        }
+        if (*pkt).dts != AV_NOPTS_VALUE {
+            (*pkt).dts = (*pkt).dts.saturating_add(d);
+        }
+    }
 }
 
 unsafe fn free_ptr(p: *mut c_void) {
@@ -2999,6 +3026,24 @@ pub(crate) mod hls_handoff {
     }
 }
 
+/// How far into its playlist time the archive part being played is wanted, microseconds, while
+/// its programme is on air; -1 for anything else. Set by `playback` for every start (`follow_archive`)
+/// and read by every open of that start, its seek reloads included.
+static HLS_FOLLOW_US: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(-1);
+
+/// Have the archive part the next start opens followed past its end up to `until_us` of its
+/// playlist time ([`crate::hls::HlsSource::follow_until`]), or not (`None`).
+pub(crate) fn follow_archive(until_us: Option<u64>) {
+    let v = until_us.map_or(-1, |us| i64::try_from(us).unwrap_or(i64::MAX));
+    HLS_FOLLOW_US.store(v, Ordering::Release);
+}
+
+/// A finite HLS stream's duration, `us` microseconds of its playlist, as the stream's duration.
+fn publish_hls_duration(us: u64) {
+    let ns = i64::try_from(us).unwrap_or(i64::MAX / 1000).saturating_mul(1000);
+    SHARED.duration_ns.store(ns, Ordering::Relaxed);
+}
+
 /// Publishes the same diagnostics the progressive opens do, and a VOD stream's duration from its
 /// playlist (libavformat cannot know it without a file size).
 ///
@@ -3043,14 +3088,16 @@ fn open_hls(
         }
     };
     match opened {
-        Ok(h) => {
+        Ok(mut h) => {
+            if let Ok(until_us) = u64::try_from(HLS_FOLLOW_US.load(Ordering::Acquire)) {
+                h.follow_until(until_us);
+            }
             SHARED.file_size.store(-1, Ordering::Release);
             SHARED.dg_http_status.store(200, Ordering::Relaxed);
             let base_ns = if h.in_playlist_time() { i64::try_from(h.start_us()).unwrap_or(0).saturating_mul(1000) } else { -1 };
             SHARED.hls_vod_base_ns.store(base_ns, Ordering::Release);
             if !h.is_live() {
-                let dur_ns = i64::try_from(h.duration_us()).unwrap_or(i64::MAX / 1000).saturating_mul(1000);
-                SHARED.duration_ns.store(dur_ns, Ordering::Relaxed);
+                publish_hls_duration(h.duration_us());
             }
             crate::player::log(&format!(
                 "ff: open hls {}{}",
@@ -4091,6 +4138,8 @@ pub fn demux(
                 }
 
                 let mut video_start = VideoStart::default();
+                // HLS: the shifts that keep one timeline across the playlist's discontinuities.
+                let mut timeline = is_hls.then(crate::hls::Timeline::default);
                 // The video lane's pre-audio headroom (`PreAudioHeadroom`): granted at the first
                 // video push that WOULD PARK at the base cap with no audio yet, held until the
                 // engine's audio lead-in has been pushed, then released as the consumer drains.
@@ -4177,6 +4226,14 @@ pub fn demux(
                         break;
                     }
                     let si = (*pkt).stream_index;
+                    // Before anything below reads its timestamps. A packet with no position (the
+                    // frames after a PES's first) is in its stream's last packet's run. The stream
+                    // array is read afresh: a programme map naming a new PID (an ad break) adds a
+                    // stream, which can move it.
+                    if let (Some(tl), Src::Hls(h)) = (timeline.as_mut(), &state.src) {
+                        let run = tl.run_of(si, u64::try_from((*pkt).pos).ok(), |pos| h.run_at(pos));
+                        hls_place(tl, run, pkt, *(*fmt).streams.add(si as usize), si == vi || si == ai);
+                    }
                     if si == vi {
                         let is_key = if is_av1 {
                             let pkt_bytes: &[u8] = if (*pkt).data.is_null() {
@@ -4315,8 +4372,8 @@ pub fn demux(
                     } else if si == ai && FEED_AUDIO.load(Ordering::Relaxed) && pcm.is_some() {
                         // Anything in, PCM out: the packet may complete zero or more AUs, each with
                         // its own (sample-counted) pts. The lane bookkeeping runs per AU pushed,
-                        // exactly as for a demuxed one.
-                        let ast = *streams.add(ai as usize);
+                        // exactly as for a demuxed one. The stream array afresh (see above).
+                        let ast = *(*fmt).streams.add(ai as usize);
                         let pts_in = pts_ns(pkt, ast);
                         let out = pcm.as_mut().expect("checked").push(pkt, pts_in);
                         av_packet_unref(pkt);
@@ -4353,7 +4410,7 @@ pub fn demux(
                             break;
                         }
                     } else if si == ai && FEED_AUDIO.load(Ordering::Relaxed) {
-                        let ast = *streams.add(ai as usize);
+                        let ast = *(*fmt).streams.add(ai as usize);
                         let raw_audio: &[u8] = if (*pkt).data.is_null() { &[] } else { std::slice::from_raw_parts((*pkt).data, (*pkt).size.max(0) as usize) };
                         let frame_ns = adts_frame_ns(raw_audio).or_else(|| aac_adts.and_then(|(fi, _)| aac_frame_ns(fi))).unwrap_or(0);
                         let pts = audio_clock.stamp(pts_ns_opt(pkt, ast), frame_ns);

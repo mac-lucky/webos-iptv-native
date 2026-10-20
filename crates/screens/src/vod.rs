@@ -13,8 +13,9 @@
 //! front, over the full-screen video (the section itself is not drawn then); stopping there
 //! ([`Command::StopVod`]) brings the section back with the new position. Keys: Up/Down move
 //! (held: repeat), Right/OK go in, Left/Back come out, Back on the categories leaves for the
-//! guide. Like every screen this is a pure state machine; the view is laid out once per change
-//! ([`view`]).
+//! guide. The pointer focuses the row it rests on in either column; the wheel steps through
+//! them, not through the player. Like every screen this is a pure state machine; the view is
+//! laid out once per change ([`view`]).
 
 pub mod catalog;
 pub mod fake;
@@ -37,6 +38,7 @@ use crate::input::{Action, Hold, Key, Press};
 use crate::lists::Cursor;
 use crate::panels::{Nav, Page, PanelKey, Row, SidePanel};
 use crate::player::PlayerSettings;
+use crate::point::{Spot, Spots};
 pub use catalog::{Catalog, Category, Entry, Mark, Season, Series};
 pub use player::VodPlayer;
 
@@ -85,6 +87,8 @@ pub struct VodScreen {
     player: Option<VodPlayer>,
     generation: u64,
     view: Cached,
+    /// What the pointer can focus in the section's last layout ([`view::spots`]).
+    spots: Spots,
     player_view: Cached,
 }
 
@@ -105,6 +109,7 @@ impl VodScreen {
             player: None,
             generation: 0,
             view: Cached::default(),
+            spots: Spots::default(),
             player_view: Cached::default(),
         };
         // Open on All rather than on what is being watched, as TiviMate does.
@@ -354,6 +359,45 @@ impl VodScreen {
         }
     }
 
+    /// The pointer on `spot` of the section: focus it as the keys would, without scrolling.
+    fn point_at(&mut self, spot: Spot) -> Output {
+        let look = |s: &Self| (s.focus, s.categories, s.items, s.seasons, s.episodes);
+        let before = look(self);
+        let i = spot.index;
+        match (spot.area, self.series.is_some()) {
+            (view::LEFT, false) => {
+                self.focus = Focus::Categories;
+                if self
+                    .categories
+                    .point(i, self.catalog.categories.len(), CATEGORY_ROWS)
+                {
+                    self.items = Cursor::default();
+                }
+            }
+            (view::LEFT, true) => {
+                let len = self.series.as_ref().map_or(0, |s| s.seasons.len());
+                self.focus = Focus::Seasons;
+                if self.seasons.point(i, len, CATEGORY_ROWS) {
+                    self.episodes = Cursor::default();
+                }
+            }
+            (view::RIGHT, false) => {
+                self.focus = Focus::Items;
+                self.items.point(i, self.items_len(), ITEM_ROWS);
+            }
+            (view::RIGHT, true) => {
+                self.focus = Focus::Episodes;
+                self.episodes
+                    .point(i, self.season_episodes().len(), ITEM_ROWS);
+            }
+            _ => {}
+        }
+        if look(self) == before {
+            return Output::default();
+        }
+        self.changed()
+    }
+
     /// What the player's key or tick did: when the item stopped, the section is in front again.
     fn after_player(&mut self, step: player::Step) -> Output {
         if step.done {
@@ -418,6 +462,24 @@ impl Screen for VodScreen {
             Focus::Seasons => self.key_seasons(key),
             Focus::Episodes => self.key_episodes(key, now_ms),
         }
+    }
+
+    /// The resume prompt's rows, or the section's; nothing while an item plays.
+    fn point(&mut self, x: f32, y: f32, _: &dyn TvData, _: u64) -> Output {
+        if self.player.is_some() {
+            return Output::default();
+        }
+        if let Some(prompt) = self.prompt.as_mut() {
+            return prompt.panel.point(x, y);
+        }
+        self.spots
+            .at(x, y)
+            .map_or_else(Output::default, |spot| self.point_at(spot))
+    }
+
+    /// Up and Down mean nothing to the item's player.
+    fn wheel(&self) -> bool {
+        self.player.is_none()
     }
 
     fn tick(&mut self, data: &dyn TvData, now_ms: u64) -> Output {
@@ -497,10 +559,15 @@ impl Screen for VodScreen {
             return;
         }
         let mut cached = std::mem::take(&mut self.view);
-        cached.prepare(self.generation, |out| view::build(self, m, out));
+        let mut spots = std::mem::take(&mut self.spots);
+        cached.prepare(self.generation, |out| {
+            view::build(self, m, out);
+            view::spots(self, &mut spots);
+        });
         self.view = cached;
+        self.spots = spots;
         self.view.paint(p, logos);
-        if let Some(prompt) = &self.prompt {
+        if let Some(prompt) = &mut self.prompt {
             prompt.panel.draw(p);
         }
     }

@@ -163,9 +163,13 @@ fn ok_previews_into_the_window_and_on_its_channel_plays_full_screen() {
 }
 
 #[test]
-fn long_back_closes_the_guide_from_pip_too() {
+fn back_leaves_pip_then_the_guide_through_the_groups_panel() {
     let data = data(12);
     let mut s = pip(&data);
-    let out = Screen::key(&mut s, Key::Back, Press::Long, &data, 0);
+    press(&mut s, &data, Key::Back);
+    assert_eq!(s.video_rect(), Some(geom::preview_rect()), "out of PiP");
+    press(&mut s, &data, Key::Back);
+    assert!(s.panel);
+    let out = press(&mut s, &data, Key::Back);
     assert!(out.navigate.contains(&Navigate::Close));
 }

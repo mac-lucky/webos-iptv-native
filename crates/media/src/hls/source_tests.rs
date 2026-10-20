@@ -125,6 +125,13 @@ impl Server {
         self.routes.borrow_mut().insert(url(path), Box::new(move |_| Ok(body.clone())));
     }
 
+    /// `/seg<q>.ts`, [`ts`]`(q)`, for every `q` of `seqs`.
+    fn put_segments(&self, seqs: impl IntoIterator<Item = u64>) {
+        for q in seqs {
+            self.put(&format!("/seg{q}.ts"), ts(q));
+        }
+    }
+
     fn route(&self, path: &str, f: impl FnMut(u64) -> Result<Vec<u8>, FetchError> + 'static) {
         self.routes.borrow_mut().insert(url(path), Box::new(f));
     }
@@ -159,6 +166,21 @@ fn read_all<T: Transport, C: Clock>(src: &mut HlsSource<T, C>) -> Result<Vec<u8>
             return Ok(out);
         }
         out.extend_from_slice(&buf[..n]);
+    }
+}
+
+/// [`read_all`] as a player held back by full queues reads: `ms_per_kb` of the clock pass for every
+/// kilobyte read.
+fn read_all_paced<T: Transport>(src: &mut HlsSource<T, FakeClock>, clock: &FakeClock, ms_per_kb: u64) -> Result<Vec<u8>, HlsError> {
+    let mut out = Vec::new();
+    let mut buf = vec![0u8; 1024];
+    loop {
+        let n = src.read(&mut buf)?;
+        if n == 0 {
+            return Ok(out);
+        }
+        out.extend_from_slice(&buf[..n]);
+        clock.sleep_ms(n as u64 * ms_per_kb / 1024);
     }
 }
 
@@ -202,9 +224,7 @@ fn a_master_resolves_to_the_best_variant_and_the_segments_concatenate() {
 fn a_vod_start_position_begins_at_the_segment_that_holds_it() {
     let s = Server::new();
     s.put("/v.m3u8", vod_playlist(0, 5, ""));
-    for n in 0..5 {
-        s.put(&format!("/seg{n}.ts"), ts(n));
-    }
+    s.put_segments(0..5);
     let mut src = s.open("/v.m3u8", Some(13_500_000)).unwrap();
     assert_eq!(src.start_us(), 12_000_000);
     assert_eq!(read_all(&mut src).unwrap(), [ts(2), ts(3), ts(4)].concat());
@@ -273,9 +293,7 @@ fn live_route(seq0: u64, window: u64, seg_s: u64, end_seq: Option<u64>) -> impl 
 fn live_starts_three_targets_behind_and_follows_the_window_at_the_rfc_cadence() {
     let s = Server::new();
     s.route("/live.m3u8", live_route(100, 6, 6, Some(112)));
-    for q in 100..=112 {
-        s.put(&format!("/seg{q}.ts"), ts(q));
-    }
+    s.put_segments(100..=112);
     let mut src = s.open("/live.m3u8", None).unwrap();
     assert!(src.is_live());
     assert_eq!(src.duration_us(), 0);
@@ -299,9 +317,7 @@ fn a_live_client_that_fell_behind_jumps_to_the_oldest_listed_segment() {
     let s = Server::new();
     // A 3-segment window of 2 s segments; the playlist is served as of the fake time.
     s.route("/live.m3u8", live_route(10, 3, 2, Some(30)));
-    for q in 10..=30 {
-        s.put(&format!("/seg{q}.ts"), ts(q));
-    }
+    s.put_segments(10..=30);
     // Every segment request costs 5 s of fake time, so the client falls behind a 2 s cadence.
     let clock = s.clock.clone();
     for q in 10..=30 {
@@ -324,6 +340,59 @@ fn a_live_client_that_fell_behind_jumps_to_the_oldest_listed_segment() {
     assert!(fetched.windows(2).any(|w| w[1] > w[0] + 1), "some segments expired unplayed: {fetched:?}");
     let want: Vec<u8> = fetched.iter().flat_map(|&q| ts(q)).collect();
     assert_eq!(got, want);
+}
+
+/// **A packager whose segments run far shorter than its target duration** (a live channel on the C1:
+/// `TARGETDURATION:22`, a six-segment window of a few seconds each): the window is shorter
+/// than three targets, so play starts at its oldest segment with the whole window, about 24 s,
+/// buffered. Reloading a whole target after each change let the window slide 5.5 segments
+/// between two reloads: the playhead caught up with the last segment fetched (the AU queue drained
+/// on the C1; on the C5 the window slid past the next segment, 'fell behind the live window').
+/// Here a player plays in real time from the first segment's request, and every segment must be
+/// requested before the playhead reaches it, in order, none skipped.
+#[test]
+fn a_live_window_of_short_segments_under_a_long_target_never_runs_dry() {
+    const SEG_MS: u64 = 4_000;
+    let route = |now_ms: u64| {
+        let newest = 100 + 5 + now_ms / SEG_MS;
+        let (newest, ended) = if newest >= 180 { (180, true) } else { (newest, false) };
+        let mut p = format!("#EXTM3U\n#EXT-X-TARGETDURATION:22\n#EXT-X-MEDIA-SEQUENCE:{}\n", newest - 5);
+        for q in newest - 5..=newest {
+            p.push_str(&format!("#EXTINF:4.000,\nseg{q}.ts\n"));
+        }
+        if ended {
+            p.push_str("#EXT-X-ENDLIST\n");
+        }
+        Ok(p.into_bytes())
+    };
+    let s = Server::new();
+    s.route("/live.m3u8", route);
+    s.put_segments(100..=180);
+    let mut src = s.open("/live.m3u8", None).unwrap();
+    read_all(&mut src).unwrap();
+    let fetched: Vec<(u64, u64)> = s
+        .seen
+        .0
+        .borrow()
+        .iter()
+        .filter_map(|(t, u, _)| Some((u.strip_prefix(&url("/seg"))?.strip_suffix(".ts")?.parse().ok()?, *t)))
+        .collect();
+    let (first, play0) = fetched[0];
+    assert_eq!(first, 100, "the window is shorter than three targets: its oldest segment");
+    let seqs: Vec<u64> = fetched.iter().map(|&(q, _)| q).collect();
+    assert_eq!(seqs, (100..=180).collect::<Vec<_>>(), "every segment, in order, none skipped");
+    for &(q, t) in &fetched {
+        let media_at = (q - first) * SEG_MS;
+        let playhead = t - play0;
+        assert!(
+            playhead + 1_000 <= media_at || q == first,
+            "segment {q} asked for at {t} ms, the playhead already at {playhead} ms of {media_at}"
+        );
+    }
+    let reloads = s.seen.times_of(&url("/live.m3u8"));
+    for w in reloads.windows(2) {
+        assert!(w[1] - w[0] >= SEG_MS, "never sooner than the last segment after a change: {reloads:?}");
+    }
 }
 
 #[test]
@@ -501,9 +570,7 @@ fn a_vod_segment_that_keeps_failing_is_an_error_and_a_live_one_is_skipped() {
     assert_eq!(src.delivered(), ts(0).len() as u64);
 
     let s = Server::new();
-    for n in [0, 2, 3] {
-        s.put(&format!("/seg{n}.ts"), ts(n));
-    }
+    s.put_segments([0, 2, 3]);
     s.put(
         "/live2.m3u8",
         "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:2,\nseg0.ts\n#EXTINF:2,\nseg1.ts\n#EXTINF:2,\nseg2.ts\n#EXTINF:2,\nseg3.ts\n",
@@ -524,9 +591,7 @@ fn a_vod_segment_that_keeps_failing_is_an_error_and_a_live_one_is_skipped() {
 fn teardown_ends_a_wait_and_every_later_read() {
     let s = Server::new();
     s.route("/live.m3u8", live_route(0, 3, 6, None));
-    for q in 0..100 {
-        s.put(&format!("/seg{q}.ts"), ts(q));
-    }
+    s.put_segments(0..100);
     let mut src = s.open("/live.m3u8", None).unwrap();
     let mut buf = vec![0u8; 1 << 16];
     while src.delivered() < (ts(0).len() * 3) as u64 {
@@ -558,9 +623,7 @@ fn gap_segments_are_not_fetched() {
 fn a_recorded_head_plus_the_rest_is_the_whole_stream_fetched_once() {
     let s = Server::new();
     s.put("/v.m3u8", vod_playlist(0, 3, ""));
-    for n in 0..3 {
-        s.put(&format!("/seg{n}.ts"), ts(n));
-    }
+    s.put_segments(0..3);
     let mut src = s.open("/v.m3u8", None).unwrap();
     src.record();
     let mut head = vec![0u8; 2000]; // past the first segment's end
@@ -653,9 +716,7 @@ fn a_growing_event_playlist_asked_for_a_position_plays_from_there_and_follows_it
         Ok(p.into_bytes())
     };
     s.route("/event.m3u8", route);
-    for i in 0..12 {
-        s.put(&format!("/seg{i}.ts"), ts(i));
-    }
+    s.put_segments(0..12);
     let mut src = s.open("/event.m3u8", Some(13_000_000)).unwrap();
     assert!(src.is_live() && src.in_playlist_time());
     assert_eq!(src.start_us(), 12_000_000, "the segment holding 13 s");
@@ -664,6 +725,143 @@ fn a_growing_event_playlist_asked_for_a_position_plays_from_there_and_follows_it
     fresh.route("/event.m3u8", route);
     let src = fresh.open("/event.m3u8", None).unwrap();
     assert!(!src.in_playlist_time(), "no position: the live edge");
+}
+
+/// The provider's shift answer for the programme on air: `EVENT` + `ENDLIST` from sequence `first`,
+/// ending where the archive is at the time of the request (segment 509 at 0, one more every 6 s),
+/// until the archive holds segment `last`.
+fn shift_answer(first: u64, last: u64) -> impl FnMut(u64) -> Result<Vec<u8>, FetchError> {
+    move |now_ms| {
+        let newest = (509 + now_ms / 6_000).min(last);
+        let mut p = format!("#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:{first}\n#EXT-X-PLAYLIST-TYPE:EVENT\n");
+        for q in first..=newest {
+            p.push_str(&format!("#EXTINF:6.000,\nseg{q}.ts\n"));
+        }
+        p.push_str("#EXT-X-ENDLIST\n");
+        Ok(p.into_bytes())
+    }
+}
+
+/// **A time shift of the programme on air plays on in one stream** (the C1's ~95 s
+/// parts): the archive answer ends at its edge; followed, the same URL is asked for again as the
+/// edge grows and the new segments play on, until the archive stops growing (here at 520), when
+/// the stream ends where the archive does.
+#[test]
+fn a_followed_archive_plays_on_as_its_edge_grows_and_ends_when_it_stops() {
+    let s = Server::new();
+    s.route("/shift.m3u8", shift_answer(500, 520));
+    s.put_segments(500..=520);
+    let mut src = s.open("/shift.m3u8", Some(31_000_000)).unwrap();
+    assert!(!src.is_live() && src.in_playlist_time());
+    assert_eq!((src.start_us(), src.duration_us()), (30_000_000, 60_000_000));
+    src.follow_until(3_600_000_000);
+    assert_eq!(src.take_grown(), None, "nothing has grown yet");
+    let got = read_all(&mut src).unwrap();
+    assert_eq!(got, (505..=520).map(ts).collect::<Vec<_>>().concat(), "on past the first answer's end, every segment once");
+    assert_eq!(src.take_grown(), Some(126_000_000), "the playlist grew to 21 segments");
+    assert_eq!(src.take_grown(), None, "told once");
+    // The edge stopped at 66 s; the stream ends three targets (18 s) of no growth after that.
+    let ended = s.clock.now_ms();
+    assert!((84_000..=90_000).contains(&ended), "ended at {ended} ms");
+    let reloads = s.seen.times_of(&url("/shift.m3u8"));
+    assert!(reloads.windows(2).all(|w| w[1] - w[0] >= 3_000), "never faster than the cadence: {reloads:?}");
+    assert!(reloads.len() < 2 * 21, "{reloads:?}");
+}
+
+/// A followed archive ends at the end wanted (the programme's), or where it was when another
+/// window comes back; one not followed ends at its first answer's end, as every archive did.
+#[test]
+fn a_followed_archive_stops_at_the_end_wanted_or_at_another_window() {
+    let s = Server::new();
+    s.route("/shift.m3u8", shift_answer(500, 600));
+    s.put_segments(500..=600);
+    let mut src = s.open("/shift.m3u8", Some(31_000_000)).unwrap();
+    src.follow_until(90_000_000);
+    assert_eq!(read_all(&mut src).unwrap(), (505..=514).map(ts).collect::<Vec<_>>().concat(), "15 segments hold the 90 s wanted");
+
+    let fresh = Server::new();
+    fresh.route("/shift.m3u8", shift_answer(500, 600));
+    fresh.put_segments(500..=600);
+    let mut src = fresh.open("/shift.m3u8", Some(31_000_000)).unwrap();
+    assert_eq!(read_all(&mut src).unwrap(), (505..=509).map(ts).collect::<Vec<_>>().concat(), "not followed");
+    assert_eq!(fresh.seen.count(&url("/shift.m3u8")), 1);
+
+    let other = Server::new();
+    let (mut calls, mut first, mut later) = (0, shift_answer(500, 600), shift_answer(505, 600));
+    other.route("/shift.m3u8", move |now_ms| {
+        calls += 1;
+        // From the second request on, the window starts 30 s later and is numbered from there.
+        if calls == 1 {
+            first(now_ms)
+        } else {
+            later(now_ms)
+        }
+    });
+    other.put_segments(500..=600);
+    let mut src = other.open("/shift.m3u8", Some(31_000_000)).unwrap();
+    src.follow_until(3_600_000_000);
+    assert_eq!(read_all(&mut src).unwrap(), (505..=509).map(ts).collect::<Vec<_>>().concat(), "another window: not spliced");
+    assert_eq!(other.seen.count(&url("/shift.m3u8")), 2);
+}
+
+/// **A followed archive read slower than real time** (a player held back by its queues: the C1's
+/// 48 MiB video lane is 40-80 s of HD) spends longer reading what one reload added than the follow
+/// limit. The reload that is due by then runs before the archive is judged to have stopped
+/// growing, so the stream plays on to where the archive does stop (530 here), not to the edge
+/// the first reload found.
+#[test]
+fn a_followed_archive_read_slower_than_real_time_plays_on_to_where_it_stops() {
+    let s = Server::new();
+    s.route("/shift.m3u8", shift_answer(500, 530));
+    s.put_segments(500..=530);
+    let mut src = s.open("/shift.m3u8", Some(31_000_000)).unwrap();
+    src.follow_until(3_600_000_000);
+    // About 8 s of the clock per 6 s segment of 20 kB.
+    let got = read_all_paced(&mut src, &s.clock, 400).unwrap();
+    assert_eq!(got, (505..=530).map(ts).collect::<Vec<_>>().concat(), "every segment the archive grew to");
+    let reloads = s.seen.times_of(&url("/shift.m3u8"));
+    assert!(reloads.windows(2).all(|w| w[1] - w[0] >= 3_000), "never faster than the cadence: {reloads:?}");
+}
+
+/// A followed archive whose reload comes back without its end (no `EXT-X-ENDLIST`) would play on
+/// as live, past the end wanted and with no limit of its own: it counts as another window, and
+/// the stream ends where the archive did.
+#[test]
+fn a_followed_archive_that_comes_back_live_ends_where_it_was() {
+    let s = Server::new();
+    let (mut calls, mut answer) = (0, shift_answer(500, 600));
+    s.route("/shift.m3u8", move |now_ms| {
+        calls += 1;
+        let text = String::from_utf8(answer(now_ms)?).unwrap();
+        Ok(if calls == 1 { text } else { text.replace("#EXT-X-ENDLIST\n", "") }.into_bytes())
+    });
+    s.put_segments(500..=600);
+    let mut src = s.open("/shift.m3u8", Some(31_000_000)).unwrap();
+    src.follow_until(90_000_000);
+    assert_eq!(read_all(&mut src).unwrap(), (505..=509).map(ts).collect::<Vec<_>>().concat());
+    assert_eq!(s.seen.count(&url("/shift.m3u8")), 2);
+}
+
+/// A followed archive whose reloads keep failing ends where it is, without an error: the
+/// playback asks for the next part as it did before.
+#[test]
+fn a_followed_archive_whose_reloads_fail_ends_cleanly() {
+    let s = Server::new();
+    let (mut calls, mut answer) = (0, shift_answer(500, 600));
+    s.route("/shift.m3u8", move |now_ms| {
+        calls += 1;
+        if calls == 1 {
+            answer(now_ms)
+        } else {
+            Err(FetchError::Status(503))
+        }
+    });
+    s.put_segments(500..=600);
+    let mut src = s.open("/shift.m3u8", Some(31_000_000)).unwrap();
+    src.follow_until(3_600_000_000);
+    assert_eq!(read_all(&mut src).unwrap(), (505..=509).map(ts).collect::<Vec<_>>().concat());
+    assert_eq!(s.seen.count(&url("/shift.m3u8")), 1 + MAX_RELOAD_FAILURES as usize);
+    assert_eq!(src.read(&mut [0; 8]), Ok(0), "the end stays the end");
 }
 
 /// An https playlist may name only https URIs: a plaintext variant, segment, key or init section
@@ -684,4 +882,137 @@ fn an_https_playlist_naming_a_plaintext_uri_is_refused() {
         assert_eq!(s.open("/p.m3u8", None).err(), Some(HlsError::Insecure), "{name}");
         assert_eq!(s.seen.urls(), [url("/p.m3u8")], "{name}: nothing fetched from it");
     }
+}
+
+/// An archive with ad breaks: `#EXT-X-DISCONTINUITY` before segments 2 and 4 (the second on a gap,
+/// so the run begins at the segment after it).
+fn breaks_playlist() -> String {
+    "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXTINF:6.0,\nseg0.ts\n#EXTINF:6.0,\nseg1.ts\n\
+     #EXT-X-DISCONTINUITY\n#EXTINF:6.0,\nseg2.ts\n#EXTINF:6.0,\nseg3.ts\n\
+     #EXT-X-DISCONTINUITY\n#EXT-X-GAP\n#EXTINF:6.0,\nseg4.ts\n#EXTINF:6.0,\nseg5.ts\n#EXT-X-ENDLIST\n"
+        .to_owned()
+}
+
+/// Every run of segments between two discontinuities is told by the byte its first segment starts
+/// at, which is what the demuxer's packet positions are (`hls::timeline`).
+#[test]
+fn each_run_between_discontinuities_begins_at_its_first_segments_byte() {
+    let s = Server::new();
+    s.put("/b.m3u8", breaks_playlist());
+    s.put_segments([0, 1, 2, 3, 5]);
+    let mut src = s.open("/b.m3u8", None).unwrap();
+    assert_eq!(src.run_at(0), 0, "before a byte is read");
+    assert_eq!(read_all(&mut src).unwrap(), [ts(0), ts(1), ts(2), ts(3), ts(5)].concat());
+    let at = |n: u64| (0..n).filter(|&k| k != 4).map(|k| ts(k).len() as u64).sum::<u64>();
+    assert_eq!([src.run_at(0), src.run_at(at(2) - 1)], [0, 0]);
+    assert_eq!([src.run_at(at(2)), src.run_at(at(4) - 1)], [1, 1], "the first break: segment 2 on");
+    assert_eq!([src.run_at(at(5)), src.run_at(u64::MAX)], [2, 2], "the second, on a gap: segment 5 on");
+}
+
+/// A resume past a break opens at the segment holding the position in playlist time, its run the
+/// first; the next break begins the next run.
+#[test]
+fn a_resume_past_a_discontinuity_starts_there_in_playlist_time() {
+    let s = Server::new();
+    s.put("/b.m3u8", breaks_playlist());
+    s.put_segments([3, 5]);
+    let mut src = s.open("/b.m3u8", Some(20_000_000)).unwrap();
+    assert!(src.in_playlist_time());
+    assert_eq!(src.start_us(), 18_000_000, "the segment holding 20 s, past the first break");
+    assert_eq!(read_all(&mut src).unwrap(), [ts(3), ts(5)].concat());
+    assert_eq!([src.run_at(0), src.run_at(ts(3).len() as u64)], [0, 1]);
+}
+
+/// fMP4: the new initialization section after a break belongs to the run it begins.
+#[test]
+fn an_init_section_after_a_discontinuity_belongs_to_the_new_run() {
+    let s = Server::new();
+    s.put(
+        "/f.m3u8",
+        "#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-MAP:URI=\"init.mp4\"\n\
+         #EXTINF:4,\na.m4s\n#EXT-X-DISCONTINUITY\n#EXT-X-MAP:URI=\"init2.mp4\"\n#EXTINF:4,\nb.m4s\n#EXT-X-ENDLIST\n",
+    );
+    s.put("/init.mp4", b"ftypmoov-1".to_vec());
+    s.put("/init2.mp4", b"ftypmoov-2".to_vec());
+    s.put("/a.m4s", b"moofmdat-a".to_vec());
+    s.put("/b.m4s", b"moofmdat-b".to_vec());
+    let mut src = s.open("/f.m3u8", None).unwrap();
+    assert_eq!(read_all(&mut src).unwrap(), b"ftypmoov-1moofmdat-aftypmoov-2moofmdat-b".to_vec());
+    assert_eq!([src.run_at(19), src.run_at(20)], [0, 1]);
+}
+
+/// A live window whose reload brings a break: the run begins at the first segment after it.
+#[test]
+fn a_live_discontinuity_begins_a_run_where_it_is_played() {
+    let s = Server::new();
+    s.route("/live.m3u8", |now_ms| {
+        let text = if now_ms < 2_000 {
+            "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:10\n#EXT-X-DISCONTINUITY-SEQUENCE:7\n\
+             #EXTINF:2,\nseg10.ts\n#EXTINF:2,\nseg11.ts\n#EXTINF:2,\nseg12.ts\n"
+        } else {
+            "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:11\n#EXT-X-DISCONTINUITY-SEQUENCE:7\n\
+             #EXTINF:2,\nseg11.ts\n#EXTINF:2,\nseg12.ts\n#EXT-X-DISCONTINUITY\n#EXTINF:2,\nseg13.ts\n#EXT-X-ENDLIST\n"
+        };
+        Ok(text.as_bytes().to_vec())
+    });
+    s.put_segments(10..=13);
+    let mut src = s.open("/live.m3u8", None).unwrap();
+    assert_eq!(read_all(&mut src).unwrap(), [ts(10), ts(11), ts(12), ts(13)].concat());
+    let before = [10, 11, 12].iter().map(|&q| ts(q).len() as u64).sum::<u64>();
+    assert_eq!([src.run_at(before - 1), src.run_at(before)], [0, 1]);
+}
+
+/// A live window without `EXT-X-DISCONTINUITY-SEQUENCE` counts its tags from its first segment, so
+/// the segments after a tag count one fewer once it has left the window. That is no break: the
+/// runs begin at the tags only.
+#[test]
+fn a_tag_leaving_a_live_window_begins_no_run() {
+    let s = Server::new();
+    s.route("/live.m3u8", |now_ms| {
+        let text = match now_ms {
+            0..2_000 => {
+                "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:10\n\
+                 #EXTINF:2,\nseg10.ts\n#EXTINF:2,\nseg11.ts\n#EXT-X-DISCONTINUITY\n#EXTINF:2,\nseg12.ts\n"
+            }
+            2_000..4_000 => {
+                "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:11\n\
+                 #EXTINF:2,\nseg11.ts\n#EXT-X-DISCONTINUITY\n#EXTINF:2,\nseg12.ts\n#EXTINF:2,\nseg13.ts\n"
+            }
+            _ => {
+                "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:13\n\
+                 #EXTINF:2,\nseg13.ts\n#EXTINF:2,\nseg14.ts\n#EXT-X-DISCONTINUITY\n#EXTINF:2,\nseg15.ts\n#EXT-X-ENDLIST\n"
+            }
+        };
+        Ok(text.as_bytes().to_vec())
+    });
+    s.put_segments(10..=15);
+    let mut src = s.open("/live.m3u8", None).unwrap();
+    assert_eq!(read_all(&mut src).unwrap(), (10..=15).map(ts).collect::<Vec<_>>().concat());
+    let at = |q: u64| (10..q).map(|k| ts(k).len() as u64).sum::<u64>();
+    assert_eq!([src.run_at(at(12) - 1), src.run_at(at(12))], [0, 1], "the tag before segment 12");
+    assert_eq!([src.run_at(at(14)), src.run_at(at(15) - 1)], [1, 1], "segment 13 on, counted 0 once the tag left: still run 1");
+    assert_eq!(src.run_at(at(15)), 2, "the next tag");
+}
+
+/// A packager that restarted numbers its segments afresh (the media sequence goes backwards) and
+/// its timestamps too, with no tag to say so: the first segment played after it begins a run, or
+/// the jump back would stay inside one run and be dropped as stale.
+#[test]
+fn a_live_media_sequence_that_goes_backwards_begins_a_run() {
+    let s = Server::new();
+    s.route("/live.m3u8", |now_ms| {
+        let text = if now_ms < 2_000 {
+            "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:40\n\
+             #EXTINF:2,\nseg40.ts\n#EXTINF:2,\nseg41.ts\n#EXTINF:2,\nseg42.ts\n"
+        } else {
+            "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:0\n\
+             #EXTINF:2,\nseg0.ts\n#EXTINF:2,\nseg1.ts\n#EXTINF:2,\nseg2.ts\n#EXT-X-ENDLIST\n"
+        };
+        Ok(text.as_bytes().to_vec())
+    });
+    s.put_segments([40, 41, 42, 0, 1, 2]);
+    let mut src = s.open("/live.m3u8", None).unwrap();
+    assert_eq!(read_all(&mut src).unwrap(), [40, 41, 42, 0, 1, 2].map(ts).concat());
+    let restart = [40, 41, 42].map(|q| ts(q).len() as u64).iter().sum::<u64>();
+    assert_eq!([src.run_at(restart - 1), src.run_at(restart), src.run_at(u64::MAX)], [0, 1, 1]);
 }

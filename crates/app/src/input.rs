@@ -8,8 +8,12 @@
 //!
 //! The simulator translates desktop keys into the pairs the television sends ([`REMOTE`]), so
 //! everything above this module sees television codes on both builds.
+//!
+//! While the Magic Remote's cursor shows, webOS sends the remote as mouse events instead: motion,
+//! its OK (the wheel pressed) as a button, the wheel turned ([`decode_pointer`]). Both SDLs lay
+//! those out alike: x at +20 and y at +24, the wheel's y at +20.
 
-use crate::sdl::Event;
+use crate::sdl::{self, Event};
 use tv_ui::consts::{
     SCANCODE_0, SCANCODE_1, SCANCODE_9, SDLK_BACKSPACE, SDLK_CLEAR, SDLK_DOWN, SDLK_LEFT,
     SDLK_RETURN, SDLK_RIGHT, SDLK_UP, WCODE_BACK, WCODE_BLUE, WCODE_CH_DOWN_ALT, WCODE_CH_DOWN_KEY,
@@ -156,6 +160,84 @@ fn desktop_to_tv(scancode: u32, sym: u32) -> (u32, u32) {
     }
 }
 
+/// One pointer event from the Magic Remote (or the simulator's mouse).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PointerEvent {
+    pub kind: PointerKind,
+    /// Where the pointer is on the 1920x1080 canvas; a wheel event says nowhere (0, 0).
+    pub x: f32,
+    pub y: f32,
+    /// Milliseconds since boot when the app took the event off SDL's queue.
+    pub at_ms: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointerKind {
+    Move,
+    /// The remote's OK (or a mouse button) pressed.
+    Down,
+    Up,
+    /// One step of the wheel, away from the viewer (`up`) or towards them.
+    Wheel {
+        up: bool,
+    },
+}
+
+/// `SDL_MouseWheelEvent.direction` when the platform inverts the wheel (natural scrolling).
+const SDL_MOUSEWHEEL_FLIPPED: u32 = 1;
+
+/// A mouse event as a pointer event: window units times `scale` are drawable pixels
+/// ([`crate::sdl::Video::pointer_scale`]), mapped onto the canvas. `None` for any other event,
+/// and for a wheel event that turned less than a step. The simulator's SDL (sdl2-compat over
+/// SDL3) may leave the wheel's integer y at 0 and carry the turn in `preciseY` (+32).
+pub fn decode_pointer(ev: &Event, scale: f32, at_ms: u32) -> Option<PointerEvent> {
+    let kind = match ev.kind() {
+        sdl::SDL_MOUSEMOTION => PointerKind::Move,
+        sdl::SDL_MOUSEBUTTONDOWN => PointerKind::Down,
+        sdl::SDL_MOUSEBUTTONUP => PointerKind::Up,
+        sdl::SDL_MOUSEWHEEL => {
+            let mut dy = ev.i32_at(20);
+            if dy == 0 && cfg!(feature = "hostsim") {
+                dy = ev.f32_at(32).round() as i32;
+            }
+            if ev.u32_at(24) == SDL_MOUSEWHEEL_FLIPPED {
+                dy = -dy;
+            }
+            return (dy != 0).then_some(PointerEvent {
+                kind: PointerKind::Wheel { up: dy > 0 },
+                x: 0.0,
+                y: 0.0,
+                at_ms,
+            });
+        }
+        _ => return None,
+    };
+    let (px, py) = (ev.i32_at(20) as f32 * scale, ev.i32_at(24) as f32 * scale);
+    let (x, y) = tv_base::surface::to_logical(px, py);
+    Some(PointerEvent { kind, x, y, at_ms })
+}
+
+/// The event log's line for a pointer event: its kind and position, nothing else. A motion is
+/// logged at most once a second (`last_move` keeps when), so a pointing hand does not flood the
+/// log.
+pub fn pointer_line(ev: &PointerEvent, last_move: &mut Option<u32>) -> Option<String> {
+    let kind = match ev.kind {
+        PointerKind::Wheel { up } => {
+            return Some(format!("pointer: wheel {}", if up { "up" } else { "down" }))
+        }
+        PointerKind::Move => {
+            if last_move.is_some_and(|t| ev.at_ms.wrapping_sub(t) < 1_000) {
+                return None;
+            }
+            *last_move = Some(ev.at_ms);
+            "move"
+        }
+        PointerKind::Down => "down",
+        PointerKind::Up => "up",
+    };
+    Some(format!("pointer: {kind} {:.0},{:.0}", ev.x, ev.y))
+}
+
 /// Where `SDL_TEXTINPUT`'s `char text[32]` starts: LG's fork inserts a `u32 inputSource` at +12,
 /// so +16 there; stock SDL2 has it at +12.
 const TEXT_AT: usize = if cfg!(feature = "hostsim") { 12 } else { 16 };
@@ -291,6 +373,77 @@ mod tests {
         );
         assert_eq!(named(76, 0x7f), Some("Del"));
         assert_eq!(named(83, 0x4000_0053), Some("Clear"));
+    }
+
+    #[test]
+    fn mouse_events_decode_onto_the_canvas() {
+        let mouse = |kind: u32, x: i32, y: i32| {
+            event(&[(0, kind), (16, 1), (20, x as u32), (24, y as u32)])
+        };
+        let at = |ev: &Event, scale| decode_pointer(ev, scale, 9);
+        let down = at(&mouse(sdl::SDL_MOUSEBUTTONDOWN, 812, 530), 1.0).unwrap();
+        assert_eq!(
+            down,
+            PointerEvent {
+                kind: PointerKind::Down,
+                x: 812.0,
+                y: 530.0,
+                at_ms: 9
+            }
+        );
+        let up = at(&mouse(sdl::SDL_MOUSEBUTTONUP, 812, 530), 1.0).unwrap();
+        assert_eq!(up.kind, PointerKind::Up);
+        // The simulator's window counts half-size points on a Retina display.
+        let moved = at(&mouse(sdl::SDL_MOUSEMOTION, 480, 270), 2.0).unwrap();
+        assert_eq!(
+            (moved.kind, moved.x, moved.y),
+            (PointerKind::Move, 960.0, 540.0)
+        );
+        assert_eq!(at(&mouse(sdl::SDL_KEYDOWN, 1, 1), 1.0), None);
+        let wheel = |y: i32, flipped: u32| {
+            let ev = event(&[(0, sdl::SDL_MOUSEWHEEL), (20, y as u32), (24, flipped)]);
+            at(&ev, 1.0).map(|p| p.kind)
+        };
+        assert_eq!(wheel(1, 0), Some(PointerKind::Wheel { up: true }));
+        assert_eq!(wheel(-2, 0), Some(PointerKind::Wheel { up: false }));
+        assert_eq!(
+            wheel(1, 1),
+            Some(PointerKind::Wheel { up: false }),
+            "flipped"
+        );
+        assert_eq!(wheel(0, 0), None, "less than a step");
+    }
+
+    #[test]
+    fn the_log_says_the_pointer_kind_and_position_and_a_move_once_a_second() {
+        let ev = |kind, at_ms| PointerEvent {
+            kind,
+            x: 812.4,
+            y: 530.0,
+            at_ms,
+        };
+        let mut last = None;
+        let mut line = |kind, at| pointer_line(&ev(kind, at), &mut last);
+        assert_eq!(
+            line(PointerKind::Move, 100).as_deref(),
+            Some("pointer: move 812,530")
+        );
+        assert_eq!(line(PointerKind::Move, 900), None);
+        assert_eq!(
+            line(PointerKind::Down, 950).as_deref(),
+            Some("pointer: down 812,530")
+        );
+        assert_eq!(
+            line(PointerKind::Up, 990).as_deref(),
+            Some("pointer: up 812,530")
+        );
+        assert!(line(PointerKind::Move, 1_100).is_some());
+        let wheel = line(PointerKind::Wheel { up: false }, 1_200).unwrap();
+        assert_eq!(wheel, "pointer: wheel down");
+        // The log's masking leaves the line as it is.
+        let down = pointer_line(&ev(PointerKind::Down, 0), &mut None).unwrap();
+        let masked = tv_base::eventlog::scrub::scrub_local(&iptv::redact::text(&down));
+        assert_eq!(masked, down);
     }
 
     fn text_event(bytes: &[u8]) -> Event {

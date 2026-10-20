@@ -7,8 +7,13 @@
 //! - **Start** (RFC 8216 §6.3.3): no segment that begins less than three target durations from the
 //!   end of the playlist. [`live_start_index`] walks back from the end until the segments after the
 //!   start add up to at least that much.
-//! - **Reload** (§6.3.4): at least one target duration after the last load BEGAN when that load
-//!   changed the playlist, half of one when it did not ([`Schedule::reload_due_ms`]).
+//! - **Reload** (section 6.3.4 as RFC 8216bis words it): at least the last segment's duration (never more
+//!   than the target duration) after the last load BEGAN when that load changed the playlist, half
+//!   a target duration when it did not ([`Schedule::reload_due_ms`]). RFC 8216 waited a whole
+//!   target after a change; a packager whose segments run far shorter than its target (6 s
+//!   segments under a 22 s target, a six-segment window of about 30 s) slides that window past a
+//!   client reloading every target duration, and its buffer runs dry between two reloads. Never
+//!   sooner than [`RELOAD_FLOOR_MS`] after the last, whatever a tiny (or zero) target says.
 //! - **The next segment** is found by media sequence number, never by position: a reload slides the
 //!   window, and `EXT-X-MEDIA-SEQUENCE` says by how much ([`locate`]). A client that fell behind the
 //!   window (its next segment already expired) jumps to the oldest segment still listed.
@@ -27,6 +32,16 @@ pub const STALL_TARGETS: u64 = 7;
 
 /// ... and never sooner than this, whatever a tiny target duration says.
 pub const STALL_FLOOR_MS: u64 = 15_000;
+
+/// An archive playlist followed past its end ([`super::source::HlsSource::follow_until`]) that has
+/// added no segment for this many target durations (and [`STALL_FLOOR_MS`]) has stopped growing:
+/// its end is the stream's, and the playback's own part logic takes over. Far sooner than a live
+/// stall, as a time shift may be only seconds behind the edge it waits at.
+pub const FOLLOW_STALL_TARGETS: u64 = 3;
+
+/// The shortest wait between two loads, whatever a tiny target or last segment says
+/// (`EXT-X-TARGETDURATION:0` would otherwise reload back to back).
+pub const RELOAD_FLOOR_MS: u64 = 1_000;
 
 /// The index of the first segment a live playback plays: the latest one from which at least
 /// [`START_TARGETS`] target durations of media remain. The first segment when the playlist holds
@@ -90,6 +105,9 @@ pub fn locate(p: &MediaPlaylist, next: u64) -> Locate {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Schedule {
     target_ms: u64,
+    /// The wait after a load that changed the playlist: its last segment's duration, at most the
+    /// target duration.
+    changed_wait_ms: u64,
     /// When the last load BEGAN.
     load_began_ms: u64,
     /// Whether that load changed the playlist.
@@ -102,8 +120,10 @@ pub struct Schedule {
 impl Schedule {
     /// The schedule after the first load, which began at `began_ms`.
     pub fn first(p: &MediaPlaylist, began_ms: u64) -> Schedule {
+        let target_ms = (p.target_duration_us / 1000).max(1);
         Schedule {
-            target_ms: (p.target_duration_us / 1000).max(1),
+            target_ms,
+            changed_wait_ms: changed_wait_ms(p, target_ms),
             load_began_ms: began_ms,
             changed: true,
             grew_ms: began_ms,
@@ -115,6 +135,7 @@ impl Schedule {
     /// differs from the last one's.
     pub fn reloaded(&mut self, p: &MediaPlaylist, began_ms: u64, changed: bool) {
         self.target_ms = (p.target_duration_us / 1000).max(1);
+        self.changed_wait_ms = changed_wait_ms(p, self.target_ms);
         self.load_began_ms = began_ms;
         self.changed = changed;
         if p.end_sequence() > self.end_sequence {
@@ -130,15 +151,21 @@ impl Schedule {
         self.changed = false;
     }
 
-    /// When the next reload may begin (RFC 8216 §6.3.4).
+    /// When the next reload may begin (RFC 8216bis section 6.3.4), never sooner than
+    /// [`RELOAD_FLOOR_MS`] after the last began.
     pub fn reload_due_ms(&self) -> u64 {
-        let wait = if self.changed { self.target_ms } else { self.target_ms.div_ceil(2) };
-        self.load_began_ms.saturating_add(wait)
+        let wait = if self.changed { self.changed_wait_ms } else { self.target_ms.div_ceil(2) };
+        self.load_began_ms.saturating_add(wait.max(RELOAD_FLOOR_MS))
     }
 
     /// How long the playlist may go without growing before it is dead.
     pub fn stall_limit_ms(&self) -> u64 {
         self.target_ms.saturating_mul(STALL_TARGETS).max(STALL_FLOOR_MS)
+    }
+
+    /// How long a followed archive playlist may go without growing before its end is the end.
+    pub fn follow_limit_ms(&self) -> u64 {
+        self.target_ms.saturating_mul(FOLLOW_STALL_TARGETS).max(STALL_FLOOR_MS)
     }
 
     /// Has the playlist stopped growing for good, as of `now_ms`?
@@ -150,6 +177,18 @@ impl Schedule {
     pub fn since_growth_ms(&self, now_ms: u64) -> u64 {
         now_ms.saturating_sub(self.grew_ms)
     }
+
+    /// Count growth from `now_ms` on: a finite playlist that is followed from here (it could not
+    /// grow while it was being read).
+    pub fn watch_growth_from(&mut self, now_ms: u64) {
+        self.grew_ms = now_ms;
+    }
+}
+
+/// The wait after a load that changed `p`: its last segment's duration, at most `target_ms` (the
+/// whole target for an empty playlist).
+fn changed_wait_ms(p: &MediaPlaylist, target_ms: u64) -> u64 {
+    p.segments.last().map_or(target_ms, |s| (s.duration_us / 1000).min(target_ms))
 }
 
 #[cfg(test)]
@@ -226,6 +265,48 @@ mod tests {
         let mut t = Schedule::first(&odd, 0);
         t.reloaded(&odd, 0, false);
         assert_eq!(t.reload_due_ms(), 2_500);
+    }
+
+    /// RFC 8216bis section 6.3.4: after a load that changed the playlist, the wait is its last segment's
+    /// duration, not the target duration. A live channel seen on the C1: 22 s target, segments of a few
+    /// seconds in a six-segment window, so a client waiting a whole target let the window slide
+    /// past it and drained its buffer before it saw the next segment.
+    #[test]
+    fn a_changed_reload_waits_the_last_segment_not_the_whole_target() {
+        let p = live(0, &[6.0, 4.0, 6.0, 5.0, 4.5, 4.0], 22);
+        let mut s = Schedule::first(&p, 10_000);
+        assert_eq!(s.reload_due_ms(), 14_000, "the last segment is 4 s long");
+        s.reloaded(&p, 14_000, false);
+        assert_eq!(s.reload_due_ms(), 25_000, "unchanged: still half the target");
+        let grown = live(1, &[4.0, 6.0, 5.0, 4.5, 4.0, 6.5], 22);
+        s.reloaded(&grown, 25_000, true);
+        assert_eq!(s.reload_due_ms(), 31_500);
+        // Bounded: never sooner than a second, never later than the target.
+        assert_eq!(Schedule::first(&live(0, &[6.0, 0.2], 6), 0).reload_due_ms(), 1_000);
+        assert_eq!(Schedule::first(&live(0, &[9.0], 6), 0).reload_due_ms(), 6_000);
+        assert_eq!(Schedule::first(&live(0, &[], 6), 0).reload_due_ms(), 6_000);
+        // A followed archive gives up long before a live stall.
+        assert_eq!((s.follow_limit_ms(), s.stall_limit_ms()), (66_000, 154_000));
+        assert_eq!(Schedule::first(&live(0, &[6.0], 6), 0).follow_limit_ms(), 18_000);
+    }
+
+    /// `EXT-X-TARGETDURATION:0` (or a tiny target) is no reason to reload back to back: every
+    /// wait, changed or not, live or followed, is at least [`RELOAD_FLOOR_MS`].
+    #[test]
+    fn a_zero_target_duration_never_reloads_sooner_than_the_floor() {
+        for durations in [&[][..], &[0.0][..], &[0.0005, 0.2][..]] {
+            let p = live(0, durations, 0);
+            let mut s = Schedule::first(&p, 10_000);
+            assert_eq!(s.reload_due_ms(), 10_000 + RELOAD_FLOOR_MS, "changed: {durations:?}");
+            s.reloaded(&p, 20_000, false);
+            assert_eq!(s.reload_due_ms(), 20_000 + RELOAD_FLOOR_MS, "unchanged: {durations:?}");
+            s.failed(30_000);
+            assert_eq!(s.reload_due_ms(), 30_000 + RELOAD_FLOOR_MS, "failed: {durations:?}");
+        }
+        let one = live(0, &[1.0], 1);
+        let mut s = Schedule::first(&one, 0);
+        s.reloaded(&one, 0, false);
+        assert_eq!(s.reload_due_ms(), RELOAD_FLOOR_MS, "half of a 1 s target is under the floor too");
     }
 
     #[test]

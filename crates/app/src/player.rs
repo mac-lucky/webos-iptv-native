@@ -15,11 +15,14 @@ use tv_screens::playback::DisplayMode;
 /// logs them only through `iptv::redact`.
 pub enum Stream<'a> {
     Live(&'a Channel),
-    /// `programme` from the channel's archive, `offset_secs` into it.
+    /// `programme` from the channel's archive, `offset_secs` into it. At its end a time shift
+    /// (`shift`) is reported ([`Player::take_ended`]) and plays on until the shell opens the
+    /// next programme; any other goes live by itself.
     Catchup {
         channel: &'a Channel,
         programme: &'a Programme,
         offset_secs: i64,
+        shift: bool,
     },
 }
 
@@ -42,9 +45,14 @@ pub trait Player {
     /// Show subtitle track `index` of `Playback::subtitle_tracks`, or none, without a reload.
     fn select_subtitle_track(&mut self, _index: Option<usize>) {}
     /// Advance to `now_ms` and fold what the decoder reported (position, media info, audio
-    /// tracks) into `playback`; at the end of an archive programme the player goes live by
-    /// itself and clears `playback.catchup`. Returns whether anything changed. Called on every loop turn, and by [`next_wake_ms`](Self::next_wake_ms).
+    /// tracks) into `playback`; at the end of an archive programme that is no time shift the
+    /// player goes live by itself and clears `playback.catchup`. Returns whether anything
+    /// changed. Called on every loop turn, and by [`next_wake_ms`](Self::next_wake_ms).
     fn poll(&mut self, _now_ms: u64, _playback: &mut Playback) -> bool {
+        false
+    }
+    /// The time shift playing reached the end of its programme since the last call, once.
+    fn take_ended(&mut self) -> bool {
         false
     }
     /// When [`poll`](Self::poll) is next needed even if nothing else happens; `None`: only on

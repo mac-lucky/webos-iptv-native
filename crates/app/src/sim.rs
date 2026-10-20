@@ -1,5 +1,5 @@
 //! The desktop simulator's own pieces (`--features hostsim`): its command line, scripted key
-//! presses, and the screenshot a review looks at.
+//! presses and pointer moves, and the screenshot a review looks at.
 //!
 //! It is the television's app linked against Homebrew's SDL2 and the Mac's GL: the same boot,
 //! loop and screens, with desktop keys standing in for the remote (`input::decode`).
@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use iptv::model::CatchupMode;
 use tv_screens::data::fake::FakeData;
 
-use crate::input::{Edge, KeyEvent, REMOTE};
+use crate::input::{Edge, KeyEvent, PointerEvent, PointerKind, REMOTE};
 use crate::sdl::Video;
 use crate::shell::Shell;
 
@@ -25,13 +25,15 @@ usage: webosiptv [--fake [--streams BASE]] [--keys KEY,KEY,...] [--wait MS] [--s
              and the episodes from BASE/vod.m3u8?item=.. (a local test origin)
   --keys     press these keys first: Up Down Left Right OK Back Exit CH+ CH- Red Green Yellow
              Blue 0-9 Del Clear; long-KEY holds it; text=WORD types WORD on the TV keyboard;
-             wait=MS lets MS milliseconds pass
+             wait=MS lets MS milliseconds pass; point=X:Y moves the pointer there (canvas
+             pixels), click=X:Y clicks there, wheel=up or wheel=down turns the wheel a step
   --wait     let MS more milliseconds pass after the keys (streams start, panels time out)
   --shot     write a PNG of the frame once the keys are done and the screen has settled, then exit
 video: touch /tmp/webosiptv-clocksink (the host sink plays) and /tmp/webosiptv-simvideo (the
 decoded picture under the UI, needs ffmpeg)
 keyboard: arrows, Enter = OK, Backspace = Back, Page Up/Down = CH+/CH-, 0-9, F1-F4 = Red Green
-Yellow Blue; with the TV keyboard up, typing types, Delete deletes, keypad Clear clears";
+Yellow Blue; with the TV keyboard up, typing types, Delete deletes, keypad Clear clears
+mouse: the Magic Remote's pointer: a click is OK, the wheel steps Up and Down";
 
 /// How long a scripted press is held: a short one, and one past the longest long-press setting.
 const SHORT_MS: u32 = 100;
@@ -54,6 +56,16 @@ enum Step {
     Text(String),
     /// Let this many milliseconds pass.
     Wait(u32),
+    /// The pointer to `(x, y)` on the canvas, then a click there when `click`.
+    Point {
+        x: f32,
+        y: f32,
+        click: bool,
+    },
+    /// One step of the wheel.
+    Wheel {
+        up: bool,
+    },
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -152,6 +164,40 @@ impl Options {
                     at += GAP_MS;
                 }
                 Step::Wait(ms) => at += ms,
+                Step::Point { x, y, click } => {
+                    // From 200 px away first, as a hand moves it: past the keys' hold on the focus.
+                    let from = if *x >= 200.0 { x - 200.0 } else { x + 200.0 };
+                    let mut edges = vec![
+                        (PointerKind::Move, from, at),
+                        (PointerKind::Move, *x, at + 16),
+                    ];
+                    if *click {
+                        edges.push((PointerKind::Down, *x, at + 32));
+                        edges.push((PointerKind::Up, *x, at + 32 + SHORT_MS));
+                    }
+                    for (kind, x, t) in edges {
+                        clock.run_to(u64::from(t));
+                        clock.shell.pointer(PointerEvent {
+                            kind,
+                            x,
+                            y: *y,
+                            at_ms: t,
+                        });
+                        clock.keyboard();
+                    }
+                    at += 32 + SHORT_MS + GAP_MS;
+                }
+                Step::Wheel { up } => {
+                    clock.run_to(u64::from(at));
+                    let kind = PointerKind::Wheel { up: *up };
+                    clock.shell.pointer(PointerEvent {
+                        kind,
+                        x: 0.0,
+                        y: 0.0,
+                        at_ms: at,
+                    });
+                    at += GAP_MS;
+                }
             }
             if clock.shell.exit() {
                 return ControlFlow::Break(ExitCode::SUCCESS);
@@ -206,6 +252,20 @@ fn step(token: &str) -> Result<Step, String> {
             .parse()
             .map(Step::Wait)
             .map_err(|_| format!("bad {token:?}"));
+    }
+    match token.strip_prefix("wheel=") {
+        Some("up") => return Ok(Step::Wheel { up: true }),
+        Some("down") => return Ok(Step::Wheel { up: false }),
+        Some(_) => return Err(format!("bad {token:?}")),
+        None => {}
+    }
+    let at = token.strip_prefix("point=").map(|xy| (xy, false));
+    if let Some((xy, click)) = at.or_else(|| token.strip_prefix("click=").map(|xy| (xy, true))) {
+        let xy = xy
+            .split_once(':')
+            .and_then(|(x, y)| Some((x.parse().ok()?, y.parse().ok()?)));
+        let (x, y) = xy.ok_or_else(|| format!("bad {token:?}"))?;
+        return Ok(Step::Point { x, y, click });
     }
     let (name, hold_ms) = match token.strip_prefix("long-") {
         Some(name) => (name, LONG_MS),
@@ -359,7 +419,7 @@ mod tests {
     #[test]
     fn the_command_line_names_keys_long_presses_text_and_a_shot() {
         let line = "--fake --streams http://127.0.0.1:1/ --wait 250 --shot out.png \
-                    --keys up,long-OK,ch+,text=news,wait=900,7";
+                    --keys up,long-OK,ch+,text=news,wait=900,7,point=960:540,click=10:20,wheel=down";
         let o = Options::parse(args(line)).unwrap();
         assert!(o.fake);
         assert_eq!(o.wait_ms, 250);
@@ -381,6 +441,8 @@ mod tests {
             }
             Step::Text(t) => format!("text {t}"),
             Step::Wait(ms) => format!("wait {ms}"),
+            Step::Point { x, y, click } => format!("point {x} {y} {click}"),
+            Step::Wheel { up } => format!("wheel {up}"),
         };
         let steps: Vec<_> = o.steps.iter().map(named).collect();
         assert_eq!(
@@ -391,7 +453,10 @@ mod tests {
                 "CH+ 100",
                 "text news",
                 "wait 900",
-                "7 100"
+                "7 100",
+                "point 960 540 false",
+                "point 10 20 true",
+                "wheel false"
             ]
         );
         assert_eq!(o.shot.as_deref(), Some(Path::new("out.png")));
@@ -399,6 +464,12 @@ mod tests {
             .unwrap_err()
             .contains("nope"));
         assert!(Options::parse(args("--keys long-nope")).is_err());
+        for bad in ["point=1", "click=a:2", "wheel=left"] {
+            assert!(
+                Options::parse(args(&format!("--keys {bad}"))).is_err(),
+                "{bad}"
+            );
+        }
         assert!(Options::parse(args("--shot")).is_err());
         assert_eq!(Options::parse(args("--help")), Err(String::new()));
         assert_eq!(Options::parse(args("")), Ok(Options::default()));

@@ -230,6 +230,14 @@ impl Screen for NamesPanel {
         self.entry.as_ref().is_some_and(|(_, f)| f.editing())
     }
 
+    /// The entry takes the remote's keys alone.
+    fn point(&mut self, x: f32, y: f32, _: &dyn TvData, _: u64) -> Output {
+        if self.entry.is_some() {
+            return Output::default();
+        }
+        self.panel.point(x, y)
+    }
+
     fn closing(&self) -> bool {
         self.panel.closing()
     }

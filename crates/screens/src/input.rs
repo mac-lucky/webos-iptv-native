@@ -16,6 +16,9 @@ pub enum Key {
     Left,
     Right,
     Ok,
+    /// Never held long: webOS keeps a held BACK for itself (webOS 25 hands it over only on
+    /// release) and closes the app after a long hold, on webOS 6.5 and 25 alike, so every screen
+    /// takes it [`Hold::Once`] and no action needs it held.
     Back,
     ChannelUp,
     ChannelDown,
@@ -298,18 +301,18 @@ mod tests {
     #[test]
     fn long_key_held_fires_long_once_at_the_threshold() {
         let mut r = Remote::default();
-        r.down(Key::Back, 0, Hold::Long);
+        r.down(Key::Ok, 0, Hold::Long);
         assert_eq!(
             run(&mut r, 0, 3000),
             vec![(
                 500,
                 Action {
-                    key: Key::Back,
+                    key: Key::Ok,
                     press: Press::Long
                 }
             )]
         );
-        assert_eq!(r.up(Key::Back, 3000), None);
+        assert_eq!(r.up(Key::Ok, 3000), None);
     }
 
     #[test]
@@ -485,5 +488,7 @@ mod tests {
         }
         assert_eq!(Key::from_sdl('x' as c_uint, 27), None);
         assert_eq!(Key::from_sdl(0, 0), None);
+        // What webOS 25 sends when a 1.5 s BACK hold closes the app: no key of ours.
+        assert_eq!(Key::from_sdl(0, 484), None);
     }
 }

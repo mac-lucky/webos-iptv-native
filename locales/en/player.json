@@ -29,6 +29,10 @@
     "value": "MONO",
     "description": "Badge: one audio channel"
   },
+  "player.no_catchup": {
+    "value": "This channel has no catch-up",
+    "description": "Toast: Left or Right in the full-screen player on a channel without an archive, so there is nothing to seek"
+  },
   "player.stereo": {
     "value": "STEREO",
     "description": "Badge: two audio channels"

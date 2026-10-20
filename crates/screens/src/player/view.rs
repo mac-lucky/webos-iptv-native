@@ -3,13 +3,15 @@
 //! while painting.
 //!
 //! Geometry was measured from TiviMate at 1080p; colours, type and spacing come from
-//! [`crate::theme`].
+//! [`crate::theme`]. [`spots`] says what the pointer can focus on the same layout.
 
 use super::model::{Header, TileKind};
 use super::transport::{Button, Focus, BUTTONS};
 use super::{Overlay, PlayerScreen};
 use crate::draw::{self, HAlign, Piece, Run, VAlign};
 use crate::icons::Icon;
+use crate::lists::Rows;
+use crate::point::{Spot, Spots};
 use crate::theme::{self, radius, size, space};
 use std::os::raw::c_int;
 use tv_gfx::gfx::tokens::with_a;
@@ -191,7 +193,7 @@ pub fn build(s: &PlayerScreen, m: &dyn Measure, out: &mut Vec<Piece>) {
         Overlay::Card { .. } => card(out, s, m),
     }
     if let Some(n) = &s.number {
-        number(out, &n.digits, n.preview.as_deref(), m);
+        crate::number::paint(out, n, SCR_W - geom::X, geom::X, m);
     }
 }
 
@@ -329,21 +331,56 @@ fn header(out: &mut Vec<Piece>, h: &Header, top: f32, with_desc: bool, m: &dyn M
     row.fitted(&h.next_title, size::LABEL, false, theme::TEXT, 0.0);
 }
 
+/// [`Spot`] areas of the player: the info panel's tiles, and the playback panel's seek bar and
+/// buttons (by their place in [`BUTTONS`]).
+pub const TILE: u8 = 0;
+pub const SEEK: u8 = 1;
+pub const BUTTON: u8 = 2;
+
+/// What the pointer can focus on the panel that is up: the tiles on screen, the seek bar, the
+/// transport buttons.
+pub fn spots(s: &PlayerScreen, out: &mut Spots) {
+    out.clear();
+    match s.overlay {
+        Overlay::Info { .. } => {
+            for (i, r) in tile_slots(s) {
+                out.add(r, Spot::row(TILE, i));
+            }
+        }
+        Overlay::Playback => {
+            let band = Rect::new(geom::X, geom::SEEK_Y - 24.0, SCR_W - 2.0 * geom::X, 48.0);
+            out.add(band, Spot::row(SEEK, 0));
+            for (i, cx) in geom::BUTTON_X.into_iter().enumerate() {
+                out.add(button_disc(cx), Spot::row(BUTTON, i));
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The tiles the row shows at a time, the focus keeping one of context on either side while
+/// the keys move it; the pointer never scrolls the row ([`crate::lists::Cursor::point`]).
+pub const TILE_ROWS: Rows = Rows::new(
+    ((SCR_W - geom::X - geom::TILE_W) / geom::TILE_PITCH) as usize + 1,
+    1,
+);
+
+/// The tiles on screen, from the first one shown: their index and where each stands before the
+/// focused one pops.
+fn tile_slots(s: &PlayerScreen) -> impl Iterator<Item = (usize, Rect)> {
+    let first = s.tiles_top;
+    let end = s.tiles.len().min(first + TILE_ROWS.shown);
+    (first..end).enumerate().map(|(slot, i)| {
+        let x = geom::X + slot as f32 * geom::TILE_PITCH;
+        (i, Rect::new(x, geom::TILES_Y, geom::TILE_W, geom::TILE_H))
+    })
+}
+
 /// The info panel's tile row; `focus` is the focused tile.
 fn tiles(out: &mut Vec<Piece>, s: &PlayerScreen, focus: usize, m: &dyn Measure) {
-    let tiles = &s.tiles;
-    let fits = ((SCR_W - geom::X - geom::TILE_W) / geom::TILE_PITCH) as usize + 1;
-    let first = (focus + 2)
-        .saturating_sub(fits)
-        .min(tiles.len().saturating_sub(fits));
-    for (slot, (i, t)) in tiles.iter().enumerate().skip(first).take(fits).enumerate() {
+    for (i, base) in tile_slots(s) {
+        let t = &s.tiles[i];
         let focused = focus == i;
-        let base = Rect::new(
-            geom::X + slot as f32 * geom::TILE_PITCH,
-            geom::TILES_Y,
-            geom::TILE_W,
-            geom::TILE_H,
-        );
         let r = if focused {
             base.scaled(geom::TILE_POP)
         } else {
@@ -462,9 +499,8 @@ fn transport(out: &mut Vec<Piece>, s: &PlayerScreen, m: &dyn Measure) {
             with_a(theme::TEXT_MUTED, 0.4)
         };
         if focused {
-            let d = geom::BUTTON_DISC;
-            let disc = Rect::new(cx - d * 0.5, geom::TRANSPORT_Y - d * 0.5, d, d);
-            out.push(Piece::solid(disc, d * 0.5, theme::FOCUS));
+            let disc = button_disc(cx);
+            out.push(Piece::solid(disc, disc.w * 0.5, theme::FOCUS));
         }
         let i = geom::BUTTON_ICON;
         out.push(Piece::Icon {
@@ -473,6 +509,12 @@ fn transport(out: &mut Vec<Piece>, s: &PlayerScreen, m: &dyn Measure) {
             tint,
         });
     }
+}
+
+/// The disc behind the transport button centred at `cx`: drawn when focused, pointed at always.
+fn button_disc(cx: f32) -> Rect {
+    let d = geom::BUTTON_DISC;
+    Rect::new(cx - d * 0.5, geom::TRANSPORT_Y - d * 0.5, d, d)
 }
 
 /// The programme card, top right.
@@ -533,42 +575,118 @@ fn card(out: &mut Vec<Piece>, s: &PlayerScreen, m: &dyn Measure) {
     );
 }
 
-/// The channel number being typed, top right.
-fn number(out: &mut Vec<Piece>, digits: &str, preview: Option<&str>, m: &dyn Measure) {
-    let right = SCR_W - geom::X;
-    let top = geom::X;
-    let digits_w = m.width_str(digits, size::HEADER, true);
-    let preview = preview.map(|p| draw::fit(m, p, 600.0, size::BODY, false));
-    let preview_w = preview.as_ref().map_or(0.0, |(_, w)| *w);
-    let w = digits_w.max(preview_w) + 2.0 * space::L;
-    let mut h = m.line_h(size::HEADER) + 2.0 * space::M;
-    if preview.is_some() {
-        h += m.line_h(size::BODY);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::fake::{FakeData, Mono};
+    use crate::data::{Navigate, Output, Playback, Screen};
+    use crate::input::{Key, Press};
+
+    const NOW: iptv::model::Timestamp = 1_787_843_520;
+
+    /// The middle of a spot's rectangle once laid out, as the pointer would rest on it.
+    fn centre(s: &mut PlayerScreen, area: u8, index: usize) -> (f32, f32) {
+        s.layout(&Mono);
+        let r = s
+            .spots
+            .rects()
+            .find(|(_, spot)| *spot == Spot::row(area, index));
+        let r = r.expect("a spot").0;
+        (r.x + r.w * 0.5, r.y + r.h * 0.5)
     }
-    let panel = Rect::new(right - w, top, w, h);
-    out.push(Piece::solid(
-        panel,
-        radius::PILL,
-        with_a(theme::PANEL, 0.95),
-    ));
-    out.push(text(
-        draw::run(digits),
-        right - space::L,
-        top + space::M,
-        size::HEADER,
-        true,
-        theme::TEXT,
-        HAlign::Right,
-    ));
-    if let Some((p, _)) = preview {
-        out.push(text(
-            p,
-            right - space::L,
-            top + space::M + m.line_h(size::HEADER),
-            size::BODY,
-            false,
-            theme::TEXT_MUTED,
-            HAlign::Right,
-        ));
+
+    #[test]
+    fn the_pointer_focuses_tiles_and_working_transport_buttons() {
+        let mut d = FakeData::new(NOW, 6);
+        d.playback = Playback {
+            channel: Some(d.channels[0].key),
+            ..Playback::default()
+        };
+        d.recents = vec![d.channels[3].key, d.channels[4].key];
+        let mut s = PlayerScreen::new(Default::default());
+        assert!(!s.wheel(), "Up and Down zap");
+        let (x, y) = (960.0, 540.0);
+        assert_eq!(s.point(x, y, &d, 0), Output::default(), "nothing up");
+        s.key(Key::Ok, Press::Short, &d, 0);
+        assert_eq!(s.overlay(), Overlay::Info { tile: 0 });
+        let (x, y) = centre(&mut s, TILE, 1);
+        assert_eq!(s.point(x, y, &d, 10), Output::redraw());
+        assert_eq!(s.overlay(), Overlay::Info { tile: 1 });
+        assert_eq!(s.point(x + 5.0, y, &d, 20), Output::default());
+        let out = s.key(Key::Ok, Press::Short, &d, 30);
+        assert_eq!(out.navigate, [Navigate::History]);
+        // The playback panel: the seek bar and the buttons that work for live with an archive.
+        s.key(Key::Ok, Press::Short, &d, 40);
+        s.key(Key::Up, Press::Short, &d, 50);
+        assert_eq!(s.overlay(), Overlay::Playback);
+        let rewind = BUTTONS.iter().position(|b| *b == Button::Rewind).unwrap();
+        let (x, y) = centre(&mut s, BUTTON, rewind);
+        assert_eq!(s.point(x, y, &d, 60), Output::redraw());
+        assert_eq!(s.transport_focus(), Focus::Button(Button::Rewind));
+        let pause = BUTTONS
+            .iter()
+            .position(|b| *b == Button::PlayPause)
+            .unwrap();
+        let (x, y) = centre(&mut s, BUTTON, pause);
+        assert_eq!(s.point(x, y, &d, 70), Output::default(), "not on live");
+        let (x, y) = centre(&mut s, SEEK, 0);
+        assert_eq!(s.point(x, y, &d, 80), Output::redraw());
+        assert_eq!(s.transport_focus(), Focus::Seek);
+    }
+
+    /// Where slot `slot` of the tile row stands on screen, whatever tile it shows.
+    fn slot(s: &mut PlayerScreen, slot: usize) -> (f32, f32) {
+        s.layout(&Mono);
+        let r = s.spots.rects().nth(slot).expect("a tile").0;
+        (r.x + r.w * 0.5, r.y + r.h * 0.5)
+    }
+
+    #[test]
+    fn pointing_at_a_tile_never_scrolls_the_row() {
+        let mut d = FakeData::new(NOW, 13);
+        d.playback = Playback {
+            channel: Some(d.channels[0].key),
+            ..Playback::default()
+        };
+        d.recents = d.channels[1..].iter().map(|c| c.key).collect();
+        let mut s = PlayerScreen::new(Default::default());
+        s.key(Key::Ok, Press::Short, &d, 0);
+        assert_eq!(s.tiles().len(), 12);
+        let shown = TILE_ROWS.shown;
+        assert!(shown < 12, "the row scrolls");
+        // A still pointer on the last tile shown focuses it, and the row stays put.
+        let last = slot(&mut s, shown - 1);
+        for t in 0..4 {
+            s.point(last.0, last.1, &d, 10 + t);
+            s.layout(&Mono);
+        }
+        assert_eq!(s.overlay(), Overlay::Info { tile: shown - 1 });
+        assert_eq!(s.tiles_top, 0);
+        // The keys to the end of the row, then the pointer on the first tile shown: that tile,
+        // not the TV guide scrolled under the pointer.
+        for t in 0..12 {
+            s.key(Key::Right, Press::Short, &d, 100 + t);
+        }
+        assert_eq!(s.overlay(), Overlay::Info { tile: 11 });
+        let top = s.tiles_top;
+        assert_eq!(top, 12 - shown);
+        let first = slot(&mut s, 0);
+        s.point(first.0, first.1, &d, 200);
+        assert_eq!(
+            (s.overlay(), s.tiles_top),
+            (Overlay::Info { tile: top }, top)
+        );
+        s.layout(&Mono);
+        s.point(first.0, first.1, &d, 210);
+        assert_eq!(s.overlay(), Overlay::Info { tile: top });
+        // From the pointed tile the keys scroll as they do, keeping a tile of context.
+        s.key(Key::Left, Press::Short, &d, 220);
+        assert_eq!(
+            (s.overlay(), s.tiles_top),
+            (Overlay::Info { tile: top - 1 }, top - 2)
+        );
+        let out = s.key(Key::Ok, Press::Short, &d, 230);
+        assert!(out.navigate.is_empty(), "not the TV guide: {out:?}");
+        assert_eq!(out.commands.len(), 1, "the channel on that tile plays");
     }
 }

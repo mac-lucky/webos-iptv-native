@@ -21,6 +21,7 @@ use super::grid::{Grid, Mode, Row, Shown};
 use crate::data::Logos;
 use crate::draw::{self, Piece, Run};
 use crate::icons::{self, Icon};
+use crate::point::{Spot, Spots};
 use crate::theme::{self, radius, size};
 use crate::time::{self, MINUTE};
 
@@ -189,6 +190,51 @@ impl Paint {
         draw_now_line(p, grid);
         if self.pip {
             pip_window(p);
+        }
+    }
+}
+
+/// A [`Spot`] on a row's band: the channel column, a gap between cells, the stand-in cell of a
+/// row with no guide.
+pub const ROW: u8 = 0;
+/// A [`Spot`] on a programme cell; its `item` is the programme's start.
+pub const CELL: u8 = 1;
+
+impl Paint {
+    /// What the pointer can focus in the frame drawn last: each whole row on screen and the
+    /// programme cells on it; the row the bottom edge cuts is dead. The picture-in-picture
+    /// window covers the cells under it. With the groups panel up (`panel`, its column) every
+    /// row beside it is dead and the panel covers the rest.
+    pub fn spots(&self, grid: &Grid, panel: Option<Rect>, out: &mut Spots) {
+        out.clear();
+        let clip = geom::rows_clip();
+        let whole = grid.cursor.visible(grid.channels.len(), geom::ROWS);
+        for (row, slot) in grid.rows.iter().zip(&self.rows) {
+            let band = geom::row_rect(row.index, self.scroll.pos);
+            if band.y >= clip.y + clip.h || band.y + band.h <= clip.y {
+                continue;
+            }
+            if panel.is_some() || !whole.contains(&row.index) {
+                out.dead(band.intersect(clip));
+                continue;
+            }
+            out.add(band.intersect(clip), Spot::row(ROW, row.index));
+            for cell in &slot.cells {
+                let Some(start) = cell.start else { continue };
+                let spot = Spot {
+                    area: CELL,
+                    index: row.index,
+                    item: start,
+                };
+                out.add(geom::cell_rect(band, &cell.geom).intersect(clip), spot);
+            }
+        }
+        if self.pip {
+            let (v, f) = (geom::PIP, geom::PIP_FRAME);
+            out.cover(Rect::new(v.x - f, v.y - f, v.w + 2.0 * f, v.h + 2.0 * f));
+        }
+        if let Some(column) = panel {
+            out.cover(column);
         }
     }
 }

@@ -95,6 +95,19 @@ fn long(s: &mut GuideScreen, data: &FakeData, key: Key) -> Output {
     Screen::key(s, key, Press::Long, data, 0)
 }
 
+/// Back from the grid until the groups panel opens (to the current time first when away from
+/// it), then Back in the panel: back to the player while something plays. The panel's Back's
+/// output.
+fn leave(s: &mut GuideScreen, data: &FakeData) -> Output {
+    for _ in 0..2 {
+        if !s.panel {
+            assert!(quiet(&press(s, data, Key::Back)), "Back in the grid");
+        }
+    }
+    assert!(s.panel, "the groups panel");
+    press(s, data, Key::Back)
+}
+
 /// Whether a tick asks for a frame.
 fn tick(s: &mut GuideScreen, data: &FakeData) -> bool {
     Screen::tick(s, data, 0).redraw
@@ -479,8 +492,8 @@ fn back_returns_to_live_before_opening_the_groups() {
     let (row, live) = (s.grid.cursor.index, focus(&s));
     press(&mut s, &data, Key::Back);
     assert!(s.panel);
-    // Back in the panel: the grid as it was.
-    press(&mut s, &data, Key::Back);
+    // Right in the panel: the grid as it was (Back there leaves for the player).
+    press(&mut s, &data, Key::Right);
     assert!(!s.panel);
     assert_eq!(s.grid.cursor.index, row);
     assert_eq!(focus(&s), live);
@@ -488,24 +501,24 @@ fn back_returns_to_live_before_opening_the_groups() {
 }
 
 #[test]
-fn long_back_returns_to_what_played() {
+fn leaving_returns_to_what_played() {
     let mut data = data(6);
     // Still playing: asked for again only to give the zap group back.
     let mut s = opened(&mut data, 0);
-    let out = long(&mut s, &data, Key::Back);
+    let out = leave(&mut s, &data);
     assert_eq!(out.commands, [play(Stream::Live(key(&data, 0)))]);
     assert_eq!(out.navigate, [Navigate::Close]);
 
     let mut s = opened(&mut data, 0);
     press(&mut s, &data, Key::Down);
     press(&mut s, &data, Key::Ok);
-    let out = long(&mut s, &data, Key::Back);
+    let out = leave(&mut s, &data);
     assert_eq!(out.commands, [play(Stream::Live(key(&data, 0)))]);
     assert_eq!(out.navigate, [Navigate::Close]);
 }
 
 #[test]
-fn long_back_gives_back_the_group_the_guide_opened_on() {
+fn leaving_gives_back_the_group_the_guide_opened_on() {
     let mut data = data(9);
     data.playback.channel = Some(key(&data, 1));
     let sport = Group::Playlist("Sport".into());
@@ -518,7 +531,7 @@ fn long_back_gives_back_the_group_the_guide_opened_on() {
     let out = press(&mut s, &data, Key::Ok);
     let news = Some(Group::Playlist("News".into()));
     assert!(matches!(&out.commands[..], [Command::Play { group, .. }] if *group == news));
-    let out = long(&mut s, &data, Key::Back);
+    let out = leave(&mut s, &data);
     let back = Command::Play {
         stream: Stream::Live(key(&data, 1)),
         group: Some(sport),
@@ -527,7 +540,7 @@ fn long_back_gives_back_the_group_the_guide_opened_on() {
 }
 
 /// A screen over the guide can start something (the channel menu's Watch from start): the
-/// preview follows playback, so OK and long Back act on what really plays.
+/// preview follows playback, so OK and leaving for the player act on what really plays.
 #[test]
 fn the_preview_follows_what_plays() {
     let mut data = data(6);
@@ -540,24 +553,24 @@ fn the_preview_follows_what_plays() {
     let out = press(&mut s, &data, Key::Ok);
     assert!(out.commands.is_empty());
     assert_eq!(out.navigate, [Navigate::Close]);
-    // Long Back undoes it: live again, as when the guide opened.
+    // Leaving for the player undoes it: live again, as when the guide opened.
     data.playback.catchup = None;
     let mut s = opened(&mut data, 0);
     data.playback.channel = Some(key(&data, 2));
     tick(&mut s, &data);
-    let out = long(&mut s, &data, Key::Back);
+    let out = leave(&mut s, &data);
     assert_eq!(out.commands, [play(Stream::Live(key(&data, 0)))]);
     // Opened during the archived programme and it still plays: nothing to undo.
     let archived = schedule(1, NOW - 3 * 3600, NOW - 3 * 3600 + 1).remove(0);
     data.playback.catchup = Some(archived.clone());
     data.playback.position_secs = 900;
     let mut s = opened(&mut data, 1);
-    assert!(long(&mut s, &data, Key::Back).commands.is_empty());
+    assert!(leave(&mut s, &data).commands.is_empty());
     // Something else played from outside meanwhile: it is played again from where it was.
     let mut s = opened(&mut data, 1);
     data.playback.catchup = None;
     tick(&mut s, &data);
-    let out = long(&mut s, &data, Key::Back);
+    let out = leave(&mut s, &data);
     let resume = Stream::Catchup {
         channel: key(&data, 1),
         programme: archived,
@@ -567,7 +580,7 @@ fn the_preview_follows_what_plays() {
 }
 
 #[test]
-fn long_back_resumes_an_archived_programme() {
+fn leaving_resumes_an_archived_programme() {
     let mut data = data(6);
     let programme = schedule(0, NOW - 3 * 3600, NOW - 3 * 3600 + 1).remove(0);
     data.playback.catchup = Some(programme.clone());
@@ -575,7 +588,7 @@ fn long_back_resumes_an_archived_programme() {
     let mut s = opened(&mut data, 0);
     press(&mut s, &data, Key::Down);
     press(&mut s, &data, Key::Ok);
-    let out = long(&mut s, &data, Key::Back);
+    let out = leave(&mut s, &data);
     let catchup = Stream::Catchup {
         channel: key(&data, 0),
         programme,
@@ -703,12 +716,43 @@ fn groups_panel_keys() {
         [Navigate::GroupMenu(Group::Favorites)]
     );
     press(&mut s, &data, Key::Down);
-    press(&mut s, &data, Key::Back);
-    assert!(!s.panel, "Back returns to the grid");
+    press(&mut s, &data, Key::Right);
+    assert!(!s.panel, "Right returns to the grid");
     assert_eq!(s.group, Group::All);
-    press(&mut s, &data, Key::Back);
-    let out = long(&mut s, &data, Key::Back);
+    let out = leave(&mut s, &data);
+    assert_eq!(out.navigate, [Navigate::Close], "Back: the player");
+    assert!(!s.panel);
+    assert_eq!(s.hold(Key::Back), Hold::Once, "never held");
+}
+
+#[test]
+fn back_in_the_panel_returns_to_what_played() {
+    let mut data = data(6);
+    let mut s = opened(&mut data, 0);
+    // Another channel previewed and the grid in the past: Back to live, Back to the panel,
+    // Back to the player with what played when the guide opened.
+    press(&mut s, &data, Key::Down);
+    press(&mut s, &data, Key::Ok);
+    data.playback.channel = Some(key(&data, 1));
+    press(&mut s, &data, Key::Left);
+    assert!(quiet(&press(&mut s, &data, Key::Back)));
+    assert!(quiet(&press(&mut s, &data, Key::Back)));
+    assert!(s.panel);
+    let out = press(&mut s, &data, Key::Back);
+    assert_eq!(out.commands, [play(Stream::Live(key(&data, 0)))]);
     assert_eq!(out.navigate, [Navigate::Close]);
+    assert!(!s.panel);
+    // OK or Right in the panel go back to the grid instead.
+    let mut s = opened(&mut data, 0);
+    press(&mut s, &data, Key::Back);
+    press(&mut s, &data, Key::Right);
+    assert!(!s.panel);
+    // With nothing playing there is no player to go back to: Back closes the panel.
+    data.playback.channel = None;
+    let mut s = GuideScreen::new(&data, Group::All);
+    press(&mut s, &data, Key::Back);
+    assert!(s.panel);
+    assert!(quiet(&press(&mut s, &data, Key::Back)));
     assert!(!s.panel);
 }
 
@@ -923,4 +967,223 @@ fn every_state_draws() {
     draw(&mut s);
     s.refresh(&data);
     draw(&mut s);
+}
+
+/// The middle of the `nth` cell drawn on the row of channel `index` (the last for `None`), and
+/// its programme's start.
+fn cell_point(s: &GuideScreen, index: usize, nth: Option<usize>) -> (f32, f32, Timestamp) {
+    let (row, slot) = s
+        .grid
+        .rows
+        .iter()
+        .zip(&s.paint.rows)
+        .find(|(r, _)| r.index == index)
+        .expect("the row is read");
+    let cell = &slot.cells[nth.unwrap_or(slot.cells.len() - 1)];
+    let band = geom::row_rect(row.index, s.paint.scroll.pos);
+    let r = geom::cell_rect(band, &cell.geom);
+    (
+        r.x + r.w * 0.5,
+        r.y + r.h * 0.5,
+        cell.start.expect("a programme"),
+    )
+}
+
+fn point(s: &mut GuideScreen, data: &FakeData, (x, y): (f32, f32)) -> Output {
+    Screen::point(s, x, y, data, 0)
+}
+
+#[test]
+fn the_pointer_focuses_the_cell_it_rests_on_without_scrolling() {
+    let mut data = data(30);
+    let mut s = opened(&mut data, 0);
+    draw(&mut s);
+    let (top, window) = (s.grid.cursor.top, s.grid.window);
+    // The last programme in the window, five rows down.
+    let (x, y, start) = cell_point(&s, 5, None);
+    let out = point(&mut s, &data, (x, y));
+    assert!(out.redraw && quiet(&out));
+    assert_eq!(s.grid.channel().map(|c| c.key), Some(key(&data, 5)));
+    assert_eq!(focus(&s).start, start);
+    assert_eq!((s.grid.cursor.top, s.grid.window), (top, window));
+    assert_eq!(s.grid.anchor, Anchor::At(start));
+    assert!(
+        !point(&mut s, &data, (x - 4.0, y)).redraw,
+        "the same cell draws nothing"
+    );
+    // The channel column of the next row keeps the time, as Down does.
+    draw(&mut s);
+    let out = point(&mut s, &data, (geom::NAME.0, y + geom::ROW_H));
+    assert!(out.redraw);
+    assert_eq!(s.grid.channel().map(|c| c.key), Some(key(&data, 6)));
+    let p = focus(&s);
+    assert!(p.start <= start && start < p.stop, "{p:?}");
+    // The partial row under the whole ones would scroll: not pointed at, and a click on it
+    // does nothing (no OK on the focus); one on the details above the grid is OK.
+    let partial = geom::row_rect(top + geom::ROWS.shown, s.paint.scroll.pos);
+    assert!(partial.y < geom::SCREEN_H);
+    assert!(!point(&mut s, &data, (geom::NAME.0, partial.y + 10.0)).redraw);
+    assert_eq!(s.grid.cursor.top, top);
+    assert!(s.dead(geom::NAME.0, partial.y + 10.0));
+    assert!(s.dead(x, partial.y + 10.0), "its cells too");
+    assert!(!s.dead(geom::NAME.0, y + geom::ROW_H), "a whole row");
+    assert!(!s.dead(geom::NAME.0, geom::GRID_Y - 40.0), "the details");
+    // OK previews the pointed channel; Down carries on from it.
+    let out = press(&mut s, &data, Key::Ok);
+    assert_eq!(out.commands, [play(Stream::Live(key(&data, 6)))]);
+    press(&mut s, &data, Key::Down);
+    assert_eq!(s.grid.channel().map(|c| c.key), Some(key(&data, 7)));
+}
+
+#[test]
+fn the_pointer_on_the_programme_on_air_follows_live() {
+    let mut data = data(30);
+    let mut s = opened(&mut data, 0);
+    press(&mut s, &data, Key::Down);
+    press(&mut s, &data, Key::Down);
+    press(&mut s, &data, Key::Right);
+    draw(&mut s);
+    assert_eq!(s.grid.anchor, Anchor::At(focus(&s).start));
+    let row = s.grid.rows.iter().position(|r| r.index == 2).unwrap();
+    let programmes = &s.grid.rows[row].programmes;
+    let live = programmes.iter().find(|p| p.is_on_air(NOW)).unwrap().start;
+    let nth = s.paint.rows[row]
+        .cells
+        .iter()
+        .position(|c| c.start == Some(live));
+    let (x, y, _) = cell_point(&s, 2, nth);
+    assert!(point(&mut s, &data, (x, y)).redraw);
+    assert!(on_air(&focus(&s)));
+    assert_eq!(s.grid.anchor, Anchor::Live);
+}
+
+#[test]
+fn the_pointer_in_the_groups_panel_shows_the_group_it_rests_on() {
+    let mut data = data(9);
+    let mut s = opened(&mut data, 0);
+    press(&mut s, &data, Key::Back);
+    assert!(s.panel);
+    draw(&mut s);
+    // Favorites, All, History, then News on the fourth row.
+    let pill = geom::GROUPS.pill(3);
+    let out = point(&mut s, &data, (pill.x + 20.0, pill.y + 20.0));
+    assert!(out.redraw);
+    assert_eq!(
+        out.commands,
+        [Command::ShowGroup(Group::Playlist("News".into()))]
+    );
+    assert_eq!(s.group, Group::Playlist("News".into()));
+    // The grid beside the panel is not pointed at while the panel has the focus, and a click
+    // on it does nothing; the panel's own rows are live.
+    let (x, y) = (geom::GRID_X + 300.0, geom::ROWS_Y + 10.0);
+    assert!(!point(&mut s, &data, (x, y)).redraw);
+    assert!(s.panel);
+    draw(&mut s);
+    assert!(s.dead(x, y));
+    assert!(!s.dead(pill.x + 20.0, pill.y + 20.0));
+}
+
+/// A short digit at `now_ms`.
+fn digit(s: &mut GuideScreen, data: &FakeData, d: u8, now_ms: u64) -> Output {
+    Screen::key(s, Key::Digit(d), Press::Short, data, now_ms)
+}
+
+#[test]
+fn digits_move_the_focus_to_that_channel_once_the_typing_stops() {
+    let mut data = data(12);
+    let mut s = opened(&mut data, 0);
+    assert!(quiet(&digit(&mut s, &data, 1, 1_000)));
+    let out = digit(&mut s, &data, 1, 1_500);
+    assert!(out.redraw && quiet(&out));
+    let n = s.number.as_ref().unwrap();
+    assert_eq!(
+        (n.digits.as_str(), n.preview.as_deref()),
+        ("11", Some("Channel 11"))
+    );
+    assert_eq!(
+        s.grid.channel().unwrap().key,
+        key(&data, 0),
+        "not before the typing stops"
+    );
+    let due = 1_500 + number::TIMEOUT_MS;
+    assert!(s.next_wake(1_500).is_some_and(|w| w <= due));
+    assert!(!Screen::tick(&mut s, &data, due - 1).redraw);
+    assert!(s.number.is_some(), "a second digit restarted the wait");
+
+    let out = Screen::tick(&mut s, &data, due);
+    assert!(out.redraw && quiet(&out));
+    assert!(s.number.is_none());
+    assert_eq!(s.grid.channel().unwrap().key, key(&data, 10));
+    assert!(s.grid.at_live() && on_air(&focus(&s)), "at the same time");
+    assert!(!s.panel);
+    draw(&mut s);
+}
+
+#[test]
+fn ok_takes_a_number_at_once_back_drops_it_and_other_keys_act() {
+    let mut data = data(12);
+    let mut s = opened(&mut data, 0);
+    digit(&mut s, &data, 5, 0);
+    let out = press(&mut s, &data, Key::Ok);
+    assert!(quiet(&out), "OK takes the number, it does not preview");
+    assert_eq!(s.grid.channel().unwrap().key, key(&data, 4));
+
+    digit(&mut s, &data, 9, 0);
+    assert!(quiet(&press(&mut s, &data, Key::Back)));
+    assert!(s.number.is_none());
+    assert!(!s.panel, "Back only dropped the number");
+    assert_eq!(s.grid.channel().unwrap().key, key(&data, 4));
+
+    digit(&mut s, &data, 9, 0);
+    press(&mut s, &data, Key::Down);
+    assert!(s.number.is_none());
+    assert_eq!(
+        s.grid.channel().unwrap().key,
+        key(&data, 5),
+        "Down moved as usual"
+    );
+    Screen::tick(&mut s, &data, 60_000);
+    assert_eq!(s.grid.channel().unwrap().key, key(&data, 5));
+}
+
+#[test]
+fn a_number_outside_the_group_shows_every_channel() {
+    let mut data = data(12);
+    data.playback.channel = Some(key(&data, 0));
+    let news = Group::Playlist("News".into());
+    let mut s = GuideScreen::new(&data, news.clone());
+    assert_eq!(s.group, news);
+    // Channel 2 is in Sport.
+    digit(&mut s, &data, 2, 0);
+    let out = Screen::tick(&mut s, &data, number::TIMEOUT_MS);
+    assert_eq!(out.commands, [Command::ShowGroup(Group::All)]);
+    assert_eq!(s.group, Group::All);
+    assert_eq!(s.grid.channels.len(), 12);
+    assert_eq!(s.grid.channel().unwrap().key, key(&data, 1));
+
+    // One in the group shown stays in it.
+    let mut s = GuideScreen::new(&data, news.clone());
+    digit(&mut s, &data, 4, 0);
+    let out = Screen::tick(&mut s, &data, number::TIMEOUT_MS);
+    assert!(quiet(&out));
+    assert_eq!(s.group, news);
+    assert_eq!(s.grid.channel().unwrap().key, key(&data, 3));
+}
+
+#[test]
+fn no_channel_by_that_number_and_digits_in_the_groups_panel_change_nothing() {
+    let mut data = data(12);
+    let mut s = opened(&mut data, 2);
+    digit(&mut s, &data, 9, 0);
+    digit(&mut s, &data, 9, 0);
+    let out = Screen::tick(&mut s, &data, number::TIMEOUT_MS);
+    assert!(quiet(&out));
+    assert_eq!(s.grid.channel().unwrap().key, key(&data, 2));
+
+    press(&mut s, &data, Key::Back);
+    assert!(s.panel);
+    assert!(!digit(&mut s, &data, 1, 0).redraw);
+    assert!(s.number.is_none());
+    let held = Screen::key(&mut s, Key::Digit(1), Press::Long, &data, 0);
+    assert!(!held.redraw && s.number.is_none());
 }

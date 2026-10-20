@@ -1,6 +1,6 @@
 //! The side panel: a stack of pages sliding in from the right edge. Context menus and Settings are
 //! both built from it; their owners decide what a row does, this module only moves the focus,
-//! drills in and out, and draws.
+//! drills in and out, and draws. The pointer focuses the row it rests on ([`SidePanel::point`]).
 
 use std::ffi::CString;
 
@@ -12,6 +12,7 @@ use crate::data::{Navigate, Output};
 use crate::draw::cstr;
 use crate::icons::{self, Icon};
 use crate::lists::{Cursor, Rows};
+use crate::point::{Spot, Spots};
 
 /// A page's rows on screen: the focus may sit on the first and the last.
 const ROWS: Rows = Rows::new(style::VISIBLE_ROWS, 0);
@@ -182,6 +183,8 @@ pub struct SidePanel<Id> {
     shown: bool,
     /// Whether the text field is being typed into (draws the caret and the focus rim).
     editing: bool,
+    /// The rows in the frame drawn last, for the pointer.
+    spots: Spots,
 }
 
 impl<Id: Copy> SidePanel<Id> {
@@ -197,6 +200,7 @@ impl<Id: Copy> SidePanel<Id> {
             slide: Spring::at(0.0),
             shown: true,
             editing: false,
+            spots: Spots::default(),
         }
     }
 
@@ -346,6 +350,20 @@ impl<Id: Copy> SidePanel<Id> {
         }
     }
 
+    /// The pointer at `(x, y)`: focus the row drawn there, as Up and Down do. A redraw when the
+    /// focus moved.
+    pub fn point(&mut self, x: f32, y: f32) -> Output {
+        let Some(spot) = self.spots.at(x, y).filter(|_| !self.closing()) else {
+            return Output::default();
+        };
+        let page = self.page_mut();
+        if !page.cursor.point(spot.index, page.rows.len(), ROWS) {
+            return Output::default();
+        }
+        tv_machine::idle::invalidate();
+        Output::redraw()
+    }
+
     /// Move the focus (rows) or scroll (paragraphs, one at a time) by one, without wrapping.
     fn step(&mut self, by: isize) -> Nav<Id> {
         let page = self.page_mut();
@@ -375,14 +393,15 @@ impl<Id: Copy> SidePanel<Id> {
     }
 
     /// Draw the current page.
-    pub fn draw(&self, p: Painter) {
+    pub fn draw(&mut self, p: Painter) {
+        self.spots.clear();
         if self.slide.pos <= style::HIDDEN {
             return;
         }
         let f = self.frame();
         p.shadow(f, 0.0, style::SHADOW_BLUR, 0.0, style::SHADOW);
         p.rect(f, 0.0, style::PANEL_BG, style::PANEL_BG, 0.0);
-        let page = self.page();
+        let page = self.pages.last().expect("a panel always has a page");
         let x = f.x + style::PAD_X;
         let w = f.w - 2.0 * style::PAD_X;
         line(
@@ -399,12 +418,9 @@ impl<Id: Copy> SidePanel<Id> {
             y += style::ROW_H + style::GAP;
         }
         for i in page.cursor.visible(page.rows.len(), ROWS) {
-            draw_row(
-                p,
-                Rect::new(f.x, y, f.w, style::ROW_H),
-                &page.rows[i],
-                i == page.focus(),
-            );
+            let r = Rect::new(f.x, y, f.w, style::ROW_H);
+            draw_row(p, r, &page.rows[i], i == page.focus());
+            self.spots.add(r, Spot::row(0, i));
             y += style::ROW_H;
         }
         for para in page.body.iter().skip(page.top()) {
@@ -650,6 +666,39 @@ mod tests {
             vec!["One paragraph.".into(), "Two.".into()],
         ));
         panel.draw(Painter::recording());
+    }
+
+    #[test]
+    fn the_pointer_focuses_the_row_drawn_under_it() {
+        let mut panel = SidePanel::new(Page::list("Menu", rows(20)));
+        panel.update(10.0);
+        panel.draw(Painter::recording());
+        let f = panel.frame();
+        let row_y = |row: usize| style::ROWS_TOP + (row as f32 + 0.5) * style::ROW_H;
+        assert_eq!(panel.point(f.x + 40.0, row_y(4)), Output::redraw());
+        assert_eq!(panel.focused(), Some(4));
+        assert_eq!(panel.point(f.x + 60.0, row_y(4)), Output::default());
+        assert_eq!(
+            panel.point(f.x - 1.0, row_y(5)),
+            Output::default(),
+            "left of it"
+        );
+        assert_eq!(
+            panel.point(f.x + 40.0, 40.0),
+            Output::default(),
+            "the title"
+        );
+        // Below the last row on screen: nothing to scroll to.
+        let below = row_y(style::VISIBLE_ROWS);
+        assert_eq!(panel.point(f.x + 40.0, below), Output::default());
+        assert_eq!(panel.page().top(), 0);
+        // Down carries on from the pointed row; OK activates it.
+        assert_eq!(panel.key(PanelKey::Down), Nav::Moved);
+        assert_eq!(panel.key(PanelKey::Ok), Nav::Activate(5));
+        // A closing panel takes no pointer.
+        panel.hide();
+        assert_eq!(panel.point(f.x + 40.0, row_y(2)), Output::default());
+        assert_eq!(panel.focused(), Some(5));
     }
 
     #[test]

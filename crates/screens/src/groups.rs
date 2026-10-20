@@ -15,7 +15,8 @@
 //! | OK / Right | [`Act::Enter`]; on History [`Navigate::History`] |
 //! | long OK | [`Navigate::GroupMenu`] |
 //! | Back | [`Act::Back`] |
-//! | long Back | [`Act::Close`] |
+//!
+//! The pointer focuses the group it rests on, as Up and Down do ([`GroupsPanel::point`]).
 
 use tv_machine::machine::Measure;
 use tv_ui::{Painter, Rect};
@@ -24,6 +25,7 @@ use crate::data::{Group, Logos, Navigate};
 use crate::draw::{self, HAlign, Piece, Run};
 use crate::input::{Hold, Key};
 use crate::lists::{Cursor, Rows};
+use crate::point::{Spot, Spots};
 use crate::theme::{self, radius, size, space};
 
 const SCREEN_H: f32 = 1080.0;
@@ -71,10 +73,8 @@ pub enum Act {
     /// A screen the panel opens the same from every host: History (OK or Right on it, a screen
     /// of its own), the group's menu (long OK) and the main menu (Left).
     Go(Navigate),
-    /// Back: close the panel.
+    /// Back: the screen holding the panel decides (close the panel, or the screen too).
     Back,
-    /// Long Back: close the screen holding the panel.
-    Close,
 }
 
 /// Display order: the three built-in groups first (Favorites always leads), playlist groups
@@ -99,6 +99,8 @@ pub struct GroupsPanel {
     /// The groups' names fitted to the pills, once the panel was first laid out.
     names: Vec<Run>,
     pieces: Vec<Piece>,
+    /// The whole rows of the last layout, for the pointer, and the cut one under them (dead).
+    spots: Spots,
     /// The state changed since the last layout.
     stale: bool,
 }
@@ -113,6 +115,7 @@ impl GroupsPanel {
             frame,
             names: Vec::new(),
             pieces: Vec::new(),
+            spots: Spots::default(),
             stale: true,
         };
         g.set(groups, current);
@@ -167,7 +170,7 @@ impl GroupsPanel {
     pub fn hold(key: Key) -> Hold {
         match key {
             Key::Up | Key::Down | Key::ChannelUp | Key::ChannelDown => Hold::Repeat,
-            Key::Left | Key::Ok | Key::Back => Hold::Long,
+            Key::Left | Key::Ok => Hold::Long,
             _ => Hold::Once,
         }
     }
@@ -190,8 +193,7 @@ impl GroupsPanel {
                 return Act::Go(Navigate::History)
             }
             (Key::Ok | Key::Right, _) => return Act::Enter,
-            (Key::Back, false) => return Act::Back,
-            (Key::Back, true) => return Act::Close,
+            (Key::Back, _) => return Act::Back,
             _ => false,
         };
         if moved {
@@ -215,6 +217,23 @@ impl GroupsPanel {
         }
         self.focus(focus);
         true
+    }
+
+    /// The row under the last whole one, which shows only its top, is at `(x, y)`: the pointer
+    /// cannot focus it ([`crate::point`]).
+    pub fn dead(&self, x: f32, y: f32) -> bool {
+        self.spots.dead_at(x, y)
+    }
+
+    /// The pointer at `(x, y)`: focus the group it rests on, as Up and Down do.
+    pub fn point(&mut self, x: f32, y: f32) -> Act {
+        match self.spots.at(x, y) {
+            Some(s) if self.cursor.point(s.index, self.list.len(), LIST) => {
+                self.focus(s.index);
+                Act::Moved
+            }
+            _ => Act::None,
+        }
     }
 
     fn focus(&mut self, focus: usize) {
@@ -241,11 +260,19 @@ impl GroupsPanel {
         self.pieces.clear();
         self.pieces
             .push(Piece::solid(self.frame.column(), 0.0, theme::PANEL));
+        self.spots.clear();
         let top = self.cursor.top;
         // The row under the last whole one shows its top, as the list goes on.
         let end = (top + ROWS + 1).min(self.list.len());
+        let whole = self.cursor.visible(self.list.len(), LIST);
         for i in top..end {
             let pill = self.frame.pill(i - top);
+            let band = Rect::new(0.0, pill.y, self.frame.w, ROW_H);
+            if whole.contains(&i) {
+                self.spots.add(band, Spot::row(0, i));
+            } else {
+                self.spots.dead(band);
+            }
             let focused = i == self.cursor.index;
             let ink = if focused {
                 self.pieces
@@ -375,7 +402,6 @@ mod tests {
         );
         assert_eq!(g.key(Key::Left, false), Act::Go(Navigate::MainMenu));
         assert_eq!(g.key(Key::Back, false), Act::Back);
-        assert_eq!(g.key(Key::Back, true), Act::Close);
         assert_eq!(g.key(Key::Red, false), Act::None);
         // History opens its own screen and shows nothing: the guide keeps All.
         assert_eq!(g.key(Key::Down, false), Act::Moved);
@@ -388,6 +414,7 @@ mod tests {
         assert_eq!(GroupsPanel::hold(Key::Down), Hold::Repeat);
         assert_eq!(GroupsPanel::hold(Key::Left), Hold::Long);
         assert_eq!(GroupsPanel::hold(Key::Right), Hold::Once);
+        assert_eq!(GroupsPanel::hold(Key::Back), Hold::Once, "never held");
     }
 
     #[test]
@@ -449,6 +476,36 @@ mod tests {
                 assert!(r.x >= column.x && r.x + r.w <= column.x + column.w, "{r:?}");
             }
         }
+    }
+
+    #[test]
+    fn the_pointer_focuses_the_group_it_rests_on() {
+        let list: Vec<Group> = (0..40).map(|i| playlist(&format!("G{i}"))).collect();
+        let mut g = panel(list, &playlist("G0"));
+        g.prepare(&Mono);
+        let at = |row: usize| {
+            let pill = FRAME.pill(row);
+            (pill.x + 10.0, pill.y + 10.0)
+        };
+        let (x, y) = at(3);
+        assert_eq!(g.point(x, y), Act::Moved);
+        assert_eq!(
+            g.shown(),
+            Some(&playlist("G3")),
+            "shown at once, as Down does"
+        );
+        assert_eq!(g.point(x, y + 20.0), Act::None, "the same row");
+        assert_eq!(g.point(FRAME.w + 1.0, y), Act::None, "beside the panel");
+        // The partial row under the last whole one is not pointed at: it would scroll. A click
+        // on it does nothing; one beside the panel is no business of the panel's.
+        let (x, y) = at(ROWS);
+        assert_eq!(g.point(x, y), Act::None);
+        assert_eq!(g.cursor(), Cursor { index: 3, top: 0 });
+        assert!(g.dead(x, y));
+        assert!(!g.dead(at(3).0, at(3).1) && !g.dead(FRAME.w + 1.0, y));
+        // Down carries on from the pointed row.
+        assert_eq!(g.key(Key::Down, false), Act::Moved);
+        assert_eq!(g.focused(), Some(&playlist("G4")));
     }
 
     #[test]

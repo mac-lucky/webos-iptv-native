@@ -22,6 +22,10 @@ pub const SDL_WINDOWEVENT: u32 = 0x200;
 pub const SDL_KEYDOWN: u32 = 0x300;
 pub const SDL_KEYUP: u32 = 0x301;
 pub const SDL_TEXTINPUT: u32 = 0x303;
+pub const SDL_MOUSEMOTION: u32 = 0x400;
+pub const SDL_MOUSEBUTTONDOWN: u32 = 0x401;
+pub const SDL_MOUSEBUTTONUP: u32 = 0x402;
+pub const SDL_MOUSEWHEEL: u32 = 0x403;
 const SDL_USEREVENT: u32 = 0x8000;
 
 const SDL_INIT_VIDEO: u32 = 0x20;
@@ -130,6 +134,7 @@ extern "C" {
 #[cfg(feature = "hostsim")]
 extern "C" {
     fn SDL_GL_GetDrawableSize(win: *mut c_void, w: *mut c_int, h: *mut c_int);
+    fn SDL_GetWindowSize(win: *mut c_void, w: *mut c_int, h: *mut c_int);
     fn SDL_SetWindowSize(win: *mut c_void, w: c_int, h: c_int);
     fn glReadPixels(
         x: c_int,
@@ -160,6 +165,14 @@ impl Event {
     pub fn u32_at(&self, off: usize) -> u32 {
         u32::from_ne_bytes(self.0[off..off + 4].try_into().expect("four bytes"))
     }
+
+    pub fn i32_at(&self, off: usize) -> i32 {
+        self.u32_at(off) as i32
+    }
+
+    pub fn f32_at(&self, off: usize) -> f32 {
+        f32::from_bits(self.u32_at(off))
+    }
 }
 
 /// Wake the loop from any thread: an `SDL_USEREVENT` ends its wait like any other event.
@@ -178,6 +191,9 @@ pub struct Video {
     /// simulator, when SDL did not answer with a Wayland window, and between a background edge
     /// and the next foreground (SDL may drop it meanwhile).
     surface: Cell<*mut c_void>,
+    /// Drawable pixels per window unit: pointer events come in window units, which a Retina
+    /// display doubles on the simulator; 1 on the television.
+    pointer_scale: f32,
 }
 
 impl Video {
@@ -254,10 +270,24 @@ impl Video {
             // television's starts with it off. Match it, so text arrives only while a field asks.
             #[cfg(feature = "hostsim")]
             SDL_StopTextInput();
+            #[cfg(feature = "hostsim")]
+            let pointer_scale = {
+                let ((mut ww, mut wh), (mut dw, mut dh)) = ((0, 0), (0, 0));
+                SDL_GetWindowSize(win, &mut ww, &mut wh);
+                SDL_GL_GetDrawableSize(win, &mut dw, &mut dh);
+                if ww > 0 && dw > 0 {
+                    dw as f32 / ww as f32
+                } else {
+                    1.0
+                }
+            };
+            #[cfg(not(feature = "hostsim"))]
+            let pointer_scale = 1.0;
             let video = Self {
                 win,
                 ctx,
                 surface: Cell::new(std::ptr::null_mut()),
+                pointer_scale,
             };
             video.grab_surface();
             Ok(video)
@@ -355,6 +385,11 @@ impl Video {
         let ms = c_int::try_from(ms).unwrap_or(c_int::MAX);
         // SAFETY: as `poll`.
         unsafe { SDL_WaitEventTimeout(ev.0.as_mut_ptr().cast(), ms) != 0 }
+    }
+
+    /// Drawable pixels per window unit, for pointer positions ([`crate::input::decode_pointer`]).
+    pub fn pointer_scale(&self) -> f32 {
+        self.pointer_scale
     }
 
     /// Raise (`true`) or dismiss the television's keyboard; typed text then arrives as

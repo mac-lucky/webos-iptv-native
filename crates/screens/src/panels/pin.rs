@@ -245,6 +245,10 @@ impl Screen for PinDialog {
         self.closed
     }
 
+    fn secret(&self) -> bool {
+        true
+    }
+
     fn draw(&mut self, p: Painter, _: &dyn Measure, _: &dyn Logos) {
         if self.closed {
             return;

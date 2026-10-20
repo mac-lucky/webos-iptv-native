@@ -2,9 +2,9 @@
 //!
 //! `main` opens this run's logs (`logs`), brings up SDL and GL (`sdl`), opens the data
 //! (`store`) and hands the screens to the `shell`. The loop then sleeps in SDL until the next
-//! event or the shell's next wake, feeds it key edges (`input`) and keyboard text, and draws
-//! and presents only when something changed or an animation still moves. The boot path makes no
-//! network call and records nothing beyond the local logs.
+//! event or the shell's next wake, feeds it key edges and the Magic Remote's pointer (`input`)
+//! and keyboard text, and draws and presents only when something changed or an animation still
+//! moves. The boot path makes no network call and records nothing beyond the local logs.
 //!
 //! Built with `--features hostsim`, the same binary is the desktop simulator (`sim`).
 
@@ -166,27 +166,24 @@ fn run(video: &Video, shell: &mut Shell, clock: u64) {
                 sdl::SDL_WINDOWEVENT => shell.redraw(),
                 sdl::SDL_KEYDOWN | sdl::SDL_KEYUP => {
                     let key = input::decode(&ev, ms() as u32);
-                    // A code the remote table does not name is logged raw, which is how a new
-                    // firmware's codes are learnt. Presses only; while the keyboard types, only
-                    // its own control keys (`input::loggable_while_typing`), every edge, and
-                    // never a typed character.
-                    // Not `key:`: the log redactor masks the value of any `...key: value` label.
-                    if shell.typing() {
-                        if input::loggable_while_typing(key.sym) {
-                            log(&format!(
-                                "keyboard: key sym={} wcode={} {:?}",
-                                key.sym, key.wcode, key.edge
-                            ));
-                        }
-                    } else if key.edge == input::Edge::Down {
-                        match input::name(key.wcode) {
-                            Some(name) => log(&format!("remote: {name}")),
-                            None => log(&format!("remote: sym={} wcode={}", key.sym, key.wcode)),
-                        }
+                    if let Some(line) = shell.key_line(&key) {
+                        log(&line);
                     }
                     shell.key(key);
                 }
                 sdl::SDL_TEXTINPUT => shell.text(&input::decode_text(&ev), ms()),
+                sdl::SDL_MOUSEMOTION
+                | sdl::SDL_MOUSEBUTTONDOWN
+                | sdl::SDL_MOUSEBUTTONUP
+                | sdl::SDL_MOUSEWHEEL => {
+                    if let Some(p) = input::decode_pointer(&ev, video.pointer_scale(), ms() as u32)
+                    {
+                        if let Some(line) = shell.pointer_line(&p) {
+                            log(&line);
+                        }
+                        shell.pointer(p);
+                    }
+                }
                 _ => {}
             }
             queued = video.poll(&mut ev);

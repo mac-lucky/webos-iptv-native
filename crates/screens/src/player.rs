@@ -1,10 +1,12 @@
 //! The full-screen player's overlays, as in TiviMate.
 //!
-//! - **Nothing up**: Up/Down and CH+/- zap through the current group, short Right goes back to
-//!   the last channel, digits type a channel number, OK opens the info panel, long Right the
-//!   programme card, Back the guide (long Back Settings), Left the channel list (long Left in
-//!   preview mode), long Up History, long OK the channel menu. A zap shows the info banner (the
-//!   panel without its tile row) for the panel timeout.
+//! - **Nothing up**: Left/Right skip back and forward by the skip step, catch-up and live with
+//!   an archive alike, through the playback panel (a toast says when there is nothing to seek).
+//!   Up/Down and CH+/- zap through the current group, digits type a channel number, OK opens the
+//!   info panel, Back the guide (never held: [`Key::Back`]). Held: Left the channel list, Right
+//!   the last channel, CH- the channel list in preview mode, CH+ the programme card, Up History,
+//!   Down Settings, OK the channel menu. A zap shows the info banner (the panel without its tile
+//!   row) for the panel timeout.
 //! - **Info panel** (OK): logo, programme, times, progress, channel, media badges, the next
 //!   programme and a tile row (TV guide, History, recent channels); Left/Right move along the
 //!   row, OK opens or plays the tile, Up opens the playback panel, Down the player menu.
@@ -12,7 +14,7 @@
 //!   seek bar where Left/Right seek by the skip step (held: faster), sent as one seek once the
 //!   presses stop, and below it prev/rewind/pause/forward/next, restart and Live. The tile row
 //!   is hidden while it is up; Down from the buttons brings the info panel back.
-//! - **Programme card** (long Right): the programme on screen, top right; Right steps on to the
+//! - **Programme card** (long CH+): the programme on screen, top right; Right steps on to the
 //!   next ones, Left back.
 //!
 //! [`PlayerScreen`] is the [`Screen`] at the bottom of the shell's stack, a pure state machine:
@@ -36,12 +38,16 @@ use crate::data::{
 };
 use crate::draw::{self, Cached, Piece};
 use crate::input::{Hold, Key, Press};
+use crate::lists::Cursor;
+use crate::number::{Interrupt, NumberEntry};
 use crate::panels::settings::{keys, Settings};
+use crate::point::Spots;
 use crate::time;
 use iptv::model::{Channel, ChannelKey, Programme};
 use model::{Card, Context, Header, Tile, TileKind};
 use transport::{Button, Focus, Readout, Transport};
 use tv_machine::machine::Measure;
+use tv_platform::i18n::msg;
 use tv_ui::Painter;
 
 /// The player's stored settings ([`crate::panels::settings`]).
@@ -84,9 +90,6 @@ impl PlayerSettings {
 
 /// Recent channels in the info panel's tile row (TiviMate's default).
 pub const RECENT_TILES: usize = 10;
-/// How long a typed channel number waits for the next digit.
-pub const NUMBER_TIMEOUT_MS: u64 = 2_000;
-
 /// Which panel is up.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Overlay {
@@ -104,17 +107,6 @@ pub enum Overlay {
     },
 }
 
-/// A channel number being typed.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct NumberEntry {
-    pub digits: String,
-    /// The channel the digits name so far, when there is one.
-    pub preview: Option<String>,
-    pub commit_at_ms: u64,
-}
-
-/// The most digits a channel number takes.
-pub const NUMBER_DIGITS: usize = 4;
 /// How far ahead the programme card can step.
 const CARD_AHEAD_SECS: i64 = 24 * 3600;
 
@@ -134,6 +126,8 @@ pub struct PlayerScreen {
     ctx: Context,
     header: Header,
     tiles: Vec<Tile>,
+    /// The first tile the info panel's row shows: the keys scroll it, the pointer never does.
+    tiles_top: usize,
     readout: Readout,
     /// The programmes the card steps through, from the one on screen on.
     card_list: Vec<Programme>,
@@ -141,6 +135,8 @@ pub struct PlayerScreen {
     /// Moves on every change worth a frame; the view lays out again when it does.
     generation: u64,
     view: Cached,
+    /// What the pointer can focus in the last layout ([`view::spots`]).
+    spots: Spots,
 }
 
 impl PlayerScreen {
@@ -157,11 +153,13 @@ impl PlayerScreen {
             ctx: Context::default(),
             header: Header::default(),
             tiles: Vec::new(),
+            tiles_top: 0,
             readout: Readout::default(),
             card_list: Vec::new(),
             card: Card::default(),
             generation: 0,
             view: Cached::default(),
+            spots: Spots::default(),
         }
     }
 
@@ -231,8 +229,13 @@ impl PlayerScreen {
     /// only when the generation moved.
     pub fn layout(&mut self, m: &dyn Measure) -> &[Piece] {
         let mut view = std::mem::take(&mut self.view);
-        view.prepare(self.generation, |out| view::build(self, m, out));
+        let mut spots = std::mem::take(&mut self.spots);
+        view.prepare(self.generation, |out| {
+            view::build(self, m, out);
+            view::spots(self, &mut spots);
+        });
         self.view = view;
+        self.spots = spots;
         self.view.pieces()
     }
 
@@ -249,14 +252,16 @@ impl PlayerScreen {
             (Key::Ok, Press::Short) => self.open(Overlay::Info { tile: 0 }, data, now_ms),
             (Key::Ok, Press::Long) => out.navigate.extend(self.channel_menu()),
             (Key::Up, Press::Long) => out.navigate.push(Navigate::History),
-            (Key::Left, Press::Short) => {
-                out.navigate.push(Navigate::ChannelList { preview: false })
+            (Key::Left, Press::Short) => self.skip(-1, false, data, now_ms, out),
+            (Key::Right, Press::Short) => self.skip(1, false, data, now_ms, out),
+            (Key::Left, Press::Long) => out.navigate.push(Navigate::ChannelList { preview: false }),
+            (Key::Right, Press::Long) => self.last_channel(data, now_ms, out),
+            (Key::ChannelDown, Press::Long) => {
+                out.navigate.push(Navigate::ChannelList { preview: true })
             }
-            (Key::Left, Press::Long) => out.navigate.push(Navigate::ChannelList { preview: true }),
-            (Key::Right, Press::Short) => self.last_channel(data, now_ms, out),
-            (Key::Right, Press::Long) => self.open_card(data),
+            (Key::ChannelUp, Press::Long) => self.open_card(data),
             (Key::Back, Press::Short) => out.navigate.push(Navigate::Guide),
-            (Key::Back, Press::Long) => out.navigate.push(Navigate::Settings),
+            (Key::Down, Press::Long) => out.navigate.push(Navigate::Settings),
             _ => self.key_common(key, press, data, now_ms, out),
         }
     }
@@ -299,7 +304,7 @@ impl PlayerScreen {
             (Key::Ok, Press::Long) => out.navigate.extend(self.channel_menu()),
             (Key::Up, Press::Short) => {
                 if transport::can_seek(&self.ctx) {
-                    self.transport = Transport::default();
+                    self.transport.reset();
                     self.readout = Readout::build(&self.transport, &self.ctx);
                     self.show(Overlay::Playback, now_ms);
                 }
@@ -411,26 +416,50 @@ impl PlayerScreen {
             Key::Pause if self.ctx.in_catchup() && !self.ctx.playback.paused => {
                 out.commands.push(Command::TogglePause)
             }
-            Key::FastForward | Key::Rewind if transport::can_seek(&self.ctx) => {
-                if self.overlay != Overlay::Playback {
-                    self.transport = Transport::default();
-                }
+            Key::FastForward | Key::Rewind => {
                 let dir = if key == Key::Rewind { -1 } else { 1 };
-                let held = press != Press::Short;
-                self.transport
-                    .seek(&self.ctx, dir, held, &self.settings, now_ms);
-                self.readout = Readout::build(&self.transport, &self.ctx);
-                self.open(Overlay::Playback, data, now_ms);
+                self.skip(dir, press != Press::Short, data, now_ms, out);
             }
             _ => out.redraw = false,
         }
     }
 
+    /// One skip by the skip step, `dir` -1 back or +1 forward, `held` for a long press or its
+    /// repeats: the playback panel comes up on its seek bar and later presses join the same
+    /// burst ([`Transport::seek`]). On live, back plays the archive from that far behind now.
+    /// With nothing to seek, a toast says why.
+    fn skip(&mut self, dir: i64, held: bool, data: &dyn TvData, now_ms: u64, out: &mut Output) {
+        if self.overlay != Overlay::Playback {
+            // Only the playback panel keeps the clock to the second: a burst counts from now,
+            // not from when the zap banner or the info panel came up.
+            self.sync(data, false);
+        }
+        if !transport::can_seek(&self.ctx) {
+            out.redraw = false;
+            // The channel keeps no archive, or none of the programme (no guide for it, older
+            // than the archive); with nothing playing there is nothing to say.
+            out.toast = self.ctx.channel.as_ref().map(|_| {
+                let why = if self.ctx.has_archive() {
+                    msg::epg_catchup_unavailable()
+                } else {
+                    msg::player_no_catchup()
+                };
+                why.to_owned()
+            });
+            return;
+        }
+        if self.overlay != Overlay::Playback {
+            self.transport.reset();
+        }
+        self.transport
+            .seek(&self.ctx, dir, held, &self.settings, now_ms);
+        self.readout = Readout::build(&self.transport, &self.ctx);
+        self.open(Overlay::Playback, data, now_ms);
+    }
+
     fn show(&mut self, overlay: Overlay, now_ms: u64) {
         self.overlay = match overlay {
-            Overlay::Info { tile } => Overlay::Info {
-                tile: tile.min(self.tiles.len().saturating_sub(1)),
-            },
+            Overlay::Info { tile } => self.focus_tile(tile),
             o => o,
         };
         self.hide_at_ms = match overlay {
@@ -448,6 +477,23 @@ impl PlayerScreen {
             self.sync(data, true);
         }
         self.show(self.overlay, now_ms);
+    }
+
+    /// The info panel focused on tile `tile` (clamped to the row), the row scrolled to show it
+    /// with its context as the keys do.
+    fn focus_tile(&mut self, tile: usize) -> Overlay {
+        let mut row = self.tile_row(tile);
+        row.set(tile, self.tiles.len(), view::TILE_ROWS);
+        self.tiles_top = row.top;
+        Overlay::Info { tile: row.index }
+    }
+
+    /// The info panel's tile row as it scrolls now, focused on `tile`.
+    fn tile_row(&self, tile: usize) -> Cursor {
+        Cursor {
+            index: tile,
+            top: self.tiles_top,
+        }
     }
 
     fn hide(&mut self, out: &mut Output) {
@@ -516,7 +562,7 @@ impl PlayerScreen {
         }
     }
 
-    /// Short Right: back to the channel watched before this one.
+    /// Long Right: back to the channel watched before this one.
     fn last_channel(&mut self, data: &dyn TvData, now_ms: u64, out: &mut Output) {
         let current = self.current_key();
         if let Some(k) = data
@@ -539,30 +585,19 @@ impl PlayerScreen {
             self.overlay = Overlay::Hidden;
             self.hide_at_ms = None;
         }
-        let entry = self.number.get_or_insert(NumberEntry {
-            digits: String::new(),
-            preview: None,
-            commit_at_ms: 0,
-        });
-        if entry.digits.len() < NUMBER_DIGITS {
-            entry.digits.push(char::from(b'0' + d));
-        }
-        entry.commit_at_ms = now_ms + NUMBER_TIMEOUT_MS;
-        let wanted = entry.digits.parse::<u32>().ok();
-        entry.preview = wanted
-            .and_then(|n| find_number(data, n))
-            .map(|c| c.name.clone());
+        NumberEntry::type_digit(&mut self.number, d, data, now_ms);
     }
 
-    fn commit_number(&mut self, data: &dyn TvData, now_ms: u64, out: &mut Output) {
+    /// The typed number is taken: play the channel it names.
+    fn commit_number(
+        &mut self,
+        entry: NumberEntry,
+        data: &dyn TvData,
+        now_ms: u64,
+        out: &mut Output,
+    ) {
         out.redraw = true;
-        let Some(entry) = self.number.take() else {
-            return;
-        };
-        let Some(n) = entry.digits.parse::<u32>().ok() else {
-            return;
-        };
-        if let Some(c) = find_number(data, n) {
+        if let Some(c) = entry.channel(data) {
             if Some(c.key) != self.current_key() {
                 self.play(c.key, data, now_ms, out);
             }
@@ -631,9 +666,7 @@ impl PlayerScreen {
         if tiles && matches!(self.overlay, Overlay::Info { .. } | Overlay::Playback) {
             self.tiles = model::tiles(data, self.current_key());
             if let Overlay::Info { tile } = self.overlay {
-                self.overlay = Overlay::Info {
-                    tile: tile.min(self.tiles.len().saturating_sub(1)),
-                };
+                self.overlay = self.focus_tile(tile);
             }
         }
         if let Overlay::Card { index } = self.overlay {
@@ -652,7 +685,13 @@ impl Screen for PlayerScreen {
             (_, Key::FastForward | Key::Rewind) => Hold::Repeat,
             (
                 Overlay::Hidden | Overlay::Banner,
-                Key::Ok | Key::Up | Key::Left | Key::Right | Key::Back,
+                Key::Ok
+                | Key::Up
+                | Key::Down
+                | Key::Left
+                | Key::Right
+                | Key::ChannelUp
+                | Key::ChannelDown,
             ) => Hold::Long,
             (Overlay::Info { .. }, Key::Ok) => Hold::Long,
             (Overlay::Info { .. }, Key::Left | Key::Right) => Hold::Repeat,
@@ -672,15 +711,17 @@ impl Screen for PlayerScreen {
             self.generation += 1;
             return out;
         }
-        if self.number.is_some() {
-            match key {
-                Key::Ok => self.commit_number(data, now_ms, &mut out),
-                _ => self.number = None,
-            }
-            if matches!(key, Key::Ok | Key::Back) {
+        match NumberEntry::interrupt(&mut self.number, key) {
+            Interrupt::Commit(entry) => {
+                self.commit_number(entry, data, now_ms, &mut out);
                 self.generation += 1;
                 return out;
             }
+            Interrupt::Dropped => {
+                self.generation += 1;
+                return out;
+            }
+            Interrupt::Pass => {}
         }
         if self.overlay == Overlay::Hidden || self.ctx.channel.is_none() {
             // Nothing keeps a hidden player up to date: read what plays before acting on it.
@@ -696,6 +737,47 @@ impl Screen for PlayerScreen {
         out
     }
 
+    /// The pointer focuses a tile of the info panel (never scrolling the row), or the seek bar
+    /// or a working button of the playback panel ([`view::spots`]); with no panel up there is
+    /// nothing to point at.
+    fn point(&mut self, x: f32, y: f32, _: &dyn TvData, now_ms: u64) -> Output {
+        let Some(spot) = self.spots.at(x, y) else {
+            return Output::default();
+        };
+        let before = (self.overlay, self.transport.focus);
+        match (self.overlay, spot.area) {
+            (Overlay::Info { tile }, view::TILE) => {
+                let mut row = self.tile_row(tile);
+                if row.point(spot.index, self.tiles.len(), view::TILE_ROWS) {
+                    self.overlay = Overlay::Info { tile: row.index };
+                }
+            }
+            (Overlay::Playback, view::SEEK) => self.transport.focus = Focus::Seek,
+            (Overlay::Playback, view::BUTTON) => {
+                let b = transport::BUTTONS[spot.index];
+                if transport::enabled(b, &self.ctx) {
+                    self.transport.focus = Focus::Button(b);
+                }
+            }
+            _ => {}
+        }
+        if (self.overlay, self.transport.focus) == before {
+            return Output::default();
+        }
+        if self.overlay == Overlay::Playback {
+            self.readout = Readout::build(&self.transport, &self.ctx);
+        }
+        // The panel stays up while the pointer moves over it, as after a key.
+        self.hide_at_ms = Some(now_ms + self.settings.panel_timeout_ms);
+        self.generation += 1;
+        Output::redraw()
+    }
+
+    /// Up and Down zap here, and open panels from the info panel: the wheel does neither.
+    fn wheel(&self) -> bool {
+        false
+    }
+
     /// Send a finished seek burst or channel number, hide a timed-out panel, follow what
     /// playback reports. A tick inside the same programme reads no guide.
     fn tick(&mut self, data: &dyn TvData, now_ms: u64) -> Output {
@@ -709,12 +791,8 @@ impl Screen for PlayerScreen {
             self.pending = None;
         }
         let mut out = Output::default();
-        if self
-            .number
-            .as_ref()
-            .is_some_and(|n| now_ms >= n.commit_at_ms)
-        {
-            self.commit_number(data, now_ms, &mut out);
+        if let Some(entry) = NumberEntry::due(&mut self.number, now_ms) {
+            self.commit_number(entry, data, now_ms, &mut out);
         }
         let seeks = self.transport.commit(&self.ctx, now_ms, false);
         if !seeks.is_empty() {
@@ -745,6 +823,9 @@ impl Screen for PlayerScreen {
                 self.sync_with(data, playback, minute);
                 out.redraw = true;
             }
+        } else if self.transport.lag.reading() {
+            // A seek's lag is read on every tick until it settles, the panel up or not.
+            self.sync_with(data, playback, false);
         }
         self.generation += u64::from(out.redraw);
         out
@@ -764,7 +845,7 @@ impl Screen for PlayerScreen {
         [
             self.hide_at_ms,
             self.number.as_ref().map(|n| n.commit_at_ms),
-            self.transport.burst.map(|b| b.commit_at_ms),
+            self.transport.burst.as_ref().map(|b| b.commit_at_ms),
             refresh,
         ]
         .into_iter()
@@ -797,15 +878,6 @@ impl Screen for PlayerScreen {
         self.layout(m);
         self.view.paint(p, logos);
     }
-}
-
-/// The channel numbered `n`: its declared number, else its position in the playlist.
-fn find_number(data: &dyn TvData, n: u32) -> Option<Rc<Channel>> {
-    data.channels(&Group::All)
-        .iter()
-        .enumerate()
-        .find(|(i, c)| draw::channel_number(c, *i) == n)
-        .map(|(_, c)| Rc::clone(c))
 }
 
 /// The channel with `key` and the number it shows.

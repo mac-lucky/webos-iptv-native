@@ -551,9 +551,36 @@ pub trait Screen: std::any::Any {
     /// One remote action.
     fn key(&mut self, key: Key, press: Press, data: &dyn TvData, now_ms: u64) -> Output;
 
+    /// The Magic Remote's pointer rests at `(x, y)` on the 1920x1080 plane: focus the row, tile,
+    /// cell or menu item drawn there ([`crate::point`]), as the arrow keys would, without
+    /// scrolling. A click is OK after this. `redraw` only when the focus moved.
+    fn point(&mut self, _x: f32, _y: f32, _data: &dyn TvData, _now_ms: u64) -> Output {
+        Output::default()
+    }
+
+    /// What is drawn at `(x, y)` is a row the pointer cannot focus ([`crate::point`]: cut by
+    /// the screen's edge, or beside an open groups panel): a click there does nothing. A click
+    /// anywhere else nothing is pointable (the video, a details card) is OK on the focus.
+    fn dead(&self, _x: f32, _y: f32) -> bool {
+        false
+    }
+
+    /// Whether the remote's wheel steps through this screen as Up and Down do (a list); the
+    /// full-screen player, where they zap, says no.
+    fn wheel(&self) -> bool {
+        true
+    }
+
     /// Text the TV keyboard committed; only a screen with a text field takes it.
     fn text(&mut self, _text: &str, _data: &dyn TvData) -> Output {
         Output::default()
+    }
+
+    /// A secret is being entered (the parental PIN): the event log notes no key or pointer
+    /// edge while this screen is in front, since the keys, the wheel and a click pick its
+    /// digits.
+    fn secret(&self) -> bool {
+        false
     }
 
     /// A text field is being typed into. The shell keeps the TV keyboard up while the top screen
