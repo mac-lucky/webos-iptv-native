@@ -7,6 +7,7 @@ use tv_screens::data::fake::FakeData;
 use tv_screens::data::{Group, Logos, ScreenMessage};
 use tv_screens::input::{Hold, Press};
 use tv_screens::lists::PREVIEW_RECT;
+use tv_screens::player::READ_VIDEO;
 
 use super::*;
 use crate::input::REMOTE;
@@ -403,6 +404,35 @@ fn the_video_goes_where_the_topmost_screen_that_places_it_wants() {
     s.shell.navigate(Navigate::Player, None);
     s.shell.settle(s.t);
     assert_eq!(s.shell.rect, None, "nothing open: full screen");
+}
+
+#[test]
+fn the_details_move_the_video_and_back_returns_it() {
+    let mut s = Sim::new();
+    s.live(0);
+    s.shell.navigate(Navigate::Player, None);
+    s.shell.settle(s.t);
+    s.run(10_000);
+    s.calls.take();
+    s.press("OK");
+    s.press("OK");
+    assert_eq!(s.shell.rect, Some(READ_VIDEO));
+    s.press("Back");
+    assert_eq!(s.shell.rect, None);
+    assert_eq!(
+        s.calls.take(),
+        [format!("rect {:?}", Some(READ_VIDEO)), "rect None".into()],
+        "the video moved as it plays, nothing restarted"
+    );
+    // A screen over the details hides the player, so the video goes full screen under it and
+    // comes back beside the details when it closes.
+    s.press("OK");
+    s.press("OK");
+    let prompt = s.push("prompt");
+    assert_eq!(s.shell.rect, None);
+    prompt.0.closing.set(true);
+    s.shell.settle(s.t);
+    assert_eq!(s.shell.rect, Some(READ_VIDEO));
 }
 
 #[test]

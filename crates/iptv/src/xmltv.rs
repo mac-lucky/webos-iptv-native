@@ -33,8 +33,8 @@ const MAX_NAMES: usize = 4;
 const MAX_ID_BYTES: usize = 256;
 const MAX_NAME_BYTES: usize = 256;
 const MAX_TITLE_BYTES: usize = 512;
-/// More than the guide's three lines and the programme card ever show; every byte is stored per
-/// programme on flash.
+/// About three pages of the player's programme details; every byte is stored per programme on
+/// flash.
 const MAX_DESC_BYTES: usize = 2048;
 const MAX_CATEGORY_BYTES: usize = 128;
 /// An icon URL past this is dropped, not cut: image URLs are a few hundred bytes.

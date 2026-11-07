@@ -161,6 +161,7 @@ fn tile_row_lists_guide_history_and_recent_channels_but_not_the_one_playing() {
     assert_eq!(
         kinds,
         [
+            TileKind::Description,
             TileKind::Guide,
             TileKind::History,
             TileKind::Channel(w.key(3)),
@@ -168,11 +169,12 @@ fn tile_row_lists_guide_history_and_recent_channels_but_not_the_one_playing() {
             TileKind::Channel(w.key(4)),
         ]
     );
-    let t = &s.tiles()[2];
+    let t = &s.tiles()[3];
     assert_eq!(t.label, "Show 15:00");
     assert_eq!(t.progress, Some(0.4));
     assert_eq!(t.channel.as_ref().unwrap().name, "Channel 4");
-    assert_eq!(s.tiles()[0].label, "TV guide");
+    assert_eq!(s.tiles()[0].label, "Description");
+    assert_eq!(s.tiles()[1].label, "TV guide");
 }
 
 #[test]
@@ -182,9 +184,9 @@ fn the_tile_row_keeps_the_most_recent_channels() {
     w.recents = w.channels.iter().map(|c| c.key).rev().collect();
     let mut s = screen();
     short(&mut s, &w, Key::Ok, 0);
-    assert_eq!(s.tiles().len(), 2 + RECENT_TILES);
+    assert_eq!(s.tiles().len(), 3 + RECENT_TILES);
     assert_eq!(
-        s.tiles()[2].kind,
+        s.tiles()[3].kind,
         TileKind::Channel(w.key(RECENT_TILES + 2))
     );
 }
@@ -200,7 +202,7 @@ fn left_and_right_move_along_the_tiles_and_ok_switches() {
     for _ in 0..5 {
         short(&mut s, &w, Key::Right, 20);
     }
-    assert_eq!(s.overlay(), Overlay::Info { tile: 3 });
+    assert_eq!(s.overlay(), Overlay::Info { tile: 4 });
     let out = short(&mut s, &w, Key::Ok, 30);
     assert_eq!(out.commands, [live(w.key(1))]);
     assert_eq!(s.overlay(), Overlay::Banner);
@@ -212,11 +214,13 @@ fn guide_and_history_tiles_navigate() {
     let w = world();
     let mut s = screen();
     short(&mut s, &w, Key::Ok, 0);
+    short(&mut s, &w, Key::Right, 5);
     let out = short(&mut s, &w, Key::Ok, 10);
     assert_eq!(out.navigate, [Navigate::Guide]);
     assert_eq!(s.overlay(), Overlay::Hidden);
     short(&mut s, &w, Key::Ok, 20);
     short(&mut s, &w, Key::Right, 30);
+    short(&mut s, &w, Key::Right, 35);
     let out = short(&mut s, &w, Key::Ok, 40);
     assert_eq!(out.navigate, [Navigate::History]);
 }
@@ -895,7 +899,7 @@ fn long_ch_plus_opens_the_programme_card_and_right_steps_on() {
     assert_eq!(s.card().progress, None);
     short(&mut s, &w, Key::Left, 0);
     assert_eq!(s.card().title, "Show 15:30");
-    // the card stays until Back
+    // the details stay until Back or READ_IDLE_MS without a key
     assert_eq!(s.next_wake(0), Some(60_000));
     s.tick(&w, 60_000);
     assert_eq!(s.overlay(), Overlay::Card { index: 1 });
@@ -910,6 +914,274 @@ fn the_card_starts_at_the_catch_up_programme() {
     let mut s = screen();
     s.key(Key::ChannelUp, Press::Long, &w, 0);
     assert_eq!(s.card().title, "Show 13:00");
+}
+
+// ---- programme details beside the picture (task 75) ----
+
+/// The world with every programme described by `description`.
+fn described(description: Option<String>) -> FakeData {
+    let mut w = FakeData::new(T, 6).with_schedule(move |_, from, to| {
+        let mut out = slots(from, to);
+        for p in &mut out {
+            p.description = description.clone();
+        }
+        out
+    });
+    w.playback.channel = Some(w.key(0));
+    w
+}
+
+/// About 1,800 characters: 360 numbered words, ten to a 750 px line under [`Mono`].
+fn long_description() -> String {
+    (0..360)
+        .map(|i| format!("w{i:03}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The description lines the details draw, top down.
+fn description(pieces: &[Piece]) -> Vec<String> {
+    pieces
+        .iter()
+        .filter_map(|p| match p {
+            Piece::Text { s, x, size, .. }
+                if *x == view::geom::READ_X && *size == crate::theme::size::BODY =>
+            {
+                Some(s.to_string_lossy().into_owned())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn chevrons(pieces: &[Piece]) -> usize {
+    pieces
+        .iter()
+        .filter(|p| {
+            matches!(
+                p,
+                Piece::Icon {
+                    icon: crate::icons::Icon::ChevronUp | crate::icons::Icon::ChevronDown,
+                    ..
+                }
+            )
+        })
+        .count()
+}
+
+#[test]
+fn ok_ok_opens_the_programme_details_beside_the_picture() {
+    let w = world();
+    let mut s = screen();
+    short(&mut s, &w, Key::Ok, 0);
+    assert_eq!(s.tiles()[0].kind, TileKind::Description);
+    assert_eq!(s.video_rect(), None);
+    assert!(!s.wheel(), "the info panel's Up and Down open panels");
+    short(&mut s, &w, Key::Ok, 10);
+    assert_eq!(s.overlay(), Overlay::Card { index: 0 });
+    assert_eq!(s.video_rect(), Some(READ_VIDEO));
+    assert!(s.wheel(), "the wheel turns the page");
+    let t = texts(s.layout(&Mono));
+    for want in [
+        "Show 15:00",
+        "15:00 \u{2014} 15:30",
+        "30 min",
+        "News",
+        "About the show.",
+    ] {
+        assert!(t.iter().any(|x| x == want), "{want} missing from {t:?}");
+    }
+    on_screen(s.layout(&Mono));
+    // OK closes; so does Back.
+    let out = short(&mut s, &w, Key::Ok, 20);
+    assert!(out.redraw && out.commands.is_empty() && out.navigate.is_empty());
+    assert_eq!((s.overlay(), s.video_rect()), (Overlay::Hidden, None));
+    assert!(!s.wheel(), "full screen, Up and Down zap");
+    // Holding CH+ opens the same view.
+    s.key(Key::ChannelUp, Press::Long, &w, 30);
+    assert_eq!(s.overlay(), Overlay::Card { index: 0 });
+    assert_eq!(s.video_rect(), Some(READ_VIDEO));
+    assert!(description(s.layout(&Mono)) == ["About the show."]);
+    short(&mut s, &w, Key::Back, 40);
+    assert_eq!((s.overlay(), s.video_rect()), (Overlay::Hidden, None));
+}
+
+#[test]
+fn a_long_description_pages_with_a_line_of_overlap() {
+    let w = described(Some(long_description()));
+    let mut s = screen();
+    short(&mut s, &w, Key::Ok, 0);
+    short(&mut s, &w, Key::Ok, 0);
+    let pieces = s.layout(&Mono).to_vec();
+    let pieces = pieces.as_slice();
+    let first = description(pieces);
+    assert_eq!(s.card_pages, 3);
+    assert_eq!(
+        first[0],
+        "w000 w001 w002 w003 w004 w005 w006 w007 w008 w009"
+    );
+    assert!(texts(pieces).iter().any(|x| x == "1 / 3"));
+    assert_eq!(chevrons(pieces), 2);
+    on_screen(pieces);
+    // Down: page 2 starts on page 1's last line.
+    let out = short(&mut s, &w, Key::Down, 10);
+    assert!(out.redraw && out.commands.is_empty());
+    assert_eq!(s.card_page(), 1);
+    let second = description(s.layout(&Mono));
+    assert_eq!(second[0], *first.last().unwrap());
+    assert!(texts(s.layout(&Mono)).iter().any(|x| x == "2 / 3"));
+    // The last page shows a full page, down to the last word.
+    short(&mut s, &w, Key::Down, 20);
+    let last = description(s.layout(&Mono));
+    assert_eq!(last.len(), first.len());
+    assert!(last.last().unwrap().ends_with("w359"), "{last:?}");
+    on_screen(s.layout(&Mono));
+    // Down on the last page does nothing: no frame and never a zap.
+    let generation = s.generation();
+    let out = short(&mut s, &w, Key::Down, 30);
+    assert!(!out.redraw && out.commands.is_empty(), "{out:?}");
+    assert_eq!(s.generation(), generation);
+    assert_eq!(s.overlay(), Overlay::Card { index: 0 });
+    // Up goes back, and on page 1 does nothing either.
+    short(&mut s, &w, Key::Up, 40);
+    short(&mut s, &w, Key::Up, 50);
+    assert_eq!(s.card_page(), 0);
+    let out = short(&mut s, &w, Key::Up, 60);
+    assert!(!out.redraw && out.commands.is_empty());
+    // Right: the next programme, from its first page.
+    short(&mut s, &w, Key::Down, 70);
+    assert_eq!(s.card_page(), 1);
+    short(&mut s, &w, Key::Right, 80);
+    assert_eq!(
+        (s.overlay(), s.card_page()),
+        (Overlay::Card { index: 1 }, 0)
+    );
+    assert_eq!(description(s.layout(&Mono))[0], first[0]);
+}
+
+#[test]
+fn a_short_description_is_one_page_with_no_page_row() {
+    let w = world();
+    let mut s = screen();
+    s.key(Key::ChannelUp, Press::Long, &w, 0);
+    let pieces = s.layout(&Mono).to_vec();
+    let pieces = pieces.as_slice();
+    assert_eq!(s.card_pages, 1);
+    assert_eq!(chevrons(pieces), 0);
+    assert!(!texts(pieces).iter().any(|x| x.contains(" / ")));
+    let bottom = pieces
+        .iter()
+        .filter_map(|p| match p {
+            Piece::Text { x, y, size, .. } if *x == view::geom::READ_X => {
+                Some(y + Mono.line_h(*size))
+            }
+            _ => None,
+        })
+        .fold(0.0, f32::max);
+    assert!(bottom <= view::geom::DESC_BOTTOM, "{bottom}");
+    // Down and Up have no page to turn.
+    let out = short(&mut s, &w, Key::Down, 10);
+    assert!(!out.redraw && out.commands.is_empty());
+
+    let w = described(None);
+    let mut s = screen();
+    s.key(Key::ChannelUp, Press::Long, &w, 0);
+    assert_eq!(description(s.layout(&Mono)), ["No description."]);
+}
+
+#[test]
+fn without_guide_data_there_are_no_programme_details() {
+    let mut w = FakeData::new(T, 6).with_schedule(|_, _, _| Vec::new());
+    w.playback.channel = Some(w.key(0));
+    let mut s = screen();
+    short(&mut s, &w, Key::Ok, 0);
+    assert_eq!(s.tiles()[0].kind, TileKind::Guide);
+    assert_eq!(short(&mut s, &w, Key::Ok, 10).navigate, [Navigate::Guide]);
+    s.key(Key::ChannelUp, Press::Long, &w, 20);
+    assert_eq!((s.overlay(), s.video_rect()), (Overlay::Hidden, None));
+}
+
+#[test]
+fn the_details_close_after_a_while_without_a_key() {
+    let w = world();
+    let mut s = screen();
+    s.key(Key::ChannelUp, Press::Long, &w, 0);
+    assert_eq!(s.next_wake(0), Some(60_000), "the minute first");
+    assert!(!s.tick(&w, READ_IDLE_MS - 1).redraw);
+    assert_eq!(s.overlay(), Overlay::Card { index: 0 });
+    assert!(s.tick(&w, READ_IDLE_MS).redraw);
+    assert_eq!((s.overlay(), s.video_rect()), (Overlay::Hidden, None));
+    // A page key, even one with no page to turn, starts the wait again.
+    s.key(Key::ChannelUp, Press::Long, &w, 0);
+    short(&mut s, &w, Key::Down, 100_000);
+    s.tick(&w, 100_000 + READ_IDLE_MS - 1);
+    assert_eq!(s.overlay(), Overlay::Card { index: 0 });
+    s.tick(&w, 100_000 + READ_IDLE_MS);
+    assert_eq!(s.overlay(), Overlay::Hidden);
+}
+
+#[test]
+fn a_catch_up_second_does_not_lay_the_details_out_again() {
+    let mut w = world();
+    w.catchup(ON_AIR - 2 * SLOT, 600);
+    let mut s = screen();
+    short(&mut s, &w, Key::Ok, 0);
+    short(&mut s, &w, Key::Ok, 0);
+    assert_eq!(s.card().title, "Show 14:00");
+    let h = s.header();
+    assert!(h.catchup && h.progress.is_none());
+    let t = texts(s.layout(&Mono));
+    assert!(t.iter().any(|x| x == "20 min"), "{t:?}");
+    let marked = s.layout(&Mono).iter().any(|p| {
+        matches!(
+            p,
+            Piece::Icon {
+                icon: crate::icons::Icon::CatchUp,
+                ..
+            }
+        )
+    });
+    assert!(marked, "the catch-up mark under the picture");
+    let generation = s.generation();
+    w.playback.position_secs += 1;
+    assert!(!s.tick(&w, 1_000).redraw);
+    assert_eq!(s.generation(), generation);
+    // The info panel still follows the position, as before.
+    short(&mut s, &w, Key::Back, 2_000);
+    short(&mut s, &w, Key::Ok, 3_000);
+    w.playback.position_secs += 1;
+    assert!(s.tick(&w, 4_000).redraw);
+}
+
+#[test]
+fn a_channel_started_elsewhere_closes_the_details() {
+    let mut w = world();
+    let mut s = screen();
+    s.tick(&w, 0);
+    s.tick(&w, 10_000);
+    s.key(Key::ChannelUp, Press::Long, &w, 10_000);
+    assert_eq!(s.video_rect(), Some(READ_VIDEO));
+    w.playback.channel = Some(w.key(4));
+    let out = s.tick(&w, 11_000);
+    assert!(out.redraw);
+    assert_eq!((s.overlay(), s.video_rect()), (Overlay::Banner, None));
+    assert_eq!(s.header().name, "Channel 5");
+}
+
+#[test]
+fn channel_keys_close_the_details_and_zap() {
+    let w = world();
+    let mut s = screen();
+    s.key(Key::ChannelUp, Press::Long, &w, 0);
+    let out = short(&mut s, &w, Key::ChannelUp, 10);
+    assert_eq!(out.commands, [live(w.key(1))]);
+    assert!(out.redraw);
+    assert_eq!((s.overlay(), s.video_rect()), (Overlay::Banner, None));
+    // A key with nothing to do still closes them, and draws that.
+    s.key(Key::ChannelUp, Press::Long, &w, 20);
+    let out = short(&mut s, &w, Key::Red, 30);
+    assert!(out.redraw && out.commands.is_empty());
+    assert_eq!((s.overlay(), s.video_rect()), (Overlay::Hidden, None));
 }
 
 #[test]
@@ -1195,7 +1467,8 @@ fn the_playback_panel_hides_the_tile_row_and_fits_the_screen() {
 #[test]
 fn the_info_panel_lays_out_on_screen_with_every_fact() {
     let mut w = world();
-    w.recents = vec![w.key(1), w.key(2), w.key(3), w.key(4), w.key(5)];
+    // Description, TV guide, History and four channels fill the seven tiles shown.
+    w.recents = vec![w.key(1), w.key(2), w.key(3), w.key(4)];
     let mut s = screen();
     assert!(s.layout(&Mono).is_empty());
     short(&mut s, &w, Key::Ok, 0);
@@ -1214,6 +1487,7 @@ fn the_info_panel_lays_out_on_screen_with_every_fact() {
         "STEREO",
         "15:30 \u{2014} 16:00",
         "Show 15:30",
+        "Description",
         "TV guide",
         "History",
     ] {
@@ -1233,7 +1507,7 @@ fn the_info_panel_lays_out_on_screen_with_every_fact() {
         .collect();
     assert_eq!(
         logos.len(),
-        1 + 5,
+        1 + 4,
         "the header logo and one per recent channel"
     );
     assert_eq!(logos[0], (Some("Channel 1".into()), "C1".into()));

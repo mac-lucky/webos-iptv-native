@@ -10,6 +10,10 @@
     "value": "Audio track",
     "description": "Player menu action and its page title"
   },
+  "player.description": {
+    "value": "Description",
+    "description": "Info panel tile: opens the programme description beside the picture"
+  },
   "player.fps": {
     "value": "{fps} FPS",
     "args": {

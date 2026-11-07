@@ -221,6 +221,8 @@ impl Header {
 /// One tile of the info panel's row.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TileKind {
+    /// The programme details beside the picture.
+    Description,
     Guide,
     History,
     Channel(ChannelKey),
@@ -229,7 +231,8 @@ pub enum TileKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tile {
     pub kind: TileKind,
-    /// The tile's caption: `TV guide`, `History`, or the recent channel's programme on air.
+    /// The tile's caption: `Description`, `TV guide`, `History`, or the recent channel's
+    /// programme on air.
     pub label: String,
     /// The recent channel, for its logo.
     pub channel: Option<Rc<Channel>>,
@@ -237,11 +240,18 @@ pub struct Tile {
     pub progress: Option<f32>,
 }
 
-/// The tile row: TV guide, History, then up to [`RECENT_TILES`] recent channels (not the one
-/// playing).
-pub fn tiles(data: &dyn TvData, playing: Option<ChannelKey>) -> Vec<Tile> {
+/// The tile row: Description when the guide has the programme playing (`programme`), TV guide,
+/// History, then up to [`RECENT_TILES`] recent channels (not the one playing).
+pub fn tiles(data: &dyn TvData, playing: Option<ChannelKey>, programme: bool) -> Vec<Tile> {
     let now = data.now();
-    let mut out = vec![
+    let description = programme.then(|| Tile {
+        kind: TileKind::Description,
+        label: msg::player_description().into(),
+        channel: None,
+        progress: None,
+    });
+    let mut out: Vec<Tile> = description.into_iter().collect();
+    out.extend([
         Tile {
             kind: TileKind::Guide,
             label: msg::nav_epg().into(),
@@ -254,7 +264,7 @@ pub fn tiles(data: &dyn TvData, playing: Option<ChannelKey>) -> Vec<Tile> {
             channel: None,
             progress: None,
         },
-    ];
+    ]);
     let recents = data
         .recent_channels()
         .into_iter()
@@ -274,7 +284,7 @@ pub fn tiles(data: &dyn TvData, playing: Option<ChannelKey>) -> Vec<Tile> {
     out
 }
 
-/// The programme card (long CH+): one programme of the channel playing.
+/// The programme details (long CH+): one programme of the channel playing.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Card {
     pub channel: String,

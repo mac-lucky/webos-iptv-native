@@ -7,7 +7,7 @@
 
 use super::model::{Header, TileKind};
 use super::transport::{Button, Focus, BUTTONS};
-use super::{Overlay, PlayerScreen};
+use super::{Overlay, PlayerScreen, READ_VIDEO};
 use crate::draw::{self, HAlign, Piece, Run, VAlign};
 use crate::icons::Icon;
 use crate::lists::Rows;
@@ -16,11 +16,13 @@ use crate::theme::{self, radius, size, space};
 use std::os::raw::c_int;
 use tv_gfx::gfx::tokens::with_a;
 use tv_machine::machine::Measure;
+use tv_platform::i18n::msg;
 use tv_ui::consts::{SCR_H, SCR_W};
+use tv_ui::prose_scroll::{paging, scroll_at};
 use tv_ui::Rect;
 
 /// Panel geometry at 1080p.
-mod geom {
+pub(super) mod geom {
     /// Left edge of the panel content and its mirror on the right.
     pub const X: f32 = 81.0;
     pub const LOGO_W: f32 = crate::draw::LOGO_BOX.0 as f32;
@@ -52,8 +54,15 @@ mod geom {
     pub const BUTTON_X: [f32; 7] = [751.0, 855.0, 960.0, 1063.0, 1167.0, 1590.0, 1700.0];
     pub const BUTTON_ICON: f32 = 44.0;
     pub const BUTTON_DISC: f32 = 76.0;
-    pub const CARD_W: f32 = 720.0;
-    pub const CARD_PAD: f32 = 32.0;
+    /// The programme details: the text column right of the video, to the panels' right margin.
+    const VIDEO_RIGHT: f32 = (super::READ_VIDEO.x + super::READ_VIDEO.w) as f32;
+    pub const READ_X: f32 = VIDEO_RIGHT + crate::theme::space::XXL;
+    /// The description's line pitch, the bottom its lines end by, and the page row under it.
+    pub const DESC_PITCH: f32 = 40.0;
+    pub const DESC_BOTTOM: f32 = 966.0;
+    pub const PAGE_Y: f32 = 990.0;
+    /// Clicks right of this (half the gutter past the video) do nothing.
+    pub const DEAD_X: f32 = VIDEO_RIGHT + crate::theme::space::XXL * 0.5;
     pub const CHIP_H: f32 = 30.0;
     pub const BAR_H: f32 = 4.0;
 }
@@ -153,8 +162,10 @@ impl Row<'_> {
     }
 }
 
-/// Lay the panels of `s` out into `out`.
-pub fn build(s: &PlayerScreen, m: &dyn Measure, out: &mut Vec<Piece>) {
+/// Lay the panels of `s` out into `out`; how many pages the programme details' description
+/// makes (1 for every other panel).
+pub fn build(s: &PlayerScreen, m: &dyn Measure, out: &mut Vec<Piece>) -> usize {
+    let mut pages = 1;
     match s.overlay {
         Overlay::Hidden => {}
         Overlay::Banner => {
@@ -190,11 +201,12 @@ pub fn build(s: &PlayerScreen, m: &dyn Measure, out: &mut Vec<Piece>) {
             header(out, &s.header, geom::PANEL_TOP, false, m);
             transport(out, s, m);
         }
-        Overlay::Card { .. } => card(out, s, m),
+        Overlay::Card { .. } => pages = read(out, s, m),
     }
     if let Some(n) = &s.number {
         crate::number::paint(out, n, SCR_W - geom::X, geom::X, m);
     }
+    pages
 }
 
 fn top_bar(out: &mut Vec<Piece>, h: &Header, m: &dyn Measure) {
@@ -354,6 +366,8 @@ pub fn spots(s: &PlayerScreen, out: &mut Spots) {
                 out.add(button_disc(cx), Spot::row(BUTTON, i));
             }
         }
+        // The text reads, it is not pointed at; a click on the picture is OK, which closes.
+        Overlay::Card { .. } => out.dead(Rect::new(geom::DEAD_X, 0.0, SCR_W - geom::DEAD_X, SCR_H)),
         _ => {}
     }
 }
@@ -395,6 +409,7 @@ fn tiles(out: &mut Vec<Piece>, s: &PlayerScreen, focus: usize, m: &dyn Measure) 
         let cx = r.x + r.w * 0.5;
         let label_w = r.w - 2.0 * space::M;
         let icon = match t.kind {
+            TileKind::Description => Some(Icon::Info),
             TileKind::Guide => Some(Icon::Guide),
             TileKind::History => Some(Icon::CatchUp),
             TileKind::Channel(_) => None,
@@ -517,62 +532,138 @@ fn button_disc(cx: f32) -> Rect {
     Rect::new(cx - d * 0.5, geom::TRANSPORT_Y - d * 0.5, d, d)
 }
 
-/// The programme card, top right.
-fn card(out: &mut Vec<Piece>, s: &PlayerScreen, m: &dyn Measure) {
-    let c = &s.card;
-    let x = SCR_W - geom::X - geom::CARD_W;
-    let inner = geom::CARD_W - 2.0 * geom::CARD_PAD;
-    let tx = x + geom::CARD_PAD;
-    let top = geom::X;
-    let at = out.len();
-    let mut y = top + geom::CARD_PAD;
-    let muted = |out: &mut Vec<Piece>, s: Run, y: f32| {
-        out.push(Piece::text(s, tx, y, size::LABEL, false, theme::TEXT_MUTED));
-    };
+/// The video's place in the programme details, on the graphics plane.
+fn read_video() -> Rect {
+    let v = READ_VIDEO;
+    Rect::new(v.x as f32, v.y as f32, v.w as f32, v.h as f32)
+}
 
-    muted(
+/// The programme details: opaque ground around the video (nothing over it), the clock, the
+/// channel under the video, and on the right the programme's title, times and description, one
+/// page of it. Pages overlap by a line and the last one is shown full. Returns the page count.
+fn read(out: &mut Vec<Piece>, s: &PlayerScreen, m: &dyn Measure) -> usize {
+    let v = read_video();
+    for r in [
+        Rect::new(0.0, 0.0, SCR_W, v.y),
+        Rect::new(0.0, v.y + v.h, SCR_W, SCR_H - v.y - v.h),
+        Rect::new(0.0, v.y, v.x, v.h),
+        Rect::new(v.x + v.w, v.y, SCR_W - v.x - v.w, v.h),
+    ] {
+        out.push(Piece::solid(r, 0.0, theme::BG));
+    }
+    let h = &s.header;
+    out.push(text(
+        draw::run(&h.clock),
+        SCR_W - space::XL,
+        space::L,
+        size::BODY,
+        false,
+        theme::TEXT,
+        HAlign::Right,
+    ));
+
+    // Under the video: the channel on the left, the minutes left on the right.
+    let strip_y = v.y + v.h + space::L;
+    let icon = 28.0;
+    let tail = m.width_str(&h.remaining, size::LABEL, false)
+        + if h.catchup { icon + space::S } else { 0.0 };
+    let video_right = v.x + v.w;
+    let mut row = Row {
+        m,
         out,
-        draw::fit(m, &c.channel, inner, size::LABEL, false).0,
-        y,
-    );
-    y += m.line_h(size::LABEL) + space::S;
-    for line in draw::wrap(m, &c.title, inner, size::HEADING, true, 2) {
-        out.push(Piece::text(line, tx, y, size::HEADING, true, theme::TEXT));
-        y += m.line_h(size::HEADING);
+        x: v.x,
+        y: strip_y,
+        right: video_right - tail - space::L,
+    };
+    row.text(&h.number, size::LABEL, true, theme::TEXT, space::M);
+    row.fitted(&h.name, size::LABEL, true, theme::TEXT, 0.0);
+    let mut row = Row {
+        m,
+        out,
+        x: video_right - tail,
+        y: strip_y,
+        right: video_right,
+    };
+    if h.catchup {
+        row.icon(Icon::CatchUp, icon, theme::TEXT_MUTED, space::S);
+    }
+    row.text(&h.remaining, size::LABEL, false, theme::TEXT_MUTED, 0.0);
+    if let Some(f) = h.progress {
+        let y = strip_y + m.line_h(size::LABEL) + space::M;
+        let r = Rect::new(v.x, y, v.w, geom::BAR_H);
+        out.extend(draw::bar(r, f, theme::PROGRESS, theme::PROGRESS_TRACK));
+    }
+
+    let c = &s.card;
+    let x = geom::READ_X;
+    let w = SCR_W - geom::X - x;
+    let mut y = v.y;
+    for line in draw::wrap(m, &c.title, w, size::TITLE, true, 2) {
+        out.push(Piece::text(line, x, y, size::TITLE, true, theme::TEXT));
+        y += m.line_h(size::TITLE);
     }
     y += space::S;
-    let times = format!("{}   {}", c.times, c.duration);
-    muted(out, draw::fit(m, &times, inner, size::LABEL, false).0, y);
-    y += m.line_h(size::LABEL) + space::S;
+    let mut row = Row {
+        m,
+        out,
+        x,
+        y,
+        right: x + w,
+    };
+    row.text(&c.times, size::LABEL, false, theme::TEXT_MUTED, space::L);
+    row.text(&c.duration, size::LABEL, false, theme::TEXT_MUTED, space::L);
     if let Some(f) = c.progress {
-        let r = Rect::new(tx, y, 160.0, geom::BAR_H);
-        out.extend(draw::bar(r, f, theme::PROGRESS, theme::PROGRESS_TRACK));
-        y += geom::BAR_H + space::M;
+        row.bar(80.0, f, space::M);
     }
     if let Some(cat) = &c.category {
+        row.chip(cat);
+    }
+
+    let top = y + m.line_h(size::LABEL) + space::L;
+    let mut lines = c.description.as_deref().map_or_else(Vec::new, |d| {
+        draw::wrap(m, d, w, size::BODY, false, usize::MAX)
+    });
+    if lines.is_empty() {
+        lines.push(draw::run(msg::epg_no_description()));
+    }
+    let per = (((geom::DESC_BOTTOM - top) / geom::DESC_PITCH) as usize).max(2);
+    // One line kept from the page before.
+    let step = (per - 1) as f32;
+    let (max, pages) = paging(lines.len() as f32, per as f32, step);
+    let page = s.card_page.min(pages - 1);
+    let start = scroll_at(page + 1, max, step) as usize;
+    for (i, line) in lines.into_iter().skip(start).take(per).enumerate() {
+        out.push(Piece::text(
+            line,
+            x,
+            top + i as f32 * geom::DESC_PITCH,
+            size::BODY,
+            false,
+            theme::TEXT_MUTED,
+        ));
+    }
+
+    if pages > 1 {
+        let ink = |more: bool| {
+            if more {
+                theme::TEXT
+            } else {
+                with_a(theme::TEXT_MUTED, 0.4)
+            }
+        };
         let mut row = Row {
             m,
             out,
-            x: tx,
-            y,
-            right: tx + inner,
+            x,
+            y: geom::PAGE_Y,
+            right: x + w,
         };
-        row.chip(cat);
-        y += m.line_h(size::LABEL) + space::S;
+        row.icon(Icon::ChevronUp, icon, ink(page > 0), 0.0);
+        row.icon(Icon::ChevronDown, icon, ink(page + 1 < pages), space::M);
+        let at = format!("{} / {pages}", page + 1);
+        row.text(&at, size::LABEL, false, theme::TEXT_MUTED, 0.0);
     }
-    if let Some(d) = &c.description {
-        y += space::S;
-        for line in draw::wrap(m, d, inner, size::LABEL, false, 6) {
-            muted(out, line, y);
-            y += geom::DESC_LINE;
-        }
-    }
-    let h = y - top + geom::CARD_PAD;
-    let panel = Rect::new(x, top, geom::CARD_W, h);
-    out.insert(
-        at,
-        Piece::solid(panel, radius::PILL, with_a(theme::PANEL, 0.95)),
-    );
+    pages
 }
 
 #[cfg(test)]
@@ -609,9 +700,9 @@ mod tests {
         assert_eq!(s.point(x, y, &d, 0), Output::default(), "nothing up");
         s.key(Key::Ok, Press::Short, &d, 0);
         assert_eq!(s.overlay(), Overlay::Info { tile: 0 });
-        let (x, y) = centre(&mut s, TILE, 1);
+        let (x, y) = centre(&mut s, TILE, 2);
         assert_eq!(s.point(x, y, &d, 10), Output::redraw());
-        assert_eq!(s.overlay(), Overlay::Info { tile: 1 });
+        assert_eq!(s.overlay(), Overlay::Info { tile: 2 });
         assert_eq!(s.point(x + 5.0, y, &d, 20), Output::default());
         let out = s.key(Key::Ok, Press::Short, &d, 30);
         assert_eq!(out.navigate, [Navigate::History]);
@@ -634,6 +725,68 @@ mod tests {
         assert_eq!(s.transport_focus(), Focus::Seek);
     }
 
+    /// The programme details over channel 0 playing live, laid out.
+    fn reading() -> (FakeData, PlayerScreen) {
+        let mut d = FakeData::new(NOW, 6);
+        d.playback = Playback {
+            channel: Some(d.channels[0].key),
+            ..Playback::default()
+        };
+        let mut s = PlayerScreen::new(Default::default());
+        s.key(Key::Ok, Press::Short, &d, 0);
+        s.key(Key::Ok, Press::Short, &d, 10);
+        assert_eq!(s.overlay(), Overlay::Card { index: 0 });
+        s.layout(&Mono);
+        (d, s)
+    }
+
+    #[test]
+    fn the_programme_details_leave_the_video_rect_clear() {
+        let (_, mut s) = reading();
+        let rect = read_video();
+        let overlaps = |r: &Rect| {
+            r.x < rect.x + rect.w
+                && rect.x < r.x + r.w
+                && r.y < rect.y + rect.h
+                && rect.y < r.y + r.h
+        };
+        let pieces = s.layout(&Mono);
+        for p in pieces {
+            let covers = match p {
+                Piece::Fill { r, .. } | Piece::Icon { r, .. } | Piece::Logo { r, .. } => {
+                    overlaps(r)
+                }
+                Piece::Text { x, y, .. } => overlaps(&Rect::new(*x, *y, 0.0, 0.0)),
+            };
+            assert!(!covers, "{p:?} covers the video");
+        }
+        // The ground is opaque all around it.
+        let ground: f32 = pieces
+            .iter()
+            .filter_map(|p| match p {
+                Piece::Fill { r, top, .. } if *top == theme::BG => Some(r.w * r.h),
+                _ => None,
+            })
+            .sum();
+        assert_eq!(ground, SCR_W * SCR_H - rect.w * rect.h);
+    }
+
+    #[test]
+    fn a_click_on_the_text_does_nothing_and_on_the_picture_closes() {
+        let (d, mut s) = reading();
+        assert!(s.dead(1500.0, 500.0), "the text column");
+        assert!(s.dead(1500.0, 1000.0), "the page row");
+        assert!(!s.dead(500.0, 400.0), "the picture");
+        assert!(!s.dead(500.0, 720.0), "the strip under it");
+        assert_eq!(s.point(1500.0, 500.0, &d, 20), Output::default());
+        assert_eq!(s.point(500.0, 400.0, &d, 20), Output::default());
+        // A click on the picture is OK on the focus: it closes them.
+        s.key(Key::Ok, Press::Short, &d, 30);
+        assert_eq!(s.overlay(), Overlay::Hidden);
+        s.layout(&Mono);
+        assert!(!s.dead(1500.0, 500.0), "nothing is dead on full screen");
+    }
+
     /// Where slot `slot` of the tile row stands on screen, whatever tile it shows.
     fn slot(s: &mut PlayerScreen, slot: usize) -> (f32, f32) {
         s.layout(&Mono);
@@ -651,9 +804,9 @@ mod tests {
         d.recents = d.channels[1..].iter().map(|c| c.key).collect();
         let mut s = PlayerScreen::new(Default::default());
         s.key(Key::Ok, Press::Short, &d, 0);
-        assert_eq!(s.tiles().len(), 12);
+        assert_eq!(s.tiles().len(), 13);
         let shown = TILE_ROWS.shown;
-        assert!(shown < 12, "the row scrolls");
+        assert!(shown < 13, "the row scrolls");
         // A still pointer on the last tile shown focuses it, and the row stays put.
         let last = slot(&mut s, shown - 1);
         for t in 0..4 {
@@ -664,12 +817,12 @@ mod tests {
         assert_eq!(s.tiles_top, 0);
         // The keys to the end of the row, then the pointer on the first tile shown: that tile,
         // not the TV guide scrolled under the pointer.
-        for t in 0..12 {
+        for t in 0..13 {
             s.key(Key::Right, Press::Short, &d, 100 + t);
         }
-        assert_eq!(s.overlay(), Overlay::Info { tile: 11 });
+        assert_eq!(s.overlay(), Overlay::Info { tile: 12 });
         let top = s.tiles_top;
-        assert_eq!(top, 12 - shown);
+        assert_eq!(top, 13 - shown);
         let first = slot(&mut s, 0);
         s.point(first.0, first.1, &d, 200);
         assert_eq!(

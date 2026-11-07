@@ -4,18 +4,20 @@
 //!   an archive alike, through the playback panel (a toast says when there is nothing to seek).
 //!   Up/Down and CH+/- zap through the current group, digits type a channel number, OK opens the
 //!   info panel, Back the guide (never held: [`Key::Back`]). Held: Left the channel list, Right
-//!   the last channel, CH- the channel list in preview mode, CH+ the programme card, Up History,
+//!   the last channel, CH- the channel list in preview mode, CH+ the programme details, Up History,
 //!   Down Settings, OK the channel menu. A zap shows the info banner (the panel without its tile
 //!   row) for the panel timeout.
 //! - **Info panel** (OK): logo, programme, times, progress, channel, media badges, the next
-//!   programme and a tile row (TV guide, History, recent channels); Left/Right move along the
-//!   row, OK opens or plays the tile, Up opens the playback panel, Down the player menu.
+//!   programme and a tile row (Description, TV guide, History, recent channels); Left/Right move
+//!   along the row, OK opens or plays the tile, Up opens the playback panel, Down the player menu.
 //! - **Playback panel** (Up from the info panel, catch-up or a live channel with an archive): a
 //!   seek bar where Left/Right seek by the skip step (held: faster), sent as one seek once the
 //!   presses stop, and below it prev/rewind/pause/forward/next, restart and Live. The tile row
 //!   is hidden while it is up; Down from the buttons brings the info panel back.
-//! - **Programme card** (long CH+): the programme on screen, top right; Right steps on to the
-//!   next ones, Left back.
+//! - **Programme details** (OK on the Description tile, or long CH+): the video at half size
+//!   on the left ([`READ_VIDEO`]), the programme's full description on the right, a page at a
+//!   time (Up/Down, the wheel); Right steps on to the next programmes, Left back. OK, Back or
+//!   [`READ_IDLE_MS`] without a key return to full screen.
 //!
 //! [`PlayerScreen`] is the [`Screen`] at the bottom of the shell's stack, a pure state machine:
 //! keys and ticks in, [`Output`] out. It reads through [`TvData`], keeps what the panels show as
@@ -34,7 +36,7 @@ mod tests;
 use std::rc::Rc;
 
 use crate::data::{
-    Command, Group, Logos, Navigate, Output, Playback, Screen, ScreenMessage, Stream, TvData,
+    Command, Group, Logos, Navigate, Output, Playback, Rect, Screen, ScreenMessage, Stream, TvData,
 };
 use crate::draw::{self, Cached, Piece};
 use crate::input::{Hold, Key, Press};
@@ -101,14 +103,27 @@ pub enum Overlay {
         tile: usize,
     },
     Playback,
-    /// The programme card; `index` counts programmes on from the one on screen.
+    /// The programme details; `index` counts programmes on from the one on screen.
     Card {
         index: usize,
     },
 }
 
-/// How far ahead the programme card can step.
+/// How far ahead the programme details can step.
 const CARD_AHEAD_SECS: i64 = 24 * 3600;
+
+/// Where the programme details put the video: exact half size, at the panels' left margin and
+/// the side panels' content line.
+pub const READ_VIDEO: Rect = Rect {
+    x: 81,
+    y: 128,
+    w: 960,
+    h: 540,
+};
+
+/// The picture stays small and the text static on an OLED until a key: give it back after a
+/// while.
+pub const READ_IDLE_MS: u64 = 180_000;
 
 pub struct PlayerScreen {
     pub settings: PlayerSettings,
@@ -129,9 +144,12 @@ pub struct PlayerScreen {
     /// The first tile the info panel's row shows: the keys scroll it, the pointer never does.
     tiles_top: usize,
     readout: Readout,
-    /// The programmes the card steps through, from the one on screen on.
+    /// The programmes the details step through, from the one on screen on.
     card_list: Vec<Programme>,
     card: Card,
+    /// The description page shown (0-based), and how many the last layout made of it.
+    card_page: usize,
+    card_pages: usize,
     /// Moves on every change worth a frame; the view lays out again when it does.
     generation: u64,
     view: Cached,
@@ -157,6 +175,8 @@ impl PlayerScreen {
             readout: Readout::default(),
             card_list: Vec::new(),
             card: Card::default(),
+            card_page: 0,
+            card_pages: 1,
             generation: 0,
             view: Cached::default(),
             spots: Spots::default(),
@@ -221,6 +241,11 @@ impl PlayerScreen {
         &self.card
     }
 
+    /// The description page the programme details show (0-based).
+    pub fn card_page(&self) -> usize {
+        self.card_page
+    }
+
     pub fn number(&self) -> Option<&NumberEntry> {
         self.number.as_ref()
     }
@@ -230,12 +255,18 @@ impl PlayerScreen {
     pub fn layout(&mut self, m: &dyn Measure) -> &[Piece] {
         let mut view = std::mem::take(&mut self.view);
         let mut spots = std::mem::take(&mut self.spots);
+        let mut pages = None;
         view.prepare(self.generation, |out| {
-            view::build(self, m, out);
+            pages = Some(view::build(self, m, out));
             view::spots(self, &mut spots);
         });
         self.view = view;
         self.spots = spots;
+        // Only a layout knows how many pages the description makes.
+        if let Some(p) = pages {
+            self.card_pages = p;
+            self.card_page = self.card_page.min(p - 1);
+        }
         self.view.pieces()
     }
 
@@ -259,7 +290,7 @@ impl PlayerScreen {
             (Key::ChannelDown, Press::Long) => {
                 out.navigate.push(Navigate::ChannelList { preview: true })
             }
-            (Key::ChannelUp, Press::Long) => self.open_card(data),
+            (Key::ChannelUp, Press::Long) => self.open_card(data, now_ms),
             (Key::Back, Press::Short) => out.navigate.push(Navigate::Guide),
             (Key::Down, Press::Long) => out.navigate.push(Navigate::Settings),
             _ => self.key_common(key, press, data, now_ms, out),
@@ -284,6 +315,7 @@ impl PlayerScreen {
             ),
             (Key::Right, _) => self.show(Overlay::Info { tile: tile + 1 }, now_ms),
             (Key::Ok, Press::Short) => match self.tiles.get(tile).map(|t| t.kind.clone()) {
+                Some(TileKind::Description) => self.open_card(data, now_ms),
                 Some(TileKind::Guide) => {
                     self.hide(out);
                     out.navigate.push(Navigate::Guide);
@@ -378,12 +410,23 @@ impl PlayerScreen {
         out: &mut Output,
     ) {
         match key {
-            Key::Right => self.card_at(index + 1),
-            Key::Left => self.card_at(index.saturating_sub(1)),
+            Key::Right => self.card_at(index + 1, now_ms),
+            Key::Left => self.card_at(index.saturating_sub(1), now_ms),
+            Key::Down | Key::Up => {
+                self.hide_at_ms = Some(now_ms + READ_IDLE_MS);
+                match key {
+                    Key::Down if self.card_page + 1 < self.card_pages => self.card_page += 1,
+                    Key::Up if self.card_page > 0 => self.card_page -= 1,
+                    // At either end: nothing to draw, and never a zap.
+                    _ => out.redraw = false,
+                }
+            }
             Key::Back | Key::Ok => self.hide(out),
             _ => {
-                self.overlay = Overlay::Hidden;
+                // The details close, then the key acts as on full screen (CH+/- zap).
+                self.hide(out);
                 self.key_common(key, press, data, now_ms, out);
+                out.redraw = true;
             }
         }
     }
@@ -598,7 +641,7 @@ impl PlayerScreen {
         }
     }
 
-    fn open_card(&mut self, data: &dyn TvData) {
+    fn open_card(&mut self, data: &dyn TvData, now_ms: u64) {
         let Some(ch) = self.ctx.key() else {
             return;
         };
@@ -614,15 +657,21 @@ impl PlayerScreen {
         if self.card_list.is_empty() {
             self.card_list.push(current.clone());
         }
-        self.card_at(0);
+        self.card_at(0, now_ms);
     }
 
-    fn card_at(&mut self, index: usize) {
+    /// The details on programme `index` of [`card_list`](Self::card_list) (clamped), from the
+    /// first page of its description when it is another one.
+    fn card_at(&mut self, index: usize, now_ms: u64) {
         let index = index.min(self.card_list.len().saturating_sub(1));
         if let Some(p) = self.card_list.get(index) {
             self.card = Card::build(&self.ctx, p);
+            if self.overlay != (Overlay::Card { index }) {
+                self.card_page = 0;
+                self.card_pages = 1;
+            }
             self.overlay = Overlay::Card { index };
-            self.hide_at_ms = None;
+            self.hide_at_ms = Some(now_ms + READ_IDLE_MS);
         }
     }
 
@@ -658,7 +707,7 @@ impl PlayerScreen {
         self.header = Header::build(&self.ctx, &self.group);
         self.readout = Readout::build(&self.transport, &self.ctx);
         if tiles && matches!(self.overlay, Overlay::Info { .. } | Overlay::Playback) {
-            self.tiles = model::tiles(data, self.current_key());
+            self.tiles = model::tiles(data, self.current_key(), self.ctx.current.is_some());
             if let Overlay::Info { tile } = self.overlay {
                 self.overlay = self.focus_tile(tile);
             }
@@ -767,9 +816,21 @@ impl Screen for PlayerScreen {
         Output::redraw()
     }
 
-    /// Up and Down zap here, and open panels from the info panel: the wheel does neither.
+    /// Up and Down zap here, and open panels from the info panel: the wheel does neither. In the
+    /// programme details it turns the page.
     fn wheel(&self) -> bool {
-        false
+        matches!(self.overlay, Overlay::Card { .. })
+    }
+
+    /// The programme details' text column ([`view::spots`]).
+    fn dead(&self, x: f32, y: f32) -> bool {
+        self.spots.dead_at(x, y)
+    }
+
+    /// Half size on the left while the programme details are up; the screens over the player
+    /// place it otherwise.
+    fn video_rect(&self) -> Option<Rect> {
+        matches!(self.overlay, Overlay::Card { .. }).then_some(READ_VIDEO)
     }
 
     /// Send a finished seek burst or channel number, hide a timed-out panel, follow what
@@ -803,7 +864,11 @@ impl Screen for PlayerScreen {
         }
         let playback = self.effective(playback);
         if playback.channel.is_some() && playback.channel != self.ctx.playback.channel {
-            // A channel started from elsewhere (the guide, a list): announce it.
+            // A channel started from elsewhere (the guide, a list): announce it. The details
+            // describe the channel they opened on, so they close.
+            if matches!(self.overlay, Overlay::Card { .. }) {
+                self.hide(&mut out);
+            }
             if self.overlay == Overlay::Hidden && self.settings.info_on_zap {
                 self.show(Overlay::Banner, now_ms);
             }
@@ -813,7 +878,12 @@ impl Screen for PlayerScreen {
             let now = data.now();
             let minute = now.div_euclid(60) != self.ctx.now.div_euclid(60);
             let second = self.overlay == Overlay::Playback && now != self.ctx.now;
-            if minute || second || playback != self.ctx.playback {
+            // The details show no position: a catch-up second is no change for them.
+            let moved = match self.overlay {
+                Overlay::Card { .. } => playback.catchup != self.ctx.playback.catchup,
+                _ => playback != self.ctx.playback,
+            };
+            if minute || second || moved {
                 self.sync_with(data, playback, minute);
                 out.redraw = true;
             }

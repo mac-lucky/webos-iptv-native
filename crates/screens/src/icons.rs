@@ -17,6 +17,8 @@ pub enum Icon {
     StarFilled,
     /// The TV guide tile.
     Guide,
+    /// The Description tile.
+    Info,
     Live,
     Record,
     Lock,
@@ -46,6 +48,7 @@ impl Icon {
             Icon::Star => include_str!("../../../assets/icons/tv/star.svg"),
             Icon::StarFilled => include_str!("../../../assets/icons/tv/star-filled.svg"),
             Icon::Guide => include_str!("../../../assets/icons/tv/guide.svg"),
+            Icon::Info => include_str!("../../../assets/icons/tv/info.svg"),
             Icon::Live => include_str!("../../../assets/icons/tv/live.svg"),
             Icon::Record => include_str!("../../../assets/icons/tv/record.svg"),
             Icon::Lock => include_str!("../../../assets/icons/tv/lock.svg"),
@@ -127,11 +130,12 @@ fn mask(icon: Icon, size: i32) -> Option<Vec<u8>> {
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 21] = [
+    const ALL: [Icon; 22] = [
         Icon::CatchUp,
         Icon::Star,
         Icon::StarFilled,
         Icon::Guide,
+        Icon::Info,
         Icon::Live,
         Icon::Record,
         Icon::Lock,

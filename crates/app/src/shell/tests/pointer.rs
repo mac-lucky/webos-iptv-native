@@ -6,6 +6,7 @@ use std::any::Any;
 use tv_screens::data::fake::Mono;
 use tv_screens::guide::GuideScreen;
 use tv_screens::panels::ContextMenu;
+use tv_screens::player::{Overlay, READ_VIDEO};
 use tv_screens::theme::guide::{GRID_Y, ROW_H};
 
 use super::*;
@@ -296,6 +297,51 @@ fn the_wheel_steps_through_lists_but_never_zaps() {
     s.run(500);
     assert!(s.calls.take().is_empty(), "no zap");
     assert_eq!(s.playing().channel, Some(s.key(4)));
+}
+
+#[test]
+fn the_wheel_turns_the_details_pages_and_a_click_on_the_picture_closes_them() {
+    let mut s = Sim::new();
+    s.live(0);
+    s.shell.navigate(Navigate::Player, None);
+    s.shell.settle(s.t);
+    s.run(10_000);
+    s.press("OK");
+    s.press("OK");
+    s.frame();
+    assert_eq!(s.shell.rect, Some(READ_VIDEO));
+    // On to a programme with pages to turn: the synthetic guide's 90-minute ones.
+    for step in 0.. {
+        assert!(step < 6, "no long description in reach");
+        s.t += 200;
+        s.wheel(false);
+        s.frame();
+        if s.shell.bottom.screen.card_page() == 1 {
+            break;
+        }
+        s.press("Right");
+        s.frame();
+    }
+    s.t += 200;
+    s.wheel(true);
+    s.frame();
+    assert_eq!(s.shell.bottom.screen.card_page(), 0);
+    assert_eq!(s.playing().channel, Some(s.key(0)), "the wheel never zaps");
+    // A click on the text, once the pointer has moved there, does nothing.
+    for x in [1300.0, 1400.0, 1500.0] {
+        s.move_to((x, 500.0));
+    }
+    s.click((1500.0, 500.0));
+    assert!(matches!(
+        s.shell.bottom.screen.overlay(),
+        Overlay::Card { .. }
+    ));
+    assert_eq!(s.shell.rect, Some(READ_VIDEO));
+    // A click on the picture is OK: full screen again.
+    s.move_to((500.0, 400.0));
+    s.click((500.0, 400.0));
+    assert_eq!(s.shell.bottom.screen.overlay(), Overlay::Hidden);
+    assert_eq!(s.shell.rect, None);
 }
 
 #[test]

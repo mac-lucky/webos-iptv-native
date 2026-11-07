@@ -12,7 +12,7 @@ use tv_screens::guide::GuideScreen;
 use tv_screens::lists::{ChannelList, Column, History, Mode};
 use tv_screens::panels::{ContextMenu, Search, SettingsPanel, SidePanel};
 use tv_screens::player::model::TileKind;
-use tv_screens::player::{Overlay, PlayerScreen};
+use tv_screens::player::{Overlay, PlayerScreen, READ_IDLE_MS, READ_VIDEO};
 use tv_screens::time::hhmm;
 use tv_ui::consts::{WCODE_FASTFORWARD, WCODE_PAUSE, WCODE_PLAY, WCODE_PLAYPAUSE, WCODE_REWIND};
 
@@ -59,6 +59,8 @@ enum Video {
     List,
     /// The guide's picture-in-picture window, bottom right.
     Pip,
+    /// Half size on the left, beside the programme details.
+    Read,
 }
 
 impl Video {
@@ -68,6 +70,7 @@ impl Video {
             Video::Full => None,
             Video::Guide => guide().video_rect(),
             Video::List => Some(PREVIEW_RECT),
+            Video::Read => Some(READ_VIDEO),
             Video::Pip => {
                 let mut pip = guide();
                 pip.set_pip(true);
@@ -283,6 +286,7 @@ fn player(p: &PlayerScreen, data: &dyn TvData) -> (Top, String) {
         Overlay::Banner => (Top::Banner, playing),
         Overlay::Info { tile } => {
             let tile = match p.tiles().get(tile).map(|t| &t.kind) {
+                Some(TileKind::Description) => "Description".to_owned(),
                 Some(TileKind::Guide) => "TV guide".to_owned(),
                 Some(TileKind::History) => "History".to_owned(),
                 Some(TileKind::Channel(k)) => name(data, *k),
@@ -550,10 +554,10 @@ fn player_keys() {
         w.s.run(10_000);
         w.go("long Right", Top::Banner, "Channel 1", Video::Full);
         w.s.run(10_000);
-        // Long CH+: the programme card; Right steps on, Left back, Back closes it.
-        w.go("long CH+", Top::Card, "card 0", Video::Full);
-        w.go("Right", Top::Card, "card 1", Video::Full);
-        w.go("Left", Top::Card, "card 0", Video::Full);
+        // Long CH+: the programme details; Right steps on, Left back, Back closes them.
+        w.go("long CH+", Top::Card, "card 0", Video::Read);
+        w.go("Right", Top::Card, "card 1", Video::Read);
+        w.go("Left", Top::Card, "card 0", Video::Read);
         w.go("Back", Top::Player, "Channel 1", Video::Full);
         // Digits type a channel number, played once the typing stops.
         w.go("1", Top::Player, "Channel 1 #1", Video::Full);
@@ -586,24 +590,27 @@ fn player_keys() {
 fn info_and_playback_panels() {
     for c5 in [false, true] {
         let mut w = Walk::playing(0).c5(c5);
-        // OK: the info panel; its tile row is TV guide, History, then the recent channels.
-        w.go("OK", Top::Info, "TV guide", Video::Full);
+        // OK: the info panel; its tile row is Description, TV guide, History, then the recent
+        // channels (programme_details walks the first).
+        w.go("OK", Top::Info, "Description", Video::Full);
+        w.go("Right", Top::Info, "TV guide", Video::Full);
         w.go("Right", Top::Info, "History", Video::Full);
         w.go("Left", Top::Info, "TV guide", Video::Full);
         w.go("OK", Top::Guide, "Channel 1 @ live", Video::Guide);
         w.go("OK", Top::Player, "Channel 1", Video::Full);
-        w.go("OK", Top::Info, "TV guide", Video::Full);
+        w.go("OK", Top::Info, "Description", Video::Full);
+        w.go("Right", Top::Info, "TV guide", Video::Full);
         w.go("Right", Top::Info, "History", Video::Full);
         w.go("OK", Top::History, "empty", Video::Full);
         w.go("Back", Top::Player, "Channel 1", Video::Full);
         // Down: the player menu; Back closes the info panel.
-        w.go("OK", Top::Info, "TV guide", Video::Full);
+        w.go("OK", Top::Info, "Description", Video::Full);
         w.go("Down", Top::Menu, "Channel 1 > *", Video::Full);
         w.go("Back", Top::Player, "Channel 1", Video::Full);
-        w.go("OK", Top::Info, "TV guide", Video::Full);
+        w.go("OK", Top::Info, "Description", Video::Full);
         w.go("Back", Top::Player, "Channel 1", Video::Full);
         // The panel hides by itself after the timeout.
-        w.go("OK", Top::Info, "TV guide", Video::Full);
+        w.go("OK", Top::Info, "Description", Video::Full);
         w.s.run(6_000);
         w.expect(Top::Player, "Channel 1", Video::Full);
 
@@ -611,7 +618,7 @@ fn info_and_playback_panels() {
         let key = w.s.key(0);
         w.s.catchup(key, &programme("Earlier"), 60);
         w.calls();
-        w.go("OK", Top::Info, "TV guide", Video::Full);
+        w.go("OK", Top::Info, "Description", Video::Full);
         w.go("Up", Top::Playback, "Seek", Video::Full);
         w.go("Left", Top::Playback, "Seek", Video::Full);
         w.s.run(2_000);
@@ -626,7 +633,7 @@ fn info_and_playback_panels() {
         w.go("Left", Top::Playback, &button, Video::Full);
         w.go("Up", Top::Playback, "Seek", Video::Full);
         w.go("Down", Top::Playback, &button, Video::Full);
-        w.go("Down", Top::Info, "TV guide", Video::Full);
+        w.go("Down", Top::Info, "Description", Video::Full);
         w.go("Up", Top::Playback, "Seek", Video::Full);
         w.go("Back", Top::Player, "Channel 1 (archive)", Video::Full);
         // The media keys: Play/Pause pauses and resumes, Rewind and FF open the panel and seek.
@@ -643,6 +650,35 @@ fn info_and_playback_panels() {
         w.go("FF", Top::Playback, "Seek", Video::Full);
         w.s.run(2_000);
         assert!(w.calls().iter().any(|c| c.starts_with("seek ")));
+    }
+}
+
+/// The programme details beside the picture: OK on the Description tile or a held CH+ moves the
+/// video to the left at half size; Up and Down turn the page and never zap, Right and Left step
+/// through the programmes; OK, Back, a channel key or a while without a key return to full
+/// screen.
+#[test]
+fn programme_details() {
+    for c5 in [false, true] {
+        let mut w = Walk::playing(0).c5(c5);
+        w.go("OK", Top::Info, "Description", Video::Full);
+        w.go("OK", Top::Card, "card 0", Video::Read);
+        w.go("Down", Top::Card, "card 0", Video::Read);
+        w.go("Up", Top::Card, "card 0", Video::Read);
+        assert_eq!(w.s.playing().channel, Some(w.s.key(0)), "no zap");
+        w.go("Right", Top::Card, "card 1", Video::Read);
+        w.go("Right", Top::Card, "card 2", Video::Read);
+        w.go("Left", Top::Card, "card 1", Video::Read);
+        w.go("OK", Top::Player, "Channel 1", Video::Full);
+        w.go("OK", Top::Info, "Description", Video::Full);
+        w.go("OK", Top::Card, "card 0", Video::Read);
+        w.go("Back", Top::Player, "Channel 1", Video::Full);
+        w.go("long CH+", Top::Card, "card 0", Video::Read);
+        w.go("CH+", Top::Banner, "Channel 2", Video::Full);
+        w.s.run(10_000);
+        w.go("long CH+", Top::Card, "card 0", Video::Read);
+        w.s.run(READ_IDLE_MS);
+        w.expect(Top::Player, "Channel 2", Video::Full);
     }
 }
 
@@ -689,7 +725,7 @@ fn player_left_and_right_skip_and_their_old_actions_are_held() {
         w.go("Back", Top::Player, "Channel 3", Video::Full);
         w.go("long CH-", list(Mode::Preview), "Channel 3", Video::List);
         w.go("Back", Top::Player, "Channel 3", Video::Full);
-        w.go("long CH+", Top::Card, "card 0", Video::Full);
+        w.go("long CH+", Top::Card, "card 0", Video::Read);
         w.go("Back", Top::Player, "Channel 3", Video::Full);
         w.go("long Right", Top::Banner, "Channel 1", Video::Full);
     }
@@ -997,7 +1033,7 @@ fn manage_favorites_from_the_channel_menu() {
 /// Down from the info panel: the player menu, with its Picture in picture row (Channel 1
 /// playing).
 fn open_pip(w: &mut Walk) {
-    w.go("OK", Top::Info, "TV guide", Video::Full);
+    w.go("OK", Top::Info, "Description", Video::Full);
     w.go("Down", Top::Menu, "Channel 1 > *", Video::Full);
     let rows = w.trail.len();
     while w.view().focus != "Channel 1 > Picture in picture" {

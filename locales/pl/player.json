@@ -1,6 +1,7 @@
 {
   "player.audio_channels": "{channels} KAN.",
   "player.audio_track": "Ścieżka dźwiękowa",
+  "player.description": "Opis",
   "player.fps": "{fps} FPS",
   "player.go_live": "Wróć do transmisji na żywo",
   "player.menu": "Menu",

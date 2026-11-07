@@ -769,13 +769,18 @@ pub mod fake {
         let mut i = ((start - phase).div_euclid(CYCLE) as usize) * LENGTHS.len();
         let mut out = Vec::new();
         while start < to {
-            let stop = start + LENGTHS[i % LENGTHS.len()] * 60;
+            let minutes = LENGTHS[i % LENGTHS.len()];
+            let stop = start + minutes * 60;
             if stop > from {
+                let description = match minutes {
+                    90 => long_synopsis(),
+                    _ => "Synthetic programme for tests and the simulator.".into(),
+                };
                 out.push(Programme {
                     start,
                     stop,
                     title: format!("Programme {}", (i + channel.0.rem_euclid(97) as usize) % 97),
-                    description: Some("Synthetic programme for tests and the simulator.".into()),
+                    description: Some(description),
                     category: None,
                     icon: None,
                 });
@@ -784,6 +789,15 @@ pub mod fake {
             i += 1;
         }
         out
+    }
+
+    /// The 90-minute programmes' description: about 1,800 characters of numbered sentences, near
+    /// the most a guide keeps, so the player's programme details have pages to turn.
+    fn long_synopsis() -> String {
+        (1..=42)
+            .map(|n| format!("Sentence {n} of a long synthetic synopsis."))
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     impl TvData for FakeData {
