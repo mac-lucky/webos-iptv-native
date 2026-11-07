@@ -395,6 +395,97 @@ fn a_live_window_of_short_segments_under_a_long_target_never_runs_dry() {
     }
 }
 
+/// Bytes of every segment of [`paced_server`]: what a player plays in one target duration.
+const PACED_LEN: usize = 6_000;
+
+/// A live window of six `target_s` segments of [`PACED_LEN`] bytes from sequence 0 at time 0, one
+/// more every target; its playlist requests fail (503) at times in `down`. The newest sequence it
+/// lists at a time, too.
+fn paced_server(target_s: u64, down: std::ops::Range<u64>) -> (Server, impl Fn(u64) -> u64) {
+    let newest = move |now_ms: u64| 5 + now_ms / (target_s * 1000);
+    let s = Server::new();
+    s.route("/live.m3u8", move |now_ms| {
+        if down.contains(&now_ms) {
+            return Err(FetchError::Status(503));
+        }
+        let mut p = format!("#EXTM3U\n#EXT-X-TARGETDURATION:{target_s}\n#EXT-X-MEDIA-SEQUENCE:{}\n", newest(now_ms) - 5);
+        for q in newest(now_ms) - 5..=newest(now_ms) {
+            p.push_str(&format!("#EXTINF:{target_s}.0,\nseg{q}.ts\n"));
+        }
+        Ok(p.into_bytes())
+    });
+    for q in 0..100u64 {
+        s.put(&format!("/seg{q}.ts"), vec![q as u8; PACED_LEN]);
+    }
+    (s, newest)
+}
+
+/// Read the live stream until `until_ms` of the clock as a player does: as fast as it comes until
+/// `ahead_ms` of media is read past the playhead, which plays in real time from the open, then no
+/// faster than it plays. Every byte read.
+fn play_until<T: Transport>(src: &mut HlsSource<T, FakeClock>, clock: &FakeClock, target_ms: u64, ahead_ms: u64, until_ms: u64) -> Vec<u8> {
+    let (mut out, mut buf, t0) = (Vec::new(), vec![0u8; 1000], clock.now_ms());
+    while clock.now_ms() < until_ms {
+        let n = src.read(&mut buf).expect("the live stream plays on");
+        out.extend_from_slice(&buf[..n]);
+        let (media, playhead) = (out.len() as u64 * target_ms / PACED_LEN as u64, clock.now_ms() - t0);
+        if media > playhead + ahead_ms {
+            clock.sleep_ms(media - playhead - ahead_ms);
+        }
+    }
+    out
+}
+
+/// **A live playlist is reloaded about once per target duration while it plays, wherever the
+/// reader is** (RFC 8216 6.3.4), and never sooner than the RFC allows: the last segment's duration
+/// after a load that changed the playlist, half a target after one that did not. On the C1 a 10 s
+/// target reloaded only once every known segment was read, every 26-32 s, with the reader held
+/// three targets behind the edge by its queues. The reloads are counted in the event log.
+#[test]
+fn a_live_playlist_is_reloaded_once_per_target_while_it_plays_and_the_cadence_is_logged() {
+    for target_s in [6, 10] {
+        let target = target_s * 1000;
+        let (s, newest) = paced_server(target_s, 0..0);
+        let (got, log) = tv_base::eventlog::with_private_log(|| {
+            let mut src = s.open("/live.m3u8", None).unwrap();
+            let got = play_until(&mut src, &s.clock, target, target / 2, 20 * target);
+            (got, std::fs::read_to_string(tv_base::eventlog::events_log()).unwrap_or_default())
+        });
+        let want: Vec<u8> = (3..3 + got.len() / PACED_LEN).flat_map(|q| vec![q as u8; PACED_LEN]).collect();
+        assert_eq!(got[..want.len()], want, "{target_s} s: from three targets behind the edge, in order, none skipped");
+        let loads = s.seen.times_of(&url("/live.m3u8"));
+        for (i, w) in loads.windows(2).enumerate() {
+            let changed = i == 0 || newest(w[0]) != newest(loads[i - 1]);
+            let least = if changed { target } else { target / 2 };
+            assert!(w[1] - w[0] >= least, "{target_s} s: a reload {} ms after a load (changed: {changed}) in {loads:?}", w[1] - w[0]);
+            assert!(w[1] - w[0] <= 2 * target, "{target_s} s: no reload for {} ms in {loads:?}", w[1] - w[0]);
+        }
+        assert!(loads.len() >= 17, "{target_s} s: about one load per target over 20 targets: {loads:?}");
+        let lines: Vec<&str> = log.lines().filter(|l| l.contains("playlist reloads in")).collect();
+        assert!(!lines.is_empty(), "{target_s} s: the cadence is in the log");
+        let first = lines[0];
+        assert!(first.starts_with("hls: 10 playlist reloads in ") && first.ends_with(&format!(" s, target {target} ms")), "{lines:?}");
+        assert!(lines.iter().all(|l| !l.contains("live.m3u8") && !l.contains("://")), "no URL: {lines:?}");
+    }
+}
+
+/// **Reloads that fail while known segments are left do not end the stream, and are not retried
+/// back to back**: the playlist answers 503 for 12 s (two targets) while the reader plays on;
+/// every attempt waits half a target at least, and once it answers again every segment plays.
+#[test]
+fn live_reloads_that_fail_for_a_while_are_spaced_and_the_stream_plays_through() {
+    let (s, _) = paced_server(6, 40_000..52_000);
+    let mut src = s.open("/live.m3u8", None).unwrap();
+    let got = play_until(&mut src, &s.clock, 6_000, 3_000, 120_000);
+    let want: Vec<u8> = (3..3 + got.len() / PACED_LEN).flat_map(|q| vec![q as u8; PACED_LEN]).collect();
+    assert_eq!(got[..want.len()], want, "in order, none skipped");
+    assert!(got.len() / PACED_LEN >= 18, "played on past the failures: {} segments", got.len() / PACED_LEN);
+    let loads = s.seen.times_of(&url("/live.m3u8"));
+    assert!(loads.windows(2).all(|w| w[1] - w[0] >= 3_000), "half a target between two attempts at least: {loads:?}");
+    let failed = loads.iter().filter(|t| (40_000..52_000).contains(*t)).count();
+    assert!((2..=5).contains(&failed), "{failed} attempts while it failed: {loads:?}");
+}
+
 #[test]
 fn a_live_playlist_that_stops_growing_is_an_explicit_failure() {
     let s = Server::new();

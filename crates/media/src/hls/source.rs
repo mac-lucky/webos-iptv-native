@@ -17,9 +17,10 @@
 //!   byte; a live segment that is gone (4xx, or retries spent) is skipped - at most
 //!   [`MAX_SKIPS_IN_ROW`] in a row - since the live edge has moved on; a VOD one ends the stream
 //!   with an error;
-//! - a live playlist reload that fails is retried on the §6.3.4 cadence, at most
-//!   [`MAX_RELOAD_FAILURES`] times in a row, and a live playlist that stops growing is declared
-//!   dead ([`super::live::Schedule::stalled`]);
+//! - a live playlist is reloaded on the RFC 8216 6.3.4 cadence while it plays; a reload that
+//!   fails is retried on it, and [`MAX_RELOAD_FAILURES`] in a row end the stream once no known
+//!   segment is left to read; a live playlist that stops growing is declared dead
+//!   ([`super::live::Schedule::stalled`]);
 //! - a finite archive playlist followed past its end ([`HlsSource::follow_until`]) is asked for
 //!   again on the same cadence, and its end becomes the stream's, without an error, once it stops
 //!   growing or its reloads keep failing.
@@ -443,7 +444,12 @@ pub struct HlsSource<T: Transport, C: Clock> {
     following: bool,
     /// A reload grew the finite playlist since [`Self::take_grown`] was last asked.
     grown: bool,
+    /// Reloads since the last cadence line, and when the load before the first of them began.
+    cadence: (u32, u64),
 }
+
+/// A line in the event log per this many playlist reloads, saying how long they took.
+const RELOADS_PER_LINE: u32 = 10;
 
 /// The most a recording keeps; a probe that read more is not replayed.
 const TAPE_CAP: usize = 48 * 1024 * 1024;
@@ -564,6 +570,7 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
             follow_us: None,
             following: false,
             grown: false,
+            cadence: (0, began),
             t,
             clock,
             media_url,
@@ -790,6 +797,14 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
         if self.active.is_some() {
             return self.pump();
         }
+        // Live, the playlist is reloaded on its cadence wherever the reader is in it: the reader is
+        // held back a few targets behind the edge, and reloading only once every known segment was
+        // read (every 2.6-3.2 targets on the C1) brought a short window close to sliding past the
+        // next segment. One request at a time, so a reload that falls due waits for the segment
+        // being read.
+        if self.playlist.is_live() && self.clock.now_ms() >= self.schedule.reload_due_ms() {
+            self.reload(false)?;
+        }
         match live::locate(&self.playlist, self.next_seq) {
             Locate::At(i) => {
                 let seg = self.playlist.segments[i].clone();
@@ -816,7 +831,7 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
                     }
                     Self::wait(&self.t, &self.clock, due)?;
                 }
-                self.reload()?;
+                self.reload(true)?;
                 Ok(Step::Progress)
             }
         }
@@ -893,8 +908,9 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
         }
     }
 
-    /// Reload the live media playlist.
-    fn reload(&mut self) -> Result<(), HlsError> {
+    /// Reload the live media playlist. `needed`: no known segment is left to read, so reloads that
+    /// failed [`MAX_RELOAD_FAILURES`] times in a row end the stream; before that they are retried.
+    fn reload(&mut self, needed: bool) -> Result<(), HlsError> {
         let began = self.clock.now_ms();
         match self.load_media() {
             Ok((text, m)) => {
@@ -918,7 +934,7 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
             // Not a transient answer: the playlist itself turned unsafe.
             Err(HlsError::Insecure) => Err(HlsError::Insecure),
             Err(e) => {
-                if self.reload_failed(&e, began, "playlist") {
+                if self.reload_failed(&e, began, "playlist") && needed {
                     return Err(e);
                 }
                 Ok(())
@@ -932,6 +948,16 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
         self.playlist = m;
         self.last_text = text;
         self.reload_failures = 0;
+        // The cadence, in the log at a low rate: one line per RELOADS_PER_LINE reloads.
+        self.cadence.0 += 1;
+        if self.cadence.0 == RELOADS_PER_LINE {
+            tv_base::eventlog::log(&format!(
+                "hls: {RELOADS_PER_LINE} playlist reloads in {:.1} s, target {} ms",
+                began_ms.saturating_sub(self.cadence.1) as f64 / 1000.0,
+                self.playlist.target_duration_us / 1000
+            ));
+            self.cadence = (0, began_ms);
+        }
     }
 
     /// Count a reload of the `what` playlist that began at `began_ms` and failed with `e`; it is
