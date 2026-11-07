@@ -886,7 +886,6 @@ fn long_ch_plus_opens_the_programme_card_and_right_steps_on() {
     s.key(Key::ChannelUp, Press::Long, &w, 0);
     assert_eq!(s.overlay(), Overlay::Card { index: 0 });
     let c = s.card();
-    assert_eq!(c.channel, "1  Channel 1");
     assert_eq!(c.title, "Show 15:00");
     assert_eq!(c.times, "15:00 \u{2014} 15:30");
     assert_eq!(c.duration, "30 min");
@@ -916,7 +915,7 @@ fn the_card_starts_at_the_catch_up_programme() {
     assert_eq!(s.card().title, "Show 13:00");
 }
 
-// ---- programme details beside the picture (task 75) ----
+// ---- programme details beside the picture ----
 
 /// The world with every programme described by `description`.
 fn described(description: Option<String>) -> FakeData {

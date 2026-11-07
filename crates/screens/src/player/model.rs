@@ -287,7 +287,6 @@ pub fn tiles(data: &dyn TvData, playing: Option<ChannelKey>, programme: bool) ->
 /// The programme details (long CH+): one programme of the channel playing.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Card {
-    pub channel: String,
     pub title: String,
     pub times: String,
     pub duration: String,
@@ -299,13 +298,7 @@ pub struct Card {
 
 impl Card {
     pub fn build(ctx: &Context, p: &Programme) -> Self {
-        let channel = match (&ctx.channel, ctx.number) {
-            (Some(c), Some(n)) => format!("{n}  {}", c.name),
-            (Some(c), None) => c.name.clone(),
-            _ => String::new(),
-        };
         Card {
-            channel,
             title: p.title.clone(),
             times: time::programme_span(p, ctx.now, ctx.utc_offset_secs),
             duration: time::minutes_label((p.duration_secs() + 59) / 60),
