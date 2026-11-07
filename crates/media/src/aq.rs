@@ -530,13 +530,14 @@ pub const RELEASE_AFTER_PEAK_BYTES: c_long = 8 * 1024 * 1024;
 pub fn release_freed_memory() {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
-        // SAFETY: glibc's trim takes each arena's own lock; any thread may call it at any time.
-        let trim = || unsafe {
-            libc::malloc_trim(0);
-        };
-        if std::thread::Builder::new().name("mem-trim".into()).spawn(trim).is_err() {
-            trim();
-        }
+        tv_base::task::spawn_small_or_inline(
+            "mem-trim",
+            const { &tv_base::task::BlockingLabel::new("malloc_trim (worker thread refused)") },
+            // SAFETY: glibc's trim takes each arena's own lock; any thread may call it at any time.
+            || unsafe {
+                libc::malloc_trim(0);
+            },
+        );
     }
 }
 

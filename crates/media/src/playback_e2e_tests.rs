@@ -602,18 +602,12 @@ fn e2e_a_time_shift_of_the_programme_on_air_plays_past_the_archive_edge_without_
     let o = Origin::spawn();
     serve_segments(&o, &fx, 0..fx.segments.len());
     // Ten minutes into a programme on air: segment 99 (594-600 s) is the archive's edge now.
-    let start = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64 - 600;
+    let start = unix_now() - 600;
     let base = o.url("/ch3/mono.m3u8?token=e2e-secret");
     let (t0, last) = (Instant::now(), fx.segments.len() - 1);
     o.route(&format!("/ch3/mono.m3u8?token=e2e-secret&utc={start}"), move || {
         let edge = (99 + (t0.elapsed().as_secs_f64() / SEG_S) as usize).min(last);
-        let mut p =
-            String::from("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n");
-        for i in 0..=edge {
-            p.push_str(&format!("#EXTINF:6.000,\n{}\n", seg_path(i)));
-        }
-        p.push_str("#EXT-X-ENDLIST\n");
-        Answer::playlist(p)
+        archive(0..edge + 1)
     });
     let live = "/ch3/live.m3u8?token=e2e-secret";
     serve_live(&o, live, &fx, 100);

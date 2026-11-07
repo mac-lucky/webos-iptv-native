@@ -1510,8 +1510,9 @@ fn start_bufferfeed_inner(ps: &mut crate::session::PlaybackSession, pa: &mut sup
     // The windowId splice happens HERE, at the single point every payload variant passes through
     // - three of the four variants are static strings that never see the builder. The appId
     // substitution happens BEFORE the splice: `with_window_id`'s anchor is the composed
-    // `"appId":"<id>"`.
-    let payload_c = std::ffi::CString::new(with_window_id(pa.mt(), &with_app_id(payload_str))).unwrap();
+    // `"appId":"<id>"`. The `try` experiment switches see the final payload.
+    let payload = with_window_id(pa.mt(), &with_app_id(payload_str));
+    let payload_c = std::ffi::CString::new(super::vout::at_load(pa.mt(), payload)).unwrap();
     // Profile 7 as its base layer (the demuxer drops the RPU/EL units). Every Load says.
     SHARED.dv_strip_layers.store(stream && ps.dv().strips_layers(), Ordering::Relaxed);
     if stream {

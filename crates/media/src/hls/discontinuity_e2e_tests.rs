@@ -68,15 +68,21 @@ fn e2e_catchup_plays_through_discontinuities_whose_timestamps_jump() {
     rig.stop();
 }
 
+/// Where the payload of the TS packet `p` starts (adaptation field control); `None` for a packet
+/// with no payload.
+fn ts_payload(p: &[u8]) -> Option<usize> {
+    match (p[3] >> 4) & 3 {
+        1 => Some(4),
+        3 => Some(5 + usize::from(p[4])),
+        _ => None,
+    }
+}
+
 /// The offset of the first audio PES (stream id 0xC0..=0xDF) that starts at or after byte `from`
 /// of the MPEG-TS `seg`, and its PES_packet_length.
 fn audio_pes(seg: &[u8], from: usize) -> Option<(usize, usize)> {
     seg.as_chunks::<188>().0.iter().enumerate().skip(from.div_ceil(188)).find_map(|(i, p)| {
-        let payload = match (p[3] >> 4) & 3 {
-            1 => 4,
-            3 => 5 + usize::from(p[4]),
-            _ => return None,
-        };
+        let payload = ts_payload(p)?;
         let pes = p.get(payload..payload + 6)?;
         let starts = p[1] & 0x40 != 0 && pes[..3] == [0, 0, 1] && (0xC0..=0xDF).contains(&pes[3]);
         starts.then(|| (i * 188, usize::from(u16::from_be_bytes([pes[4], pes[5]]))))
@@ -167,7 +173,7 @@ fn e2e_a_resume_and_a_restart_past_a_discontinuity_land_at_their_position() {
 /// Move the PTS of the PES whose first TS packet is at byte `at` of `seg` by `ticks` (90 kHz).
 fn move_pts(seg: &mut [u8], at: usize, ticks: i64) {
     let p = &mut seg[at..at + 188];
-    let payload = if (p[3] >> 4) & 3 == 3 { 5 + usize::from(p[4]) } else { 4 };
+    let payload = ts_payload(p).expect("the PES's first TS packet carries a payload");
     let f = &mut p[payload + 9..payload + 14];
     assert!((f[0] >> 4) & 2 != 0, "the PES carries a PTS");
     let pts = (u64::from((f[0] >> 1) & 7) << 30)

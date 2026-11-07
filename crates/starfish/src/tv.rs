@@ -11,9 +11,10 @@
 //! - libplayerAPIs and libpf-1.0 keep the same SONAME on every release from 2.2.3 to 11.2.0, so
 //!   their methods are linked normally (`#[link_name]` with the mangled name, which is what the C's
 //!   `__asm__` labels did), with real link-time symbol checking.
-//! - Feed (two string ABIs), the COW string destructor, the Load-with-context overload and the real
-//!   `callbackFunctionHook` are `dlsym`'d: a strong reference to a name a firmware lacks is a loader
-//!   failure before main, or a lazily bound PLT slot that kills the process mid-playback.
+//! - Feed (two string ABIs) and the destructor of each, the Load-with-context overload, setWindowId
+//!   and the real `callbackFunctionHook` are `dlsym`'d: a strong reference to a name a firmware
+//!   lacks is a loader failure before main, or a lazily bound PLT slot that kills the process
+//!   mid-playback.
 //! - `libAcbAPI.so.1` is `dlopen`'d (webOS 5 deleted it, and a DT_NEEDED entry for it kills the
 //!   process at exec(), before the event log is open), and the SDL exported-window functions are
 //!   `dlsym`'d out of the already-loaded libSDL2 (naming them at link time would demand symbols
@@ -27,7 +28,7 @@
 //! `UnloadTicket`). Pointer arguments are NULL or NUL-terminated C strings, except `sf_feed`'s `p`,
 //! which addresses `size` readable bytes until the call returns. The C kept plain statics under
 //! the same contract; [`MainThreadCell`] is where this file relies on it. The contract is stated
-//! once here rather than as a `# Safety` section on each of the 32 exports.
+//! once here rather than as a `# Safety` section on each of the 35 exports.
 #![allow(clippy::missing_safety_doc)]
 
 use std::cell::UnsafeCell;
@@ -139,6 +140,35 @@ const HOOK_SYMBOL: &CStr = c"_ZN17StarfishMediaAPIs20callbackFunctionHookEixPKc"
 /// strong reference: only this firmware artifact proves the overload's behaviour, so a release
 /// lacking it must refuse playback at run time, not prevent the app from reaching main.
 const LOAD_WITH_CONTEXT_SYMBOL: &CStr = c"_ZN17StarfishMediaAPIs4LoadEPKcPFvixS1_PvES2_";
+/// `bool StarfishMediaAPIs::setWindowId(const char *)`: present from webOS 5.3.1, so `dlsym`'d.
+const SET_WINDOW_ID_SYMBOL: &CStr = c"_ZN17StarfishMediaAPIs11setWindowIdEPKc";
+type SetWindowIdFn = unsafe extern "C" fn(*mut c_void, *const c_char) -> c_int;
+
+/// A window id the next Load hands to `setWindowId` before it loads (`sf_arm_window_id`). Every
+/// start creates its window before it decides the arm, so `vp_create_window` clears it.
+static ARMED_WINDOW_ID: std::sync::Mutex<Option<std::ffi::CString>> = std::sync::Mutex::new(None);
+
+fn take_armed_window_id() -> Option<std::ffi::CString> {
+    ARMED_WINDOW_ID.lock().ok()?.take()
+}
+
+/// `setWindowId(id)` on a constructed object, logged with its result.
+///
+/// # Safety
+/// `object` is constructed and not destroyed.
+unsafe fn set_window_id(object: *mut c_void, id: &CStr) {
+    // SAFETY: RTLD_DEFAULT; the mangled name carries the (this, const char *) parameter list.
+    let Some(set) =
+        (unsafe { dlsym_fn::<SetWindowIdFn>(libc::RTLD_DEFAULT, SET_WINDOW_ID_SYMBOL) })
+    else {
+        elog!("setWindowId: absent on this firmware");
+        return;
+    };
+    // SAFETY: a constructed object (this fn's contract) and a NUL-terminated id. bool in r0: only
+    // the low byte is defined.
+    let rv = unsafe { set(object, id.as_ptr()) } & 0xff;
+    elog!("setWindowId({}) before Load rv={rv}", id.to_string_lossy());
+}
 
 /// State the C kept in plain file-scope statics, touched only under the main-thread contract
 /// (module doc), so no two accesses ever overlap.
@@ -283,6 +313,10 @@ impl Native for Lg {
 
     unsafe fn load(&self, object: *mut c_void, payload: *const c_char, epoch: c_uint) -> c_int {
         let Some(fns) = self.hook.get() else { return 0 };
+        if let Some(id) = take_armed_window_id() {
+            // SAFETY: a constructed object (the trait's contract).
+            unsafe { set_window_id(object, &id) };
+        }
         // SAFETY: a constructed object and a NUL-terminated payload (the trait's contract). The
         // epoch travels as the callback context, a plain integer the firmware hands back.
         unsafe {
@@ -676,6 +710,12 @@ struct SdlApi {
     create: unsafe extern "C" fn(c_int) -> *const c_char,
     set: unsafe extern "C" fn(*const c_char, *mut VpRect, *mut VpRect) -> c_int,
     destroy: Option<unsafe extern "C" fn(*const c_char)>,
+    /// `SDL_webOSExportedSetProperty(windowId, name, value)`.
+    set_property:
+        Option<unsafe extern "C" fn(*const c_char, *const c_char, *const c_char) -> c_int>,
+    /// `SDL_webOSExportedSetCropRegion(windowId, org, src, dst)`; no symbol data for webOS 24+.
+    crop:
+        Option<unsafe extern "C" fn(*const c_char, *mut VpRect, *mut VpRect, *mut VpRect) -> c_int>,
 }
 
 /// Same layout as SDL_Rect, four ints since SDL2 existed. Declared here: the NDK's SDL headers
@@ -697,9 +737,17 @@ static PLANE: OnceLock<Plane<AcbApi, SdlApi>> = OnceLock::new();
 fn plane() -> &'static Plane<AcbApi, SdlApi> {
     PLANE.get_or_init(|| {
         let plane = resolve::select_plane(probe_acb(), probe_sdl);
-        match plane {
+        match &plane {
             Plane::Acb(_) => elog!("vplane: ACB (webOS 4.x)"),
-            Plane::Exported(_) => elog!("vplane: SDL exported window (webOS 5+)"),
+            Plane::Exported(sdl) => {
+                elog!("vplane: SDL exported window (webOS 5+)");
+                let crop = if sdl.crop.is_some() {
+                    "present"
+                } else {
+                    "absent"
+                };
+                elog!("vplane: SDL crop region {crop}");
+            }
             Plane::None => {
                 elog!(
                     "vplane: NONE - no libAcbAPI and no SDL exported window; video cannot be shown"
@@ -733,8 +781,7 @@ fn probe_acb() -> AcbProbe<AcbApi> {
 }
 
 /// Every pointer resolved here is required, except setMediaAudioData. Add one only when something
-/// calls it: upstream once checked seven of eight and dropped `destroy` silently, which is why
-/// `destroy` and the unused SDL crop/property pointers are not resolved at all.
+/// calls it: upstream once checked seven of eight and dropped `destroy` silently.
 ///
 /// # Safety
 /// `h` is a live `dlopen` handle of libAcbAPI.
@@ -766,6 +813,8 @@ fn probe_sdl() -> Option<SdlApi> {
             create: dlsym_fn(libc::RTLD_DEFAULT, c"SDL_webOSCreateExportedWindow")?,
             set: dlsym_fn(libc::RTLD_DEFAULT, c"SDL_webOSSetExportedWindow")?,
             destroy: dlsym_fn(libc::RTLD_DEFAULT, c"SDL_webOSDestroyExportedWindow"),
+            set_property: dlsym_fn(libc::RTLD_DEFAULT, c"SDL_webOSExportedSetProperty"),
+            crop: dlsym_fn(libc::RTLD_DEFAULT, c"SDL_webOSExportedSetCropRegion"),
         })
     }
 }
@@ -780,6 +829,14 @@ fn exported() -> Option<&'static SdlApi> {
 /// Our copy of SDL's window id; zero-initialised, so "" (never NULL) is the "no window" answer.
 static WINDOW_ID: MainThreadCell<[u8; 64]> = MainThreadCell::new([0; 64]);
 
+/// The window id we hold, `None` when there is none. Used within the calling verb: the next
+/// `vp_create_window` or `vp_destroy_window` rewrites the buffer.
+fn held_window_id() -> Option<&'static CStr> {
+    // SAFETY: main thread only.
+    let id = CStr::from_bytes_until_nul(unsafe { &*WINDOW_ID.get() }).unwrap_or_default();
+    (!id.is_empty()).then_some(id)
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn vp_mode() -> c_int {
     plane().mode()
@@ -793,6 +850,8 @@ pub unsafe extern "C" fn vp_mode() -> c_int {
 /// document, so it is copied at once; ss4s does the same.
 #[no_mangle]
 pub unsafe extern "C" fn vp_create_window() -> *const c_char {
+    // A start that failed between its arm and its Load must not hand its id to this one.
+    drop(take_armed_window_id());
     let Some(sdl) = exported() else {
         return ptr::null();
     };
@@ -821,6 +880,38 @@ pub unsafe extern "C" fn vp_window_id() -> *const c_char {
     WINDOW_ID.get().cast_const().cast()
 }
 
+/// Hand the exported window id to the next Load's object through `setWindowId`, before that Load
+/// (an experiment beside `option.windowId`, which is the binding). 1 armed, 0 no window.
+#[no_mangle]
+pub unsafe extern "C" fn sf_arm_window_id() -> c_int {
+    let Some(id) = held_window_id() else {
+        return 0;
+    };
+    let Ok(mut armed) = ARMED_WINDOW_ID.lock() else {
+        return 0;
+    };
+    *armed = Some(id.to_owned());
+    1
+}
+
+/// Set a property of our exported window (`SDL_webOSExportedSetProperty`). SDL's bool, or -1 when
+/// nothing was called: no exported window, or no such entry point in this SDL.
+#[no_mangle]
+pub unsafe extern "C" fn vp_set_property(name: *const c_char, value: *const c_char) -> c_int {
+    let Some(set) = exported().and_then(|sdl| sdl.set_property) else {
+        return -1;
+    };
+    let Some(window_id) = held_window_id() else {
+        return -1;
+    };
+    if name.is_null() || value.is_null() {
+        return -1;
+    }
+    // SAFETY: our NUL-terminated id copy and the caller's NUL-terminated name and value (the export
+    // contract).
+    unsafe { set(window_id.as_ptr(), name, value) }
+}
+
 /// Place the video: a part of the source frame -> on-screen rect. The VP_EXPORTED counterpart of
 /// acb_start's setDisplayWindow; the pair also expresses scaling, and a source part smaller than the
 /// frame is a crop (the aspect zooms), which keeps the window on the screen.
@@ -837,11 +928,9 @@ pub unsafe extern "C" fn vp_place(
     dst_h: c_int,
 ) -> c_int {
     let Some(sdl) = exported() else { return 0 };
-    let window_id = WINDOW_ID.get();
-    // SAFETY: main thread only.
-    if unsafe { (*window_id)[0] } == 0 {
+    let Some(window_id) = held_window_id() else {
         return 0;
-    }
+    };
     let mut src = VpRect {
         x: src_x,
         y: src_y,
@@ -856,9 +945,67 @@ pub unsafe extern "C" fn vp_place(
     };
     // SAFETY: SDL_webOSSetExportedWindow(const char *windowId, SDL_Rect *src, SDL_Rect *dst) with our
     // NUL-terminated id copy and two rects that live across the call.
-    let rv = unsafe { (sdl.set)(window_id.cast(), &mut src, &mut dst) };
+    let rv = unsafe { (sdl.set)(window_id.as_ptr(), &mut src, &mut dst) };
     elog!(
         "vplane: place {src_x},{src_y} {src_w}x{src_h} -> {dst_x},{dst_y} {dst_w}x{dst_h} rv={rv}"
+    );
+    rv
+}
+
+/// Place the video with the original input given (`SDL_webOSExportedSetCropRegion`): the part of
+/// the `org_w`x`org_h` frame lands on `dst` as given, where `vp_place` keeps the source aspect
+/// inside `dst`. A later `vp_place` clears the original input again. SDL's bool, or -1 when
+/// nothing was called: no window, no such entry point, or an empty rect (a NULL one has closed
+/// other apps on LG sets).
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn vp_crop(
+    org_w: c_int,
+    org_h: c_int,
+    src_x: c_int,
+    src_y: c_int,
+    src_w: c_int,
+    src_h: c_int,
+    dst_x: c_int,
+    dst_y: c_int,
+    dst_w: c_int,
+    dst_h: c_int,
+) -> c_int {
+    let Some(crop) = exported().and_then(|sdl| sdl.crop) else {
+        return -1;
+    };
+    let Some(window_id) = held_window_id() else {
+        return -1;
+    };
+    if [org_w, org_h, src_w, src_h, dst_w, dst_h]
+        .iter()
+        .any(|&v| v <= 0)
+    {
+        return -1;
+    }
+    let mut org = VpRect {
+        x: 0,
+        y: 0,
+        w: org_w,
+        h: org_h,
+    };
+    let mut src = VpRect {
+        x: src_x,
+        y: src_y,
+        w: src_w,
+        h: src_h,
+    };
+    let mut dst = VpRect {
+        x: dst_x,
+        y: dst_y,
+        w: dst_w,
+        h: dst_h,
+    };
+    // SAFETY: SDL_webOSExportedSetCropRegion(const char *windowId, SDL_Rect *org, SDL_Rect *src,
+    // SDL_Rect *dst) with our NUL-terminated id copy and three rects that live across the call.
+    let rv = unsafe { crop(window_id.as_ptr(), &mut org, &mut src, &mut dst) };
+    elog!(
+        "vplane: crop region org=0,0 {org_w}x{org_h} src={src_x},{src_y} {src_w}x{src_h} -> {dst_x},{dst_y} {dst_w}x{dst_h} rv={rv}"
     );
     rv
 }

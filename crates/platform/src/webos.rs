@@ -470,6 +470,19 @@ pub fn sound_settings() -> Option<String> {
     None
 }
 
+/// The video output service's `getStatus` reply (each sink: connected, muted, for which app),
+/// raw. Read-only. An LS2 round trip: call it off the frame thread. Gated on the arm target as
+/// well because the player calls it from every build, and a host link has no LS2 library.
+#[cfg(all(target_arch = "arm", not(feature = "hostsim"), not(any(test, feature = "test-support"))))]
+pub fn video_output_status() -> Option<String> {
+    ls2::call_once("luna://com.webos.service.videooutput/getStatus", "{}").ok()
+}
+
+#[cfg(not(all(target_arch = "arm", not(feature = "hostsim"), not(any(test, feature = "test-support")))))]
+pub fn video_output_status() -> Option<String> {
+    None
+}
+
 #[cfg(any(feature = "hostsim", test, feature = "test-support"))]
 pub fn system_locale() -> crate::tv::LocaleReply {
     crate::tv::LocaleReply::NoPlatform
@@ -584,12 +597,12 @@ pub mod ls2 {
     use std::os::raw::{c_char, c_int, c_void};
     use std::time::{Duration, Instant};
 
-    /// How long [`call_once`] waits for SAM's reply.
+    /// How long [`call_once`] waits for a reply, for every caller of it.
     ///
-    /// **Be honest about what this costs when it is SPENT**: the call runs on the SDL main thread,
-    /// so a bus that never answers stops event handling, updates, drawing and the remote FIFO for
-    /// the whole budget - about 36 frames at 60 Hz, not the "one dropped frame" this comment
-    /// claimed when it was written. It is not an end-to-end ceiling either: registration,
+    /// **Be honest about what this costs when it is SPENT**: the root press calls SAM on the SDL
+    /// main thread, so a bus that never answers stops event handling, updates, drawing and the
+    /// remote FIFO for the whole budget - about 36 frames at 60 Hz, not the "one dropped frame"
+    /// this comment claimed when it was written. It is not an end-to-end ceiling either: registration,
     /// cancellation and unregistration sit outside it.
     ///
     /// It is still the right shape, for two reasons. The press being served is a request to LEAVE,
@@ -926,7 +939,7 @@ pub mod ls2 {
         }
     }
 
-    /// Register, call, wait up to [`BUDGET`], unregister - the main-thread shape.
+    /// Register, call, wait up to [`BUDGET`], unregister, on the calling thread.
     pub(super) fn call_once(uri: &str, payload: &str) -> Result<String, Fail> {
         let registration = register()?;
         registration.call(uri, payload, BUDGET)

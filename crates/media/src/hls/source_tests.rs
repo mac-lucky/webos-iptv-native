@@ -1016,3 +1016,139 @@ fn a_live_media_sequence_that_goes_backwards_begins_a_run() {
     let restart = [40, 41, 42].map(|q| ts(q).len() as u64).iter().sum::<u64>();
     assert_eq!([src.run_at(restart - 1), src.run_at(restart), src.run_at(u64::MAX)], [0, 1, 1]);
 }
+
+/// The first timestamp of the C1's live session whose break, its timestamps going on, was shifted
+/// 55013434 ms, and that shift.
+const T0_MS: i64 = 12_968_940;
+const AHEAD_MS: i64 = 55_013_434;
+/// The breaks of [`breaks_segment`], and its last sequence.
+const BREAKS: [u64; 2] = [8, 12];
+const LAST: u64 = 16;
+
+/// A 6 s segment from `from_ms` as 16-byte packets `[stream, 1 with a position, 0, 0, duration ms
+/// (u32 LE), timestamp ms (i64 LE)]`: a PES of five 24 ms audio frames (stream 1) every 120 ms,
+/// only its first frame with a position as mpegts gives them, and three 40 ms video frames (stream
+/// 0). With `stray`, one more audio PES at 2.4 s is timed [`AHEAD_MS`] ahead.
+fn av_segment(from_ms: i64, stray: bool) -> Vec<u8> {
+    let mut seg = Vec::new();
+    let mut packet = |stream: u8, pos: bool, dur_ms: u32, ts_ms: i64| {
+        seg.extend([stream, u8::from(pos), 0, 0]);
+        seg.extend(dur_ms.to_le_bytes());
+        seg.extend(ts_ms.to_le_bytes());
+    };
+    for t in (from_ms..from_ms + 6_000).step_by(120) {
+        let pes: &[i64] = if stray && t == from_ms + 2_400 { &[0, AHEAD_MS] } else { &[0] };
+        for ahead in pes {
+            for k in 0..5 {
+                packet(1, k == 0, 24, t + ahead + 24 * k);
+            }
+        }
+        for k in 0..3 {
+            packet(0, true, 40, t + 40 * k);
+        }
+    }
+    seg
+}
+
+/// Segment `q` of a channel with two breaks: its timestamps go on across the one before 8 (a
+/// splice tagged although they continue, segment 7 carrying a stray PES far ahead) and jump 30 s
+/// back at the one before 12 (an ad break).
+fn breaks_segment(q: u64) -> Vec<u8> {
+    let back = if q >= BREAKS[1] { 30_000 } else { 0 };
+    av_segment(T0_MS + 6_000 * q as i64 - back, q == BREAKS[0] - 1)
+}
+
+/// A server with every [`breaks_segment`] at `/seg<q>.ts`.
+fn breaks_server() -> Server {
+    let s = Server::new();
+    for q in 0..=LAST {
+        s.put(&format!("/seg{q}.ts"), breaks_segment(q));
+    }
+    s
+}
+
+/// The playlist lines of the [`breaks_segment`]s `range`, an `EXT-X-DISCONTINUITY` before each
+/// break after its first segment.
+fn breaks_lines(range: std::ops::RangeInclusive<u64>) -> String {
+    let first = *range.start();
+    let tag = |q: u64| if q > first && BREAKS.contains(&q) { "#EXT-X-DISCONTINUITY\n" } else { "" };
+    range.map(|q| format!("{}#EXTINF:6.0,\nseg{q}.ts\n", tag(q))).collect()
+}
+
+/// Read `src` to its end as `ff::demux` reads an HLS stream: every [`av_segment`] packet, once its
+/// bytes are in, put on one [`timeline::Timeline`] in the run of its byte position. Returns
+/// `(stream, timestamp, timestamp placed)` per packet, ms.
+fn demux_onto_timeline<T: Transport, C: Clock>(src: &mut HlsSource<T, C>) -> Vec<(i32, i64, i64)> {
+    const MS: i64 = 1_000_000;
+    let mut tl = timeline::Timeline::default();
+    let (mut bytes, mut buf, mut at, mut placed) = (Vec::new(), vec![0u8; 777], 0, Vec::new());
+    loop {
+        let n = src.read(&mut buf).expect("the stream reads to its end");
+        bytes.extend_from_slice(&buf[..n]);
+        for p in bytes[at..].as_chunks::<16>().0 {
+            let stream = i32::from(p[0]);
+            let pos = (p[1] == 1).then_some(at as u64);
+            let dur = i64::from(u32::from_le_bytes([p[4], p[5], p[6], p[7]]));
+            let ts = i64::from_le_bytes(p[8..].try_into().unwrap());
+            let run = tl.run_of(stream, pos, |pos| src.run_at(pos));
+            placed.push((stream, ts, ts + tl.place(run, stream, ts * MS, dur * MS) / MS));
+            at += 16;
+        }
+        if n == 0 {
+            return placed;
+        }
+    }
+}
+
+/// `placed` ([`demux_onto_timeline`]) is one timeline from `from_ms` to the channel's end: each
+/// stream's packets go on from each other across both breaks, no jump invented at the first and
+/// none missed at the second. The stray PES left where it was, far ahead: the lanes drop it.
+fn one_timeline(placed: &[(i32, i64, i64)], from_ms: i64) {
+    for (stream, step) in [(0, 40), (1, 24)] {
+        let ts: Vec<i64> = placed.iter().filter(|p| p.0 == stream && p.1 < T0_MS + AHEAD_MS).map(|p| p.2).collect();
+        let jump = ts.windows(2).find(|w| w[1] - w[0] != step);
+        assert!(jump.is_none(), "stream {stream}: the placed timestamps jump at {jump:?}");
+        assert_eq!((ts[0], ts[ts.len() - 1] + step), (from_ms, T0_MS + 6_000 * (LAST as i64 + 1)), "stream {stream}");
+    }
+}
+
+/// **Live, the timeline neither invents a jump at a break nor misses one**: a sliding window of
+/// six 6 s segments over the [`breaks_segment`]s, with `EXT-X-DISCONTINUITY-SEQUENCE` and
+/// without (then the tags are counted from the window's first segment, and the count drops as one
+/// leaves). On the C1 a break whose timestamps went on was shifted 55013434 ms and the picture
+/// stopped until the watchdog restarted the channel.
+#[test]
+fn a_live_window_neither_invents_a_jump_at_a_break_nor_misses_one() {
+    for counted in [true, false] {
+        let s = breaks_server();
+        s.route("/live.m3u8", move |now_ms| {
+            let newest = (5 + now_ms / 6_000).min(LAST);
+            let oldest = newest - 5;
+            let dseq = BREAKS.iter().filter(|&&b| b <= oldest).count();
+            let dseq = if counted { format!("#EXT-X-DISCONTINUITY-SEQUENCE:{dseq}\n") } else { String::new() };
+            let end = if newest == LAST { "#EXT-X-ENDLIST\n" } else { "" };
+            let lines = breaks_lines(oldest..=newest);
+            Ok(format!("#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:{oldest}\n{dseq}{lines}{end}").into_bytes())
+        });
+        let mut src = s.open("/live.m3u8", None).unwrap();
+        let placed = demux_onto_timeline(&mut src);
+        assert_eq!(src.run_at(u64::MAX), 2, "a run begins at each break (sequence counted: {counted})");
+        // The live start: three targets behind the edge, segment 3.
+        one_timeline(&placed, T0_MS + 18_000);
+    }
+}
+
+/// **Catch-up, the same**: the [`breaks_segment`]s as an archive (`EVENT` + `ENDLIST`).
+#[test]
+fn an_archive_neither_invents_a_jump_at_a_break_nor_misses_one() {
+    let s = breaks_server();
+    let lines = breaks_lines(0..=LAST);
+    s.put(
+        "/archive.m3u8",
+        format!("#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n{lines}#EXT-X-ENDLIST\n"),
+    );
+    let mut src = s.open("/archive.m3u8", None).unwrap();
+    let placed = demux_onto_timeline(&mut src);
+    assert_eq!(src.run_at(u64::MAX), 2, "a run begins at each break");
+    one_timeline(&placed, T0_MS);
+}

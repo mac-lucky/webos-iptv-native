@@ -25,7 +25,8 @@
 //! - [`live`]: the live window and reload arithmetic, pure.
 //! - [`aes`]: AES-128-CBC/PKCS#7, verified against FIPS-197 and SP 800-38A.
 //! - [`source`]: the client, over an injectable transport and clock.
-//! - [`timeline`]: one timeline across the stream's discontinuities, for the demuxer, pure.
+//! - [`timeline`]: one timeline across the stream's discontinuities, for the demuxer; no I/O but
+//!   its decision log.
 //!
 //! **Seeking.** A live stream does not seek: the pump drops the request. A VOD
 //! stream (a catch-up programme) seeks by segment: the pump reloads the engine at the target and

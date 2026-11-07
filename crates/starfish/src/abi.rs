@@ -43,6 +43,7 @@ seam_abi! {
     fn sf_callback_intercepts() -> c_uint;
     fn sf_destroy() -> c_int;
     fn sf_quarantine();
+    fn sf_arm_window_id() -> c_int;
 
     fn vp_mode() -> c_int;
     fn vp_create_window() -> *const c_char;
@@ -57,7 +58,20 @@ seam_abi! {
         dst_w: c_int,
         dst_h: c_int,
     ) -> c_int;
+    fn vp_crop(
+        org_w: c_int,
+        org_h: c_int,
+        src_x: c_int,
+        src_y: c_int,
+        src_w: c_int,
+        src_h: c_int,
+        dst_x: c_int,
+        dst_y: c_int,
+        dst_w: c_int,
+        dst_h: c_int,
+    ) -> c_int;
     fn vp_destroy_window();
+    fn vp_set_property(name: *const c_char, value: *const c_char) -> c_int;
 
     fn acb_create(app_id: *const c_char, player_type: c_int) -> c_long;
     fn acb_bind(media_id: *const c_char);

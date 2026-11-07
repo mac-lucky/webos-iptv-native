@@ -1,11 +1,17 @@
 // Copyright (c) 2026 Gleb Linnik
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Own Rust mirror of src/starfish.h, written from the public ABI contract.
-//! player::ffi - the starfish.c seam (sf_* / acb_* verbs). These stay C (the mangled-C++ + ACB
-//! ABI). The library thread calls back into our sf_on_event / acb_on_event (defined in mod.rs).
-//! Signatures mirror `src/starfish.h` exactly; `long` is 32-bit on the arm target -> c_long.
+// Own Rust declarations of the seam's C-ABI verbs (once PlxNative's src/starfish.h), written from
+// the public ABI contract.
+//! player::ffi - the `tv_starfish` seam (sf_* / acb_* / vp_* verbs): unmangled C-ABI exports of
+//! that Rust crate, which drives the mangled-C++ + ACB libraries behind them. The library thread
+//! calls back into our sf_on_event / acb_on_event (defined in mod.rs). Signatures mirror
+//! `tv_starfish::abi`'s table exactly (its tests check it); `long` is 32-bit on the arm target ->
+//! c_long.
 //!
-//! **Everything here but `load` and `unload` takes a [`MainThread`]** (`unload` takes an
+//! **Everything here but `load`, `unload` and the token-free reads (`feed_abi_is_cow` and
+//! `window_mode`, memoized; `window_id`, a borrow of the seam's id buffer, which the window verbs
+//! rewrite) takes a [`MainThread`]**
+//! (`unload` takes an
 //! `UnloadTicket`, which only a `&MainThread` can issue, so a real stop's Unload can run on the
 //! `sf-unload` worker - `engine::PendingRelease`), because the seam has no locking of
 //! its own: the ACB bind order is a bare call sequence, and `sf_feed` races the pump's own
@@ -16,7 +22,7 @@
 //! The wrappers are the methods of [`StarfishSink`], the television's `tv::sink::VideoSink`; the
 //! port table installs it (`port.rs`) and `player::sink()` reaches it. They stay `unsafe fn`,
 //! one-for-one with the declarations. Several take raw pointers, and the pointer-free ones still
-//! carry ordering preconditions the C side does not check (`acb_start` before the bind completes,
+//! carry ordering preconditions the seam does not check (`acb_start` before the bind completes,
 //! `sf_play` after `sf_destroy`). Calling any of them remains something to think about; the token
 //! only says *where* from.
 //!
@@ -52,6 +58,7 @@ mod sys {
         pub(super) fn sf_callback_intercepts() -> c_uint;
         pub(super) fn sf_destroy() -> c_int;
         pub(super) fn sf_quarantine();
+        pub(super) fn sf_arm_window_id() -> c_int;
 
         pub(super) fn vp_mode() -> c_int;
         pub(super) fn vp_create_window() -> *const c_char;
@@ -66,7 +73,20 @@ mod sys {
             dst_w: c_int,
             dst_h: c_int,
         ) -> c_int;
+        pub(super) fn vp_crop(
+            org_w: c_int,
+            org_h: c_int,
+            src_x: c_int,
+            src_y: c_int,
+            src_w: c_int,
+            src_h: c_int,
+            dst_x: c_int,
+            dst_y: c_int,
+            dst_w: c_int,
+            dst_h: c_int,
+        ) -> c_int;
         pub(super) fn vp_destroy_window();
+        pub(super) fn vp_set_property(name: *const c_char, value: *const c_char) -> c_int;
 
         pub(super) fn acb_create(app_id: *const c_char, player_type: c_int) -> c_long;
         pub(super) fn acb_bind(media_id: *const c_char);
@@ -89,8 +109,9 @@ impl tv_platform::tv::sink::VideoSink for StarfishSink {
     /// behind it, so it runs on the media worker (`threads::load_thread`) by design - putting it on
     /// the main thread would stall the frame loop for the whole load. What keeps that safe is NOT
     /// `sf_ready()` - that reads true the moment the object is constructed, before the real Load call
-    /// returns (issue #74) - but the C seam's own `g_load_returned` gate inside `sf_ready_object()`,
-    /// which refuses the other Starfish verbs until this call has returned. Rust tracks the same
+    /// returns (issue #74) - but the seam's own `load_returned` gate inside
+    /// `tv_starfish::lifecycle::Lifecycle::ready_object`, which refuses the other Starfish verbs
+    /// until this call has returned. Rust tracks the same
     /// epoch boundary in Shared and the pump bounds both waits with `NATIVE_LOAD_BUDGET`.
     #[inline]
     unsafe fn load(&self, payload: *const c_char, epoch: u32) -> c_int {
@@ -143,7 +164,7 @@ impl tv_platform::tv::sink::VideoSink for StarfishSink {
     }
     #[inline]
     fn feed_abi_is_cow(&self) -> bool {
-        // SAFETY: the C accessor takes no arguments and resolves under pthread_once.
+        // SAFETY: the seam's accessor takes no arguments and resolves once (a `OnceLock`).
         unsafe { sys::sf_feed_abi_is_cow() != 0 }
     }
     #[inline]
@@ -188,10 +209,11 @@ impl tv_platform::tv::sink::VideoSink for StarfishSink {
     /// The exported windowId the seam holds, or an empty string when none was created. Diagnostics
     /// only (`app::diagnostics`): it answers "did the window this firmware needs ever exist?", which is the
     /// first thing to check when webOS 5+ plays sound over a black screen. Points at the seam's own
-    /// long-lived buffer, so it is never NULL and never owned here. No token - it reads a static char[].
+    /// long-lived buffer, so it is never NULL and never owned here. No token - it reads a static buffer.
     #[inline]
     fn window_id(&self) -> &'static CStr {
-        // SAFETY: never NULL and always NUL-terminated (`g_window_id` is a zero-initialised char[64]).
+        // SAFETY: never NULL and always NUL-terminated (`tv_starfish::tv::WINDOW_ID` is a
+        // zero-initialised [u8; 64]).
         unsafe { CStr::from_ptr(sys::vp_window_id()) }
     }
 
@@ -219,8 +241,39 @@ impl tv_platform::tv::sink::VideoSink for StarfishSink {
         sys::vp_place(src_x, src_y, src_w, src_h, dst_x, dst_y, dst_w, dst_h)
     }
     #[inline]
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn crop_window(
+        &self,
+        _: &MainThread,
+        org_w: c_int,
+        org_h: c_int,
+        src_x: c_int,
+        src_y: c_int,
+        src_w: c_int,
+        src_h: c_int,
+        dst_x: c_int,
+        dst_y: c_int,
+        dst_w: c_int,
+        dst_h: c_int,
+    ) -> c_int {
+        sys::vp_crop(org_w, org_h, src_x, src_y, src_w, src_h, dst_x, dst_y, dst_w, dst_h)
+    }
+    #[inline]
     unsafe fn destroy_window(&self, _: &MainThread) {
         sys::vp_destroy_window()
+    }
+    #[inline]
+    unsafe fn set_window_property(
+        &self,
+        _: &MainThread,
+        name: *const c_char,
+        value: *const c_char,
+    ) -> c_int {
+        sys::vp_set_property(name, value)
+    }
+    #[inline]
+    unsafe fn arm_window_id(&self, _: &MainThread) -> c_int {
+        sys::sf_arm_window_id()
     }
 
     #[inline]

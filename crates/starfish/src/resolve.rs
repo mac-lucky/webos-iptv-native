@@ -125,7 +125,7 @@ pub(crate) fn resolve_feed<F, D>(
 /// `dladdr`'s `dli_fname` names LG's player library. A substring test, as the C's `strstr`: the
 /// path differs between firmware releases, the file name does not.
 pub(crate) fn owned_by_player_apis(fname: Option<&CStr>) -> bool {
-    fname.is_some_and(|f| f.to_bytes().windows(16).any(|w| w == b"libplayerAPIs.so"))
+    fname.is_some_and(|f| crate::text::contains(f.to_bytes(), b"libplayerAPIs.so"))
 }
 
 /// What the callback-hook resolution observed (`dlsym` + `dlerror` + `dladdr`, twice).

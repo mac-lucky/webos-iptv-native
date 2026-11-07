@@ -127,14 +127,31 @@ fn place_exported(mt: &MainThread, eng: &mut super::engine::Engine) {
     }
     let (w, h) = SHARED.video_raster();
     let src = if w > 0 && h > 0 { (w, h) } else { (1920, 1080) };
-    // The viewer's aspect mode crops the SOURCE; the window is always the screen. A window larger
-    // than the screen at a negative origin (the first cut of the zooms) twitched the picture.
+    // The viewer's aspect mode crops the SOURCE; the window is the video rectangle (or its
+    // forced-ratio part), never larger than it. A window larger than the screen at a negative
+    // origin (the first cut of the zooms) twitched the picture.
     let mode = super::aspect_mode();
     let screen = super::video_geometry::Aspect::from_raster(1920, 1080).expect("a positive raster");
     let part = mode.crop(super::picture_aspect(src), src.0, src.1, screen);
     // A forced ratio shrinks the window inside the video rectangle, never past it.
     let (dst, dst_key) = (mode.dest(super::video_rect()), super::video_rect_key());
-    let rv = unsafe { super::sink().place_window(mt, part.x, part.y, part.width, part.height, dst.x, dst.y, dst.width, dst.height) };
+    // set_exported_window keeps the source aspect inside dst (measured on webOS 25), so a forced
+    // ratio needs the crop request; every other mode goes back through set_exported_window, which
+    // also clears a crop's original input.
+    let forced = forced_ratio(mode);
+    let crop_rv = if forced {
+        unsafe { super::sink().crop_window(mt, src.0, src.1, part.x, part.y, part.width, part.height, dst.x, dst.y, dst.width, dst.height) }
+    } else {
+        -1
+    };
+    let rv = if crop_rv > 0 {
+        crop_rv
+    } else {
+        if forced && !CROP_FALLBACK_LOGGED.swap(true, Relaxed) {
+            super::log(&format!("vplane: crop region unavailable (rv={crop_rv}), set_exported_window instead: the picture keeps its aspect"));
+        }
+        unsafe { super::sink().place_window(mt, part.x, part.y, part.width, part.height, dst.x, dst.y, dst.width, dst.height) }
+    };
     eng.placed_src = src;
     PLACED_MODE.store(mode.index(), Relaxed);
     PLACED_RECT.store(dst_key, Relaxed);
@@ -157,6 +174,15 @@ fn place_exported(mt: &MainThread, eng: &mut super::engine::Engine) {
 static PLACED_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 /// The rectangle it was last placed in (`player::video_rect_key`), likewise.
 static PLACED_RECT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// A forced ratio fell back to set_exported_window at least once (logged once per process).
+static CROP_FALLBACK_LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// The last Load epoch that re-sent a forced ratio's crop once playing; epochs start at 1.
+static CROP_RESENT_EPOCH: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// The modes placed with the crop request rather than set_exported_window.
+fn forced_ratio(mode: super::video_geometry::AspectMode) -> bool {
+    matches!(mode, super::video_geometry::AspectMode::Ratio4x3 | super::video_geometry::AspectMode::Ratio16x9)
+}
 
 /// Mirror Engine-confined observations into `Shared` for diagnostics and handled-error context.
 ///
@@ -437,6 +463,7 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
     if SHARED.frames.load(Relaxed) > 0 {
         // The first decoded frame: the observer hears the playback started (once per start).
         ps.report_started(SHARED.playpos_ns.load(Relaxed));
+        super::vout::after_frame(eng.native_epoch);
     }
 
     // The producer died before publishing a duration: the EOS path is gated on `duration_ns > 0`
@@ -750,6 +777,7 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
         // BINDING already happened via `option.windowId` in the Load payload, and this call is
         // pure geometry.
         place_exported(mt, eng);
+        super::vout::after_place(mt);
         if super::sink().window_mode() == super::VP_EXPORTED {
             // Playing -> Streaming directly: there is no bind sequence to sit in the middle of.
             // The transition is load-bearing beyond bookkeeping - `pushEOS` is gated on
@@ -920,7 +948,16 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
         let now = SHARED.video_raster();
         let raster_moved = now.0 > 0 && now.1 > 0 && now != eng.placed_src;
         let rect_moved = PLACED_RECT.load(Relaxed) != super::video_rect_key();
-        if raster_moved || rect_moved || PLACED_MODE.load(Relaxed) != super::aspect_mode().index() {
+        // The crop placed at loadCompleted precedes every frame, and webOS 25 is reported to drop
+        // one sent that early (black or unscaled until the mode changes), so each Load sends a
+        // forced ratio's crop once more on its second position report: the first can precede the
+        // picture, and reports stop under a pause, so the second means playback has moved.
+        // shortcut: a Load paused on its first picture re-sends only after Play; track the first
+        // report's position if a paused 4:3 picture is seen wrong on the TV.
+        let crop_resend = SHARED.frames.load(Relaxed) >= 2
+            && forced_ratio(super::aspect_mode())
+            && CROP_RESENT_EPOCH.swap(eng.native_epoch, Relaxed) != eng.native_epoch;
+        if raster_moved || rect_moved || crop_resend || PLACED_MODE.load(Relaxed) != super::aspect_mode().index() {
             place_exported(mt, eng);
         }
     }
@@ -1015,6 +1052,51 @@ mod eos_stall_tests {
         // a moving playhead restarts the window
         assert!(!super::eos_stalled(&mut seen, 6, 20_000));
         assert!(!super::eos_stalled(&mut seen, 6, 20_000 + super::EOS_STALL_MS - 1));
+    }
+}
+
+/// The forced ratios map the frame as fed onto their rect with the crop request; Normal and Fill
+/// (and every forced placement the crop request cannot take) go through set_exported_window.
+#[cfg(all(test, feature = "hostsim"))]
+mod place_exported_tests {
+    use super::*;
+    use crate::player::ffi_host;
+    use crate::player::video_geometry::{AspectMode, Viewport};
+
+    fn placed(mode: AspectMode, raster: (i32, i32), rect: Option<Viewport>, crop_rv: i32) -> Vec<String> {
+        SHARED.reset_session();
+        SHARED.publish_video_raster(raster.0, raster.1);
+        crate::player::set_aspect_mode(mode);
+        crate::player::set_video_rect(rect);
+        ffi_host::reset_place_probe_for_test(crop_rv);
+        let mut eng = super::super::engine::streaming_engine_for_test(0);
+        // SAFETY: this test thread is the only one driving the player.
+        place_exported(&unsafe { MainThread::assume() }, &mut eng);
+        assert_eq!(SHARED.dg_place_rv.load(Relaxed), 1, "{mode:?} placed");
+        ffi_host::place_log_for_test()
+    }
+
+    #[test]
+    fn the_forced_ratios_take_the_crop_request_and_fall_back_to_the_window() {
+        let _serial = tv_base::testlock::serial();
+        ffi_host::force_clocksink_for_test(true);
+        let (hd, sd) = ((1920, 1080), (720, 576));
+        assert_eq!(placed(AspectMode::Ratio4x3, hd, None, 1), ["crop org=0,0 1920x1080 src=0,0 1920x1080 -> 240,0 1440x1080"]);
+        assert_eq!(placed(AspectMode::Ratio16x9, sd, None, 1), ["crop org=0,0 720x576 src=0,0 720x576 -> 0,0 1920x1080"]);
+        let preview = Some(Viewport { x: 32, y: 24, width: 640, height: 360 });
+        assert_eq!(placed(AspectMode::Ratio4x3, hd, preview, 1), ["crop org=0,0 1920x1080 src=0,0 1920x1080 -> 112,24 480x360"]);
+        assert_eq!(placed(AspectMode::Auto, hd, None, 1), ["window src=0,0 1920x1080 -> 0,0 1920x1080"], "Normal never crops");
+        assert_eq!(placed(AspectMode::Fill, (1440, 1080), None, 1), ["window src=0,135 1440x810 -> 0,0 1920x1080"], "Fill crops the source only");
+        for absent_or_refused in [-1, 0] {
+            assert_eq!(
+                placed(AspectMode::Ratio4x3, hd, None, absent_or_refused),
+                ["crop org=0,0 1920x1080 src=0,0 1920x1080 -> 240,0 1440x1080", "window src=0,0 1920x1080 -> 240,0 1440x1080"],
+                "crop rv={absent_or_refused}: the window is still placed"
+            );
+        }
+        crate::player::set_aspect_mode(AspectMode::Auto);
+        crate::player::set_video_rect(None);
+        ffi_host::force_clocksink_for_test(false);
     }
 }
 
@@ -1134,6 +1216,36 @@ mod native_seek_pump_tests {
 
     fn reloads() -> Vec<i64> {
         super::super::engine::RELOAD_AT_LOG.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// A forced ratio's crop goes out at loadCompleted, before any frame, and once more on the
+    /// second position report of each Load (a zap is a new Load); Normal places once.
+    #[test]
+    fn a_forced_ratio_sends_its_crop_again_once_each_load_plays() {
+        use crate::player::video_geometry::AspectMode;
+        let _serial = tv_base::testlock::serial();
+        for (mode, placements) in [(AspectMode::Ratio4x3, 2), (AspectMode::Ratio4x3, 2), (AspectMode::Auto, 1)] {
+            let mut rig = Rig::new(None);
+            SHARED.publish_video_raster(1920, 1080);
+            crate::player::set_aspect_mode(mode);
+            crate::player::set_video_rect(None);
+            ffi_host::reset_place_probe_for_test(1);
+            // SAFETY: this test thread is the only one driving the player (the loadCompleted call).
+            place_exported(&unsafe { MainThread::assume() }, rig.eng());
+            rig.frame();
+            assert_eq!(ffi_host::place_log_for_test().len(), 1, "{mode:?}: no frame yet");
+            SHARED.frames.store(1, Relaxed);
+            rig.frame();
+            assert_eq!(ffi_host::place_log_for_test().len(), 1, "{mode:?}: the first report can precede the picture");
+            SHARED.frames.store(2, Relaxed);
+            for _ in 0..3 {
+                rig.frame();
+            }
+            let log = ffi_host::place_log_for_test();
+            assert_eq!(log.len(), placements, "{mode:?}: {log:?}");
+            assert!(log.iter().all(|line| *line == log[0]), "{mode:?}: the same placement: {log:?}");
+        }
+        crate::player::set_aspect_mode(AspectMode::Auto);
     }
 
     /// An HLS VOD (a catch-up programme) has no byte addresses: its seek is one reload at the

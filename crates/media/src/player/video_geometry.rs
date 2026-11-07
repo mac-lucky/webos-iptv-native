@@ -91,8 +91,8 @@ impl Viewport {
 /// **How the picture is placed on the screen** - the player's `...` > Aspect ratio. Per playback:
 /// every start is [`Auto`](AspectMode::Auto), and nothing is saved.
 ///
-/// It is expressed as the exported window's destination rect alone (`vp_place`'s source is
-/// always the whole frame), so a crop is a window larger than the screen that the panel clips.
+/// The mode crops the source ([`AspectMode::crop`]) and places it in the video rectangle
+/// ([`AspectMode::dest`]); the window is never larger than that rectangle.
 /// **Device caveat, unmeasured:** the dev set (webOS 4.5, ACB) is seen to letterbox the picture
 /// inside a full-screen window by itself. If the webOS 5+ compositor does the same inside the
 /// exported window, Stretch reads as Auto there; the crop modes do not depend on it either way.
@@ -101,7 +101,9 @@ impl Viewport {
 /// The forced ratios ([`Ratio4x3`](AspectMode::Ratio4x3), [`Ratio16x9`](AspectMode::Ratio16x9))
 /// show the whole frame in the largest centred part of the video rectangle with that aspect
 /// ([`AspectMode::dest`]): the window shrinks inside the rectangle, never past it, so it stays
-/// inside the UI's transparent hole. The caveat above applies to them as to Stretch.
+/// inside the UI's transparent hole. The caveat above holds for them on webOS 25 (the exported
+/// window keeps the source aspect inside its rect), so the pump places them with the crop request
+/// (`VideoSink::crop_window`) and falls back to the plain window where that is missing.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AspectMode {
     /// The source's own aspect, letterboxed or pillarboxed: the picture fitted inside the screen.
@@ -148,17 +150,6 @@ impl AspectMode {
             Self::Fill => full.cover_ratio(raster(screen)),
             Self::Zoom4x3 => full.cover_ratio(raster(Aspect(4, 3))).cover_ratio(raster(screen)),
             Self::Zoom21x9 => full.cover_ratio(raster(Aspect(21, 9))).cover_ratio(raster(screen)),
-        }
-    }
-
-    /// The exported window's destination rect. Auto is the full screen, exactly as every
-    /// playback was placed before the modes existed: the pipeline fits the picture inside it
-    /// itself, with the pixel aspect it reads from the stream (which a raster alone does not
-    /// carry). Stretch asks for the same rect (see the caveat above); the crops overhang.
-    pub fn window(self, source: Aspect, width: i32, height: i32) -> Viewport {
-        match self {
-            Self::Auto | Self::Stretch => Viewport { x: 0, y: 0, width, height },
-            _ => self.place(source, width, height),
         }
     }
 
@@ -290,10 +281,6 @@ mod tests {
         // 21:9 zoom: a 21:9 picture letterboxed into a 16:9 encode loses its bars
         assert_eq!(at(AspectMode::Zoom21x9, hd), vp(-300, -168, 2520, 1417));
         assert_eq!(at(AspectMode::Zoom21x9, scope), vp(-336, 0, 2592, 1080), "a wider-than-21:9 source covers by height");
-        // the window: Auto keeps the full-screen window every playback had; a crop overhangs
-        assert_eq!(AspectMode::Auto.window(scope, 1920, 1080), vp(0, 0, 1920, 1080));
-        assert_eq!(AspectMode::Stretch.window(academy, 1920, 1080), vp(0, 0, 1920, 1080));
-        assert_eq!(AspectMode::Fill.window(scope, 1920, 1080), at(AspectMode::Fill, scope));
         // what is on the screen of any placement
         assert_eq!(at(AspectMode::Fill, scope).clip(1920, 1080), vp(0, 0, 1920, 1080));
         assert_eq!(at(AspectMode::Auto, scope).clip(1920, 1080), vp(0, 140, 1920, 800));
@@ -327,7 +314,6 @@ mod tests {
         let hd = Aspect::from_raster(1920, 1080).unwrap();
         for m in [AspectMode::Ratio4x3, AspectMode::Ratio16x9] {
             assert_eq!(m.crop(hd, 1920, 1080, hd), full, "{m:?} shows the whole frame");
-            assert_eq!(m.window(hd, 1920, 1080), m.dest(full));
             assert_eq!(AspectMode::from_index(m.index()), m);
         }
         // where an overlay finds the picture (`player::video_viewport`)

@@ -147,6 +147,27 @@ pub(super) fn reset_acb_for_test(accept_video_data: bool) {
     }
 }
 
+/// Exported-window placement probes: what the crop request answers (-1, the default, is an SDL
+/// without it) and every placement since [`reset_place_probe_for_test`], as `"crop ..."` or
+/// `"window ..."` with the rects the television's log line would carry.
+#[cfg(test)]
+static CROP_RESULT: AtomicI32 = AtomicI32::new(-1);
+#[cfg(test)]
+static PLACE_LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
+#[cfg(test)]
+pub(super) fn reset_place_probe_for_test(crop_result: c_int) {
+    CROP_RESULT.store(crop_result, Relaxed);
+    PLACE_LOG.lock().unwrap_or_else(|e| e.into_inner()).clear();
+}
+#[cfg(test)]
+pub(super) fn place_log_for_test() -> Vec<String> {
+    PLACE_LOG.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+#[cfg(test)]
+fn note_place(line: String) {
+    PLACE_LOG.lock().unwrap_or_else(|e| e.into_inner()).push(line);
+}
+
 /// Every millis `sf_seek_ms` was called with, in order (#568): what a test reads to prove a
 /// direct-play seek went through LG's public `Seek` and landed where the keyframe did.
 #[cfg(any(test, feature = "test-support"))]
@@ -1039,7 +1060,31 @@ impl VideoSink for HostSink {
         dst_w: c_int,
         dst_h: c_int,
     ) -> c_int {
+        #[cfg(test)]
+        note_place(format!("window src={src_x},{src_y} {src_w}x{src_h} -> {dst_x},{dst_y} {dst_w}x{dst_h}"));
         vp_place(src_x, src_y, src_w, src_h, dst_x, dst_y, dst_w, dst_h)
+    }
+    /// Tests choose its answer; the simulator keeps the trait's -1, an SDL without the request.
+    #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn crop_window(
+        &self,
+        _: &MainThread,
+        org_w: c_int,
+        org_h: c_int,
+        src_x: c_int,
+        src_y: c_int,
+        src_w: c_int,
+        src_h: c_int,
+        dst_x: c_int,
+        dst_y: c_int,
+        dst_w: c_int,
+        dst_h: c_int,
+    ) -> c_int {
+        note_place(format!(
+            "crop org=0,0 {org_w}x{org_h} src={src_x},{src_y} {src_w}x{src_h} -> {dst_x},{dst_y} {dst_w}x{dst_h}"
+        ));
+        CROP_RESULT.load(Relaxed)
     }
     unsafe fn destroy_window(&self, _: &MainThread) {
         vp_destroy_window()

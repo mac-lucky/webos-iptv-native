@@ -38,6 +38,7 @@ pub mod sim_video; // the simulator's decoded picture, for screenshots (see its 
 pub mod threads;
 pub mod transport; // the transport-pause contract every surface reaches the player's pause through
 pub mod video_geometry;
+mod vout; // the video output's MAIN read-out after each Load's first frame, and the `try` experiment switches
 pub mod vp9_hdr; // HDR10 for a VP9 stream: the container's PQ tag, written into the sourceInfo envelope ACB is sent
 
 use tv_base::task::MainThread;
@@ -185,7 +186,7 @@ pub fn picture_aspect(fallback: (i32, i32)) -> video_geometry::Aspect {
 /// - [`Segment`](SeekMode::Segment) - Kodi's in-place seek: flush + reopen + `av_seek`, then on the
 ///   first post-seek keyframe `setTimeToDecode` / `setContentInfo` + the private `sendSegmentEvent`.
 ///   No reload, no decoder re-init, so no HDR-mode popup and no A/V-resync glitch. It reaches
-///   LG-private C++ objects through decompile-derived offsets (`src/starfish.c`'s `sf_pipeline`:
+///   LG-private C++ objects through decompile-derived offsets (`tv_starfish::tv`'s `pipeline()`:
 ///   object+0x4c, then player+0x04, plus `MEDIA_CUSTOM_CONTENT_INFO`'s `ptsToDecode`), proven on
 ///   webOS 4.5 only, so it is used only where `inplace_layout_known` holds and the window is not
 ///   `VP_EXPORTED`. On webOS<11 (this 4.5) `setTimeToDecode` returns 0, so `feed_stream` falls
@@ -1112,7 +1113,7 @@ pub fn load_v_name(code: u8) -> &'static str {
 ///
 /// `Default` is the never-started session - all zero, no window, nothing fed - which is both the
 /// honest pre-playback reading and what the host tests build, since the real [`diag`] reaches
-/// `starfish.c` symbols that do not exist on the dev Mac.
+/// `tv_starfish` exports that do not exist on the dev Mac.
 #[derive(Default)]
 pub struct Diag {
     pub vp_mode: c_int,
@@ -1285,8 +1286,8 @@ impl Diag {
 
 pub fn diag() -> Diag {
     let (fed_v, fed_a) = engine::fed_totals();
-    // The sink hands back the seam's own static buffer - never NULL, "" when no window was
-    // created - so this is a copy of a bounded char[64], not a borrow with a lifetime to reason about.
+    // The sink hands back the seam's own buffer (`tv_starfish::tv::WINDOW_ID`, a [u8; 64]) - never
+    // NULL, "" when no window was created - and the next Load rewrites it, so copy it out now.
     let window_id = sink().window_id().to_string_lossy().into_owned();
     let load_a = SHARED.dg_load_a.load(Relaxed);
     let playable_buffer_ms = playable_buffer_ms(

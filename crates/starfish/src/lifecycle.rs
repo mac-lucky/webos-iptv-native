@@ -106,6 +106,16 @@ struct Gate {
     gate_retired: bool,
 }
 
+impl Gate {
+    /// A session's starting gate, for a fresh slot and a renewed one alike.
+    const OPEN: Gate = Gate {
+        inflight: 0,
+        active: true,
+        evidence_armed: false,
+        gate_retired: false,
+    };
+}
+
 /// One Load's object and its callback gate. Leaked: never freed; reused only after a proven
 /// destroy and the cool-down ([`REUSE_AFTER_LOADS`]).
 pub(crate) struct Slot {
@@ -129,12 +139,7 @@ impl Slot {
         Some(Box::leak(Box::new(Slot {
             epoch: AtomicU32::new(epoch),
             storage,
-            gate: Mutex::new(Gate {
-                inflight: 0,
-                active: true,
-                evidence_armed: false,
-                gate_retired: false,
-            }),
+            gate: Mutex::new(Gate::OPEN),
             drained: Condvar::new(),
             intercepted: AtomicU32::new(0),
             dropped: AtomicU32::new(0),
@@ -171,12 +176,7 @@ impl Slot {
         self.intercepted.store(0, Relaxed);
         self.dropped.store(0, Relaxed);
         self.unload_completed.store(false, Release);
-        *gate = Gate {
-            inflight: 0,
-            active: true,
-            evidence_armed: false,
-            gate_retired: false,
-        };
+        *gate = Gate::OPEN;
         true
     }
 }

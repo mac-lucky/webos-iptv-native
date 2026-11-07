@@ -5,13 +5,9 @@ use tv_base::task::MainThread;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_long, c_uint};
 
-/// Which video-plane binding this television has. See `src/starfish.h`'s `VP_*` and the long
-/// comment at the top of `src/starfish.c`.
+/// Which video-plane binding this television has (`vp_mode`). The same values as
+/// `tv_starfish::resolve::VP_*`, which say which firmware gets each binding.
 pub const VP_NONE: c_int = 0;
-/// Not referenced in Rust: the ACB path is selected by the SEAM (every `acb_*` verb no-ops in the
-/// other modes) rather than by a branch here, and `ACB_OK` carries the fact the pump needs. Kept
-/// so the three values are readable together, matching `starfish.h`.
-#[allow(dead_code)]
 pub const VP_ACB: c_int = 1;
 pub const VP_EXPORTED: c_int = 2;
 
@@ -40,16 +36,16 @@ impl UnloadTicket {
 /// 100 when the property is absent): what the paused preroll restores after muting.
 pub const PIPELINE_DEFAULT_VOLUME: c_int = 100;
 
-/// **Starfish-shaped.** One method per verb of the webOS seam (`src/starfish.h`): a Load payload,
+/// **Starfish-shaped.** One method per verb of the webOS seam (`tv_starfish::tv`): a Load payload,
 /// `feed`, and the ACB bind verbs `pump` walks. Another TV OS cannot implement this as is; the
 /// OS-neutral sink is step L15b (docs/module-layers.md).
 ///
 /// Same arguments and C return values as the seam; `&MainThread` on every method but `load` (the
-/// media worker calls it), `unload` (an [`UnloadTicket`], so a worker may issue it), `window_mode`
-/// and `window_id` (memoized reads).
+/// media worker calls it), `unload` (an [`UnloadTicket`], so a worker may issue it), and the reads
+/// `feed_abi_is_cow`, `window_mode` (memoized) and `window_id` (a borrow of the seam's id buffer).
 ///
 /// # Safety
-/// Every `unsafe fn` here forwards to a C verb that wants the arguments `src/starfish.h` documents:
+/// Every `unsafe fn` here forwards to a C verb that wants the arguments `tv_starfish::tv` documents:
 /// a payload or id pointer must be a valid NUL-terminated string for the call, and `feed`'s
 /// `p`/`size` a readable buffer. Apart from `load` and `unload`, the verbs must be called on the
 /// main thread (which `&MainThread` witnesses), in the order the player's pump drives them.
@@ -66,7 +62,7 @@ pub trait VideoSink: Sync {
     /// This pipeline's output volume, 0..100 (`StarfishMediaAPIs::setVolume`), applied at once. The
     /// paused-preroll mute; the library's bool proves nothing. Per pipeline, so a fresh `load`
     /// starts at [`PIPELINE_DEFAULT_VOLUME`] again. There is no getter: `getVolume` returns an int
-    /// on 4.5 against the NDK header's `const char *` (see `src/starfish.c`), so it is not bound.
+    /// on 4.5 against the NDK header's `const char *` (see `tv_starfish::tv`), so it is not bound.
     unsafe fn set_volume(&self, mt: &MainThread, volume: c_int) -> c_int;
     unsafe fn flush(&self, mt: &MainThread) -> c_int;
     unsafe fn push_eos(&self, mt: &MainThread) -> c_int;
@@ -93,7 +89,7 @@ pub trait VideoSink: Sync {
     unsafe fn quarantine(&self, mt: &MainThread);
     fn window_mode(&self) -> c_int;
     /// The exported windowId the sink holds, or `""` when none was created. Never null. The
-    /// storage is the sink's own long-lived buffer (the C seam's `g_window_id`), rewritten only by
+    /// storage is the sink's own long-lived buffer (`tv_starfish::tv`'s `WINDOW_ID`), rewritten only by
     /// `create_window`/`destroy_window` on the main thread, so a caller copies it at once.
     fn window_id(&self) -> &'static CStr;
     /// # Safety
@@ -106,7 +102,30 @@ pub trait VideoSink: Sync {
     /// aspect mode crops) in the on-screen rect.
     unsafe fn place_window(&self, mt: &MainThread, src_x: c_int, src_y: c_int, src_w: c_int, src_h: c_int, dst_x: c_int,
         dst_y: c_int, dst_w: c_int, dst_h: c_int) -> c_int;
+    /// [`place_window`](Self::place_window) with the original input given, the whole
+    /// `org_w`x`org_h` frame as fed (`SDL_webOSExportedSetCropRegion`): the part lands on the
+    /// on-screen rect as given, where `place_window` keeps the source aspect inside it, and a later
+    /// `place_window` clears it again. SDL's bool, or -1 when nothing was called. Only the
+    /// television implements it.
+    ///
+    /// # Safety
+    /// Plain integers only; called in the pump's verb order, like `place_window`.
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn crop_window(&self, _mt: &MainThread, _org_w: c_int, _org_h: c_int, _src_x: c_int, _src_y: c_int,
+        _src_w: c_int, _src_h: c_int, _dst_x: c_int, _dst_y: c_int, _dst_w: c_int, _dst_h: c_int) -> c_int { -1 }
     unsafe fn destroy_window(&self, mt: &MainThread);
+    /// Set a property of the exported window (`SDL_webOSExportedSetProperty`): SDL's bool, or -1
+    /// when nothing was called. Only the television implements it.
+    ///
+    /// # Safety
+    /// `name` and `value` are NUL-terminated strings for the call.
+    unsafe fn set_window_property(&self, _mt: &MainThread, _name: *const c_char, _value: *const c_char) -> c_int { -1 }
+    /// Have the next `load` hand the exported window id to its object (`setWindowId`) before it
+    /// loads: 1 armed, 0 no window. Only the television implements it.
+    ///
+    /// # Safety
+    /// After `create_window` and before the `load` it arms is issued.
+    unsafe fn arm_window_id(&self, _mt: &MainThread) -> c_int { 0 }
     unsafe fn plane_create(&self, mt: &MainThread, app_id: *const c_char, player_type: c_int) -> c_long;
     unsafe fn plane_bind(&self, mt: &MainThread, media_id: *const c_char);
     unsafe fn plane_send_video_data(&self, mt: &MainThread, source_info: *const c_char) -> c_int;

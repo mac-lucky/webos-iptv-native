@@ -4139,7 +4139,7 @@ pub fn demux(
 
                 let mut video_start = VideoStart::default();
                 // HLS: the shifts that keep one timeline across the playlist's discontinuities.
-                let mut timeline = is_hls.then(crate::hls::Timeline::default);
+                let mut timeline = crate::hls::Timeline::default();
                 // The video lane's pre-audio headroom (`PreAudioHeadroom`): granted at the first
                 // video push that WOULD PARK at the base cap with no audio yet, held until the
                 // engine's audio lead-in has been pushed, then released as the consumer drains.
@@ -4230,9 +4230,9 @@ pub fn demux(
                     // frames after a PES's first) is in its stream's last packet's run. The stream
                     // array is read afresh: a programme map naming a new PID (an ad break) adds a
                     // stream, which can move it.
-                    if let (Some(tl), Src::Hls(h)) = (timeline.as_mut(), &state.src) {
-                        let run = tl.run_of(si, u64::try_from((*pkt).pos).ok(), |pos| h.run_at(pos));
-                        hls_place(tl, run, pkt, *(*fmt).streams.add(si as usize), si == vi || si == ai);
+                    if let Src::Hls(h) = &state.src {
+                        let run = timeline.run_of(si, u64::try_from((*pkt).pos).ok(), |pos| h.run_at(pos));
+                        hls_place(&mut timeline, run, pkt, *(*fmt).streams.add(si as usize), si == vi || si == ai);
                     }
                     if si == vi {
                         let is_key = if is_av1 {

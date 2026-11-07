@@ -138,7 +138,7 @@ pub(crate) fn feed_verdict(reply: Option<&CStr>) -> u8 {
     }
 }
 
-fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+pub(crate) fn contains(haystack: &[u8], needle: &[u8]) -> bool {
     haystack.windows(needle.len()).any(|w| w == needle)
 }
 

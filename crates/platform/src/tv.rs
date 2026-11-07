@@ -104,3 +104,7 @@ pub fn probe_device() { (port().probe_device)() }
 pub fn start_capability_probe() { (port().start_capability_probe)() }
 pub fn system_locale() -> LocaleReply { (port().system_locale)() }
 pub fn sound_settings() -> Option<String> { (port().sound_settings)() }
+/// The video output service's `getStatus` reply, raw; `None` off the television or with no reply.
+/// Blocks for an LS2 round trip: never the frame thread. Not a port entry: a read-only diagnostic
+/// of a webOS service, with nothing for another port to fill in.
+pub fn video_output_status() -> Option<String> { crate::webos::video_output_status() }
