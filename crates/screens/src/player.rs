@@ -707,8 +707,16 @@ impl PlayerScreen {
         self.header = Header::build(&self.ctx, &self.group);
         self.readout = Readout::build(&self.transport, &self.ctx);
         if tiles && matches!(self.overlay, Overlay::Info { .. } | Overlay::Playback) {
+            let focused = match self.overlay {
+                Overlay::Info { tile } => self.tiles.get(tile).map(|t| t.kind.clone()),
+                _ => None,
+            };
             self.tiles = model::tiles(data, self.current_key(), self.ctx.current.is_some());
             if let Overlay::Info { tile } = self.overlay {
+                // The Description tile comes and goes at the front: keep the tile, not the slot.
+                let tile = focused
+                    .and_then(|k| self.tiles.iter().position(|t| t.kind == k))
+                    .unwrap_or(tile);
                 self.overlay = self.focus_tile(tile);
             }
         }

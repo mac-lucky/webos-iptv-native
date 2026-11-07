@@ -969,6 +969,29 @@ fn chevrons(pieces: &[Piece]) -> usize {
 }
 
 #[test]
+fn a_reread_tile_row_keeps_the_focused_tile_when_the_description_tile_appears() {
+    // No guide yet: the row starts at TV guide.
+    let mut bare = FakeData::new(T, 6).with_schedule(|_, _, _| Vec::new());
+    bare.playback.channel = Some(bare.key(0));
+    let mut s = screen();
+    short(&mut s, &bare, Key::Ok, 0);
+    assert_eq!(s.overlay(), Overlay::Info { tile: 0 });
+    assert_eq!(s.tiles()[0].kind, TileKind::Guide);
+    // The guide arrives with the panel up: Description is put in front of TV guide.
+    let w = world();
+    s.refresh(&w);
+    assert_eq!(s.tiles()[0].kind, TileKind::Description);
+    let Overlay::Info { tile } = s.overlay() else {
+        panic!("the info panel closed: {:?}", s.overlay());
+    };
+    assert_eq!(
+        s.tiles()[tile].kind,
+        TileKind::Guide,
+        "OK must still open the guide"
+    );
+}
+
+#[test]
 fn ok_ok_opens_the_programme_details_beside_the_picture() {
     let w = world();
     let mut s = screen();
