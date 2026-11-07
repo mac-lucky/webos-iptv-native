@@ -27,6 +27,9 @@ use crate::logs::log;
 use crate::player::{Player, Stream};
 use crate::store::{unix_now, utc_offset_at};
 
+/// The process's first video frame is logged once, with the time since process start.
+static STARTUP: std::sync::Once = std::sync::Once::new();
+
 /// How often the status is read into `Playback` between events.
 const STATUS_MS: u64 = 250;
 
@@ -315,7 +318,17 @@ impl Player for MediaPlayer {
                     changed |= playback.catchup.take().is_some();
                     playback.position_secs = 0;
                 }
-                Event::FirstFrame { .. } | Event::Recovered => self.tracks_stale = true,
+                Event::FirstFrame { .. } => {
+                    self.tracks_stale = true;
+                    // The zap line times from the start of playback; startup needs the process's clock.
+                    STARTUP.call_once(|| {
+                        log(&format!(
+                            "startup: first video frame {} ms after process start",
+                            tv_base::eventlog::t_ms()
+                        ))
+                    });
+                }
+                Event::Recovered => self.tracks_stale = true,
                 Event::DecoderTaken => self.taken = true,
                 Event::ProgrammeEnded => self.ended = true,
             }

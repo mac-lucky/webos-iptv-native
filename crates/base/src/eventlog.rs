@@ -62,6 +62,24 @@ pub fn events_log() -> std::path::PathBuf {
     crate::paths::in_runtime_dir(crate::paths::runtime_file::EVENTS)
 }
 
+static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+/// Start the uptime clock [`t_ms`] reads: first thing in the app's `main`, so it is time since
+/// process start. Idempotent, and [`t_ms`] starts it anyway if it is read first.
+pub fn start_clock() {
+    let _ = START.get_or_init(std::time::Instant::now);
+}
+
+/// Milliseconds since [`start_clock`], saturating at `u32::MAX` (49 days - no session is that long,
+/// and a saturating cast is still an honest reading rather than a wrapped one).
+pub fn t_ms() -> u32 {
+    START
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_millis()
+        .min(u32::MAX as u128) as u32
+}
+
 /// Run `f` with THIS thread's event log redirected to a fresh private file, removed afterwards (also
 /// when `f` panics).
 ///

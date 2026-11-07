@@ -176,15 +176,18 @@ pub fn spots(s: &VodScreen, out: &mut Spots) {
         return;
     }
     let (left, left_len, right, right_len) = match &s.series {
-        Some(series) => {
-            let episodes = series.seasons.get(s.seasons.index);
-            let episodes = episodes.map_or(0, |x| x.episodes.len());
-            (s.seasons, series.seasons.len(), s.episodes, episodes)
-        }
-        None => {
-            let items = s.catalog.list_len(s.categories.index);
-            (s.categories, s.catalog.categories.len(), s.items, items)
-        }
+        Some(series) => (
+            s.seasons,
+            series.seasons.len(),
+            s.episodes,
+            s.season_episodes().len(),
+        ),
+        None => (
+            s.categories,
+            s.catalog.categories.len(),
+            s.items,
+            s.items_len(),
+        ),
     };
     for (row, i) in left.visible(left_len, CATEGORY_ROWS).enumerate() {
         let y = geom::TOP + row as f32 * geom::COL_ROW_H;

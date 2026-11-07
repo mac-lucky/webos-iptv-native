@@ -114,6 +114,8 @@ struct FramePacing {
     gt50: u64,
     gt100: u64,
     max_ms: f64,
+    /// The intervals' sum, for [`FrameTimes`]' fps.
+    total_ms: f64,
     /// Poster-upload frames (see [`POSTER_UPLOAD_MAX_PX`]), those whose interval was at least
     /// [`UPLOAD_LATE_MS`], and the uploads on them.
     pup_frames: u64,
@@ -141,6 +143,7 @@ impl Default for FramePacing {
             gt50: 0,
             gt100: 0,
             max_ms: 0.0,
+            total_ms: 0.0,
             pup_frames: 0,
             pup_late: 0,
             pup_uploads: 0,
@@ -157,6 +160,7 @@ impl FramePacing {
         self.n += 1;
         self.histogram[(elapsed_ms.ceil() as usize).min(256)] += 1;
         self.max_ms = self.max_ms.max(elapsed_ms);
+        self.total_ms += elapsed_ms;
         // Strictly over 1/60s, 1/30s, 1/20s and 1/10s. Integer cross-products distinguish an
         // exact boundary from one tick above it, independent of floating point rounding.
         let ticks = ticks as u128;
@@ -208,6 +212,64 @@ impl FramePacing {
             ));
         }
         s
+    }
+}
+
+/// **The event log's `frames:` line**: the presented-frame cadence, with nothing armed. While the
+/// UI presents frames it gives one line per [`Self::PERIOD`], and none while the UI is idle: no
+/// frame, no line, and no wake of its own (the loop's idle wake reads it). A window in which the
+/// UI never moved gives no line either: steady playback presents every frame for the video plane,
+/// and an evening of those lines would bury the support log.
+///
+/// `n` counts frame intervals, so the first frame after an idle gap only anchors the next one, and
+/// `fps` is over those intervals rather than wall time: the rate while presenting. `p50`/`p95`
+/// round up to whole ms ([`FramePacing`]); `over16.7ms`/`over33.3ms` are exact.
+#[derive(Default)]
+pub struct FrameTimes {
+    pacing: FramePacing,
+    /// This window's first frame; `None` until a frame is presented after the last line.
+    since: Option<std::time::Instant>,
+    /// The UI moved on one of this window's frames.
+    moved: bool,
+}
+
+impl FrameTimes {
+    pub const PERIOD: std::time::Duration = std::time::Duration::from_secs(5);
+
+    /// A frame presented at `at`, `interval` after the previous one (`None` after an idle gap);
+    /// `moving`: the UI animated on it.
+    pub fn note(
+        &mut self,
+        at: std::time::Instant,
+        interval: Option<std::time::Duration>,
+        moving: bool,
+    ) {
+        self.since.get_or_insert(at);
+        self.moved |= moving;
+        if let Some(d) = interval {
+            self.pacing.note(u64::try_from(d.as_nanos()).unwrap_or(u64::MAX), 1_000_000_000);
+        }
+    }
+
+    /// The line once a period has passed since the window's first frame; the next window starts
+    /// at the next frame.
+    pub fn take_line(&mut self, now: std::time::Instant) -> Option<String> {
+        if now.saturating_duration_since(self.since?) < Self::PERIOD {
+            return None;
+        }
+        let FrameTimes { pacing: p, moved, .. } = std::mem::take(self);
+        (moved && p.n > 0).then(|| {
+            format!(
+                "frames: n={} fps={:.1} p50={:.0}ms p95={:.0}ms max={:.1}ms over16.7ms={} over33.3ms={}",
+                p.n,
+                p.n as f64 * 1000.0 / p.total_ms,
+                p.percentile(50),
+                p.percentile(95),
+                p.max_ms,
+                p.gt16,
+                p.gt33,
+            )
+        })
     }
 }
 
@@ -851,6 +913,43 @@ mod tests {
         assert_eq!(pacing.percentile(95), 11.0);
         assert_eq!(pacing.percentile(99), 100.0);
         assert_eq!(pacing.percentile(100), 200.0);
+    }
+
+    #[test]
+    fn frame_times_summarise_a_period_of_presented_frames_and_say_nothing_while_idle() {
+        use std::time::{Duration, Instant};
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        let mut f = FrameTimes::default();
+        assert_eq!(f.take_line(at(60_000)), None, "idle from the start");
+
+        // 100 intervals over 2 s: 90 x 16 ms, 5 x 20 ms, 4 x 40 ms and one 300 ms stall. The UI
+        // moves for the first half second only; the bound video keeps the presents going.
+        f.note(at(0), None, false);
+        let mut t = 0;
+        for ms in [16; 90].into_iter().chain([20; 5]).chain([40; 4]).chain([300]) {
+            t += ms;
+            f.note(at(t), Some(Duration::from_millis(ms)), t < 500);
+        }
+        assert_eq!(f.take_line(at(4_999)), None, "not before the period");
+        assert_eq!(
+            f.take_line(at(5_000)).as_deref(),
+            Some("frames: n=100 fps=50.0 p50=16ms p95=20ms max=300.0ms over16.7ms=10 over33.3ms=5")
+        );
+        assert_eq!(f.take_line(at(20_000)), None, "taken, then idle: nothing");
+
+        // A lone redraw after idle (the minute clock) is no frame time and so no line.
+        f.note(at(60_000), None, false);
+        assert_eq!(f.take_line(at(70_000)), None);
+        assert!(f.since.is_none(), "and its window is closed");
+
+        // Steady playback: every frame presented for the video plane, the UI still.
+        f.note(at(80_000), None, false);
+        for i in 1..=320 {
+            f.note(at(80_000 + i * 16), Some(Duration::from_millis(16)), false);
+        }
+        assert_eq!(f.take_line(at(85_120)), None, "no UI motion, no line");
+        assert!(f.since.is_none(), "and the next window starts afresh");
     }
 
     #[test]

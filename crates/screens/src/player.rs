@@ -275,7 +275,6 @@ impl PlayerScreen {
         now_ms: u64,
         out: &mut Output,
     ) {
-        let last = self.tiles.len().saturating_sub(1);
         match (key, press) {
             (Key::Left, _) => self.show(
                 Overlay::Info {
@@ -283,12 +282,7 @@ impl PlayerScreen {
                 },
                 now_ms,
             ),
-            (Key::Right, _) => self.show(
-                Overlay::Info {
-                    tile: (tile + 1).min(last),
-                },
-                now_ms,
-            ),
+            (Key::Right, _) => self.show(Overlay::Info { tile: tile + 1 }, now_ms),
             (Key::Ok, Press::Short) => match self.tiles.get(tile).map(|t| t.kind.clone()) {
                 Some(TileKind::Guide) => {
                     self.hide(out);

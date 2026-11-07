@@ -230,8 +230,7 @@ impl Paint {
             }
         }
         if self.pip {
-            let (v, f) = (geom::PIP, geom::PIP_FRAME);
-            out.cover(Rect::new(v.x - f, v.y - f, v.w + 2.0 * f, v.h + 2.0 * f));
+            out.cover(geom::PIP.inset(-geom::PIP_FRAME));
         }
         if let Some(column) = panel {
             out.cover(column);
@@ -242,13 +241,12 @@ impl Paint {
 /// The picture-in-picture window over the rows: a frame, and inside it a hole through to the
 /// video plane: the transparent clear every frame starts with, scissored to the window.
 fn pip_window(p: Painter) {
-    let (v, f) = (geom::PIP, geom::PIP_FRAME);
-    let frame = Rect::new(v.x - f, v.y - f, v.w + 2.0 * f, v.h + 2.0 * f);
+    let frame = geom::PIP.inset(-geom::PIP_FRAME);
     p.rrect(frame, radius::PILL, radius::PILL, theme::PANEL_RAISED);
     if p.is_recording() {
         return;
     }
-    p.clip(v);
+    p.clip(geom::PIP);
     tv_gfx::gfx::frame_clear_through();
     p.clip_clear();
 }

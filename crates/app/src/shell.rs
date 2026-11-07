@@ -134,6 +134,9 @@ pub struct Shell {
     subtitles: crate::subtitles::Overlay,
     /// The sleep timer, while one runs.
     sleep: Option<SleepTimer>,
+    /// The sleep timer stopped playback with the PIN dialog in front: the guide it opens waits
+    /// for the dialog to go ([`tick_sleep`](Self::tick_sleep)).
+    sleep_guide: bool,
     /// The display mode and the audio offset the player was last given (it starts at these).
     told: (DisplayMode, i32),
     /// An output held back for the parental PIN.
@@ -179,6 +182,7 @@ impl Shell {
             exit: false,
             subtitles: crate::subtitles::Overlay::default(),
             sleep: None,
+            sleep_guide: false,
             told: (DisplayMode::Normal, 0),
             held: None,
             reminders: Reminders::default(),
@@ -398,8 +402,9 @@ impl Shell {
             return;
         };
         self.dirty = true;
-        // While the keyboard is up a prompt would take it down: a toast says it instead.
-        if self.typing {
+        // While the keyboard is up a prompt would take it down, and over the PIN dialog it would
+        // take the next digit and the event log would note it: a toast says it instead.
+        if self.typing || self.secret() {
             let text = format!("{} - {}", r.title, msg::reminder_starting(&channel.name));
             return self.toast(text, now);
         }
@@ -443,6 +448,11 @@ impl Shell {
     /// Something changed or still moves: draw a frame.
     pub fn needs_frame(&self) -> bool {
         self.dirty || self.animating || self.player.needs_frames()
+    }
+
+    /// The last frame's UI still moves (not only the bound video plane asking for presents).
+    pub fn animating(&self) -> bool {
+        self.animating
     }
 
     pub fn exit(&self) -> bool {
@@ -557,6 +567,14 @@ impl Shell {
         // The PIN dialog's own output (it closed) is done: now what it opened.
         if let Some(held) = self.held.take_if(|h| h.ready) {
             self.apply(held.out, held.from, now);
+        }
+        // The guide the sleep timer put off for the dialog, unless what the dialog opened plays.
+        if self.sleep_guide && !self.secret() {
+            self.sleep_guide = false;
+            let pb = self.store.playback_mut();
+            if pb.channel.is_none() && pb.vod.is_none() {
+                self.navigate(Navigate::Guide, None);
+            }
         }
     }
 
@@ -854,7 +872,9 @@ impl Shell {
     }
 
     /// The sleep timer at `now`: the warning a minute before, then playback stops, the decoder is
-    /// released and the guide opens (as on a start with nothing to play).
+    /// released and the guide opens (as on a start with nothing to play); with the PIN dialog in
+    /// front it opens once the dialog goes, since closing it mid-entry would send the digits
+    /// still to come to the event log.
     fn tick_sleep(&mut self, now: u64) {
         match self.sleep.as_mut().and_then(|s| s.tick(now)) {
             Some(Due::Warn) => self.toast(msg::playback_sleep_soon().to_owned(), now),
@@ -864,7 +884,11 @@ impl Shell {
                 let pb = self.store.playback_mut();
                 if pb.channel.is_some() || pb.vod.is_some() {
                     self.stop_playing();
-                    self.navigate(Navigate::Guide, None);
+                    if self.secret() {
+                        self.sleep_guide = true;
+                    } else {
+                        self.navigate(Navigate::Guide, None);
+                    }
                 }
                 self.toast(msg::playback_sleep_done().to_owned(), now);
             }

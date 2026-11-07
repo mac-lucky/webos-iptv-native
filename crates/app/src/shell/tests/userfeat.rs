@@ -522,6 +522,72 @@ fn an_unanswered_prompt_goes_and_a_long_past_reminder_is_dropped() {
 }
 
 #[test]
+fn a_reminder_due_while_the_pin_is_typed_toasts_and_no_digit_reaches_the_event_log() {
+    let mut s = Sim::new();
+    lock_channel(&mut s, 0);
+    remind(&mut s, 3, NOW + 4, "Film");
+    let mut log = EventLog::default();
+    log.press(&mut s, "OK");
+    log.press(&mut s, "1");
+    s.run(3_000);
+    assert_eq!(s.open(), 2, "no prompt over the PIN dialog");
+    let toast = s.toast();
+    assert!(
+        toast.as_deref().is_some_and(|t| t.starts_with("Film - ")),
+        "{toast:?}"
+    );
+    log.press(&mut s, "2");
+    assert!(s.shell.secret(), "the dialog took the digit");
+    assert_eq!(log.0, ["remote: OK"]);
+}
+
+#[test]
+fn the_sleep_timer_stops_playback_but_leaves_the_pin_dialog_in_front() {
+    let mut s = Sim::new();
+    s.live(0);
+    s.shell.navigate(Navigate::Player, None);
+    s.run(100);
+    lock_channel(&mut s, 1);
+    s.shell.run(Command::SleepTimer { minutes: 1 }, s.t);
+    let mut log = EventLog::default();
+    // The number asks for the locked channel 2: the PIN dialog over the player.
+    log.press(&mut s, "2");
+    s.run(5_000);
+    assert!(s.shell.secret());
+    log.press(&mut s, "1");
+    s.run(60_000);
+    assert_eq!(s.playing().channel, None, "the timer stopped playback");
+    assert!(s.shell.secret(), "the PIN dialog is still in front");
+    log.press(&mut s, "2");
+    assert_eq!(
+        log.0,
+        ["remote: 2"],
+        "only the number typed before the dialog"
+    );
+    // Back leaves the dialog for the guide the timer put off, not an empty player.
+    s.press("Back");
+    assert_eq!(s.open(), 1);
+    let front: &dyn std::any::Any = &*s.shell.stack[0].screen;
+    assert!(front.is::<GuideScreen>());
+}
+
+#[test]
+fn the_pin_entered_after_the_sleep_timer_plays_the_held_channel_full_screen() {
+    let mut s = Sim::new();
+    s.live(0);
+    s.shell.navigate(Navigate::Player, None);
+    s.run(100);
+    lock_channel(&mut s, 1);
+    s.shell.run(Command::SleepTimer { minutes: 1 }, s.t);
+    s.press("2");
+    s.run(65_000);
+    assert_eq!(s.playing().channel, None, "the timer stopped playback");
+    digits(&mut s, "0000");
+    assert_eq!(s.playing().channel, Some(s.key(1)));
+    assert_eq!(s.open(), 0, "no guide over it");
+}
+
+#[test]
 pub(super) fn name_rules_clean_the_names_at_once() {
     let mut s = Sim::new();
     put(&mut s, keys::NAMES_PREFIXES, "Channel");

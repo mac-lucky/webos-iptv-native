@@ -33,6 +33,7 @@ use iptv::refresh::Transport;
 use logs::log;
 use sdl::{Event, Video};
 use shell::Shell;
+use tv_base::diag::heartbeat::FrameTimes;
 use tv_base::task::MainThread;
 
 /// The process-shaped name: the window title, the simulator's data dir and the first line of the
@@ -48,6 +49,7 @@ const FIRST_DT: f32 = 1.0 / 60.0;
 
 /// The whole app; the binary's `main` returns this.
 pub fn main() -> ExitCode {
+    tv_base::eventlog::start_clock();
     #[cfg(feature = "hostsim")]
     let options = match sim::Options::start() {
         Ok(options) => options,
@@ -130,6 +132,7 @@ fn run(video: &Video, shell: &mut Shell, clock: u64) {
     // Between a background edge and the next foreground the window is not ours: nothing is drawn.
     let mut background = false;
     let mut last_frame: Option<Instant> = None;
+    let mut frame_times = FrameTimes::default();
     loop {
         let now = ms();
         let wait = if shell.needs_frame() && !background {
@@ -199,10 +202,20 @@ fn run(video: &Video, shell: &mut Shell, clock: u64) {
         }
         if shell.needs_frame() && !background {
             let now = Instant::now();
-            let dt = last_frame.map_or(FIRST_DT, |t| now.duration_since(t).as_secs_f32().min(0.1));
+            let interval = last_frame.map(|t| now.duration_since(t));
+            let dt = interval.map_or(FIRST_DT, |d| d.as_secs_f32().min(0.1));
             frame(video, shell, dt);
-            // The next frame steps by real time only while this one was part of an animation.
+            frame_times.note(now, interval, shell.animating());
+            // The next frame steps by real time while another one is due (an animation, or the
+            // bound video plane).
             last_frame = shell.needs_frame().then_some(now);
+        } else {
+            // A pass that draws nothing (background, or a tick that unbound the video) ends the
+            // run: the next interval would span the gap.
+            last_frame = None;
+        }
+        if let Some(line) = frame_times.take_line(Instant::now()) {
+            log(&line);
         }
     }
 }

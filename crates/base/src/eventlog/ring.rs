@@ -27,8 +27,9 @@
 //! lock is never held across an I/O call: [`take`] clones the whole buffer out under the lock and
 //! serialises outside it.
 use std::collections::VecDeque;
-use std::sync::{Mutex, OnceLock};
-use std::time::Instant;
+use std::sync::Mutex;
+
+use super::t_ms;
 
 /// Record ceiling. A few minutes of an ordinary session, and rather more of a settled screen -
 /// which writes one heartbeat line a second.
@@ -39,7 +40,7 @@ pub const MAX_BYTES: usize = 768 * 1024;
 
 #[derive(Clone)]
 pub struct Rec {
-    /// milliseconds since [`start_clock`] - the same monotonic base the heartbeat's own timestamps
+    /// milliseconds since [`super::start_clock`] - the same monotonic base the heartbeat's own timestamps
     /// come from, so a record correlates with `loop=`/`fps=`/`pos=` lines by eye.
     pub t_ms: u32,
     pub msg: String,
@@ -54,23 +55,6 @@ struct Ring {
 }
 
 static RING: Mutex<Option<Ring>> = Mutex::new(None);
-static START: OnceLock<Instant> = OnceLock::new();
-
-/// Start the uptime clock. Called from `lab::boot`; idempotent, and [`t_ms`] starts it anyway if a
-/// line is logged before boot reaches this module (several are).
-pub fn start_clock() {
-    let _ = START.get_or_init(Instant::now);
-}
-
-/// Milliseconds since process start, saturating at `u32::MAX` (49 days - no session is that long,
-/// and a saturating cast is still an honest reading rather than a wrapped one).
-pub fn t_ms() -> u32 {
-    START
-        .get_or_init(Instant::now)
-        .elapsed()
-        .as_millis()
-        .min(u32::MAX as u128) as u32
-}
 
 /// Append one already-redacted line.
 ///
