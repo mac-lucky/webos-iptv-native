@@ -1755,3 +1755,35 @@ fn the_archives_lag_is_read_behind_a_hidden_panel() {
         [Command::ReturnToLive]
     );
 }
+
+#[test]
+fn the_archives_lag_is_read_behind_the_programme_details() {
+    // The same seek with the details opened (held CH+) before the archive's first frame: they
+    // show no position and do not redraw for it, yet the lag is read until it settles.
+    let mut w = world();
+    let mut s = screen();
+    let ms = at(&mut s, &mut w, 0);
+    for i in 0..4 {
+        short(&mut s, &w, Key::Left, ms + i * 100);
+    }
+    let out = s.tick(&w, ms + 300 + COMMIT_MS);
+    assert_eq!(out.commands, [archive(w.key(0), slot(ON_AIR), 680)]);
+    short(&mut s, &w, Key::Back, ms + 1_100);
+    s.key(Key::ChannelUp, Press::Long, &w, ms + 1_200);
+    assert!(matches!(s.overlay(), Overlay::Card { .. }));
+    opens(&mut s, &mut w, 680, 4, 0, 4);
+    w.playback.position_secs += 1;
+    let generation = s.generation();
+    at(&mut s, &mut w, 5);
+    assert_eq!(s.generation(), generation, "a catch-up second");
+    assert_eq!(s.transport.lag.secs(), 6);
+    w.playback.position_secs += 55;
+    at(&mut s, &mut w, 60);
+    short(&mut s, &w, Key::Back, 60_000);
+    assert_eq!(s.overlay(), Overlay::Hidden);
+    short(&mut s, &w, Key::Right, 60_000);
+    assert_eq!(
+        s.tick(&w, 60_000 + COMMIT_MS).commands,
+        [Command::ReturnToLive]
+    );
+}

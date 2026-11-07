@@ -886,6 +886,9 @@ impl Screen for PlayerScreen {
             if minute || second || moved {
                 self.sync_with(data, playback, minute);
                 out.redraw = true;
+            } else if self.transport.lag.reading() {
+                // Behind the details, as behind a hidden panel: read, not drawn.
+                self.sync_with(data, playback, false);
             }
         } else if self.transport.lag.reading() {
             // A seek's lag is read on every tick until it settles, the panel up or not.
