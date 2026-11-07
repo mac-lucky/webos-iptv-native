@@ -228,11 +228,11 @@ impl Xfade {
 mod tests {
     //! Pure value semantics - with ONE exception that costs these tests their parallelism:
     //! `tick` reports to `tv_machine::idle`'s process-global dirty flag (a ms ramp is invisible to the
-    //! spring instrumentation, so it must say so itself). Driving an `Xfade` therefore mutates a
-    //! crate global that `tv_machine::idle`'s own "a settled screen does not repaint" assertions read, so
-    //! every test here holds `tv_base::testlock::serial()` - the rule in `lib.rs::testlock`, not a
-    //! precaution. Without it these would intermittently fail *other modules'* tests, which is the
-    //! worst shape a flake can take.
+    //! spring instrumentation, so it must say so itself). Every test here holds
+    //! `tv_base::testlock::serial()` for the reasons the `lib.rs` spring tests give: the locked
+    //! popover host tests (`popover_host_tests`) arm the process-wide page freeze, under which
+    //! `invalidate` drops the fader's reports and the repaint asserts would read nothing, and a tick
+    //! bumps the damage generation those tests read through `take_page_damage`.
     //!
     //! Nothing here draws, so what these CANNOT say is whether 70/140 ms and a smoothstep read
     //! right on the panel; that is a device capture.
@@ -241,16 +241,15 @@ mod tests {
     /// One 60 Hz frame.
     const DT: f32 = 1.0 / 60.0;
 
-    /// Did driving this fader ask the frame gate for a repaint? Consumes the flag, so each call
+    /// Did driving this fader ask the frame gate for a repaint? Consumes the count, so each call
     /// answers for exactly the frames since the last one.
     ///
-    /// `frame_begin` + `note_present` first, so neither leftover spring motion from another test on
-    /// this thread nor the 2 s keepalive can answer in the fader's place - this must isolate the
-    /// fader's own report and nothing else.
+    /// Read from this thread's own damage count, not `should_present`: the gate's damage flag is
+    /// process-wide and unlocked tests elsewhere in this crate raise it at any time, which turned
+    /// the quiet-frame assertions below into flakes. A fader reports only through `invalidate`, so
+    /// the count is its whole report.
     fn asked_to_repaint() -> bool {
-        tv_machine::idle::frame_begin(DT);
-        tv_machine::idle::note_present(0);
-        tv_machine::idle::should_present(0)
+        tv_machine::idle::take_local_damage() > 0
     }
 
     /// A running ramp MUST report, in both directions. This is the regression that shipped: the
@@ -259,7 +258,7 @@ mod tests {
     #[test]
     fn a_running_ramp_asks_for_every_frame_of_itself() {
         let _g = tv_base::testlock::serial();
-        asked_to_repaint(); // drain whatever the previous test left on the shared flag
+        asked_to_repaint(); // drain what this thread's previous test left in its own damage count
         let mut x = Xfade::new();
         x.reload(); // -> Out
         for f in 0..4 {
@@ -279,7 +278,7 @@ mod tests {
     #[test]
     fn a_fader_at_rest_never_asks() {
         let _g = tv_base::testlock::serial();
-        asked_to_repaint(); // drain whatever the previous test left on the shared flag
+        asked_to_repaint(); // drain what this thread's previous test left in its own damage count
         let mut x = Xfade::new(); // Idle
         for _ in 0..8 {
             x.tick(DT, true);
@@ -296,7 +295,7 @@ mod tests {
     #[test]
     fn waiting_on_data_is_not_moving() {
         let _g = tv_base::testlock::serial();
-        asked_to_repaint(); // drain whatever the previous test left on the shared flag
+        asked_to_repaint(); // drain what this thread's previous test left in its own damage count
         let mut x = Xfade::new();
         x.mount(); // -> Hold
         for _ in 0..8 {

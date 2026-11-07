@@ -2082,10 +2082,13 @@ mod tests {
 
 #[cfg(test)]
 mod spring_tests {
-    //! `Spring`'s own reports to the present gate. They need `testlock`, which the geometry tests
-    //! above do not (`tv_machine::idle`'s gate state is process-wide).
+    //! `Spring`'s own reports to the present gate, read from this thread's damage count: the gate's
+    //! sticky flag is process-wide and unlocked tests elsewhere in this crate raise it at any time.
+    //! They still take `testlock`: the locked popover host tests (`popover_host_tests`) arm the
+    //! process-wide page freeze, under which `invalidate` drops every report and these asserts would
+    //! read 0, and a jump bumps the damage generation those tests read through `take_page_damage`.
     use super::Spring;
-    use tv_machine::idle::{frame_begin, note_present, reset_for_test, should_present};
+    use tv_machine::idle::take_local_damage;
 
     /// A jump reports only when it actually moved - `home.rs` jumps to the same value every frame
     /// while the hub list is empty, and an unguarded report would pin 60fps on that exact screen.
@@ -2094,15 +2097,12 @@ mod spring_tests {
     #[test]
     fn spring_jump_reports_only_when_it_changes_something() {
         let _g = tv_base::testlock::serial();
-        reset_for_test();
         let mut s = Spring::at(1.0);
-        note_present(10_000);
-        frame_begin(1.0 / 60.0);
+        let _ = take_local_damage();
         s.jump(1.0); // already there
-        assert!(!should_present(10_016));
+        assert_eq!(take_local_damage(), 0);
 
-        frame_begin(1.0 / 60.0);
         s.jump(2.0); // teleported
-        assert!(should_present(10_032));
+        assert_eq!(take_local_damage(), 1);
     }
 }

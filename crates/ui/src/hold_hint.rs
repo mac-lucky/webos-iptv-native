@@ -585,10 +585,14 @@ impl Layout {
 
 #[cfg(test)]
 mod tests {
-    //! The schedule is pure arithmetic over `dt`; the motion half touches `tv_machine::idle`'s
-    //! per-thread flags, so every test that steps a springs holds `testlock::serial()` like
-    //! `xfade`'s. What these cannot say is how the capsule READS: that is a simulator capture, and
-    //! the device fps scenes (`fps_floor` for the fade, `fps_ceiling` for the rest) are not run here.
+    //! The schedule is pure arithmetic over `dt`. The springs report through `note_spring` into a
+    //! per-thread bit the freeze never touches, but the fill's `Motion` notes and the rise's `jump`
+    //! go through `invalidate`, so every test that steps the hint holds `testlock::serial()` like
+    //! `xfade`'s: the locked popover host tests arm the process-wide page freeze, under which
+    //! `invalidate` drops those reports and the fill and drain repaint asserts would read nothing,
+    //! and the notes bump the damage generation those tests read through `take_page_damage`.
+    //! What these cannot say is how the capsule READS: that is a simulator capture, and the device
+    //! fps scenes (`fps_floor` for the fade, `fps_ceiling` for the rest) are not run here.
     use super::*;
     use crate::fixture::FixtureMeasure;
 
@@ -612,19 +616,17 @@ mod tests {
         HintInput { focus: Some(focus), settled: true, hold: None }
     }
 
-    /// Step `n` frames of `input` through the present gate, counting the `Motion` notes. Going
-    /// through the gate every frame matters: its settle frame and sticky damage flag are consumed
-    /// by the frames that raise them, as they are in the loop.
+    /// Step `n` frames of `input`, counting the `Motion` notes. Each frame opens with `frame_begin`,
+    /// as in the loop, so the motion bit a following `frame_asks` reads is the last frame's alone;
+    /// the damage the notes raise is drained by `frame_asks` itself.
     fn run(h: &mut HoldHint, input: HintInput, n: usize) -> usize {
         let mut notes = 0;
         for _ in 0..n {
-            tv_machine::idle::note_present(10_000);
             tv_machine::idle::frame_begin(DT);
             tstep(h, input, &mut |ev| {
                 notes += 1;
                 tv_machine::idle::note(ev)
             });
-            tv_machine::idle::should_present(10_016);
         }
         notes
     }
@@ -637,19 +639,23 @@ mod tests {
         let g = tv_base::testlock::serial();
         reset_learned_for_test();
         reset_shown_for_test();
-        // drain whatever the previous test left on the gate's process-wide damage flag
+        // drain whatever the previous test on this thread left in the motion bit and damage count
         frame_asks(&mut HoldHint::new(), HintInput::default());
         (g, HoldHint::new())
     }
 
-    /// One presented-or-not frame of `input`: did the gate ask to present it? The springs report
-    /// into the flag `frame_begin` clears, so the tick has to happen BETWEEN the two calls, with a
-    /// present just behind us so the 2 s keepalive cannot answer in the hint's place.
+    /// One frame of `input`: did the gate ask to present it? `should_present`'s own terms, read
+    /// from this thread only - motion, the settle frame after it and the hint's own damage -
+    /// because the gate's damage and wake flags are process-wide and unlocked tests elsewhere in
+    /// this crate raise them at any time. Last frame's motion is read before `frame_begin` clears
+    /// it: that is the settle frame.
     fn frame_asks(h: &mut HoldHint, input: HintInput) -> bool {
-        tv_machine::idle::note_present(10_000);
+        let was_moving = tv_machine::idle::present_moving();
         tv_machine::idle::frame_begin(DT);
+        let _ = tv_machine::idle::take_local_damage();
         tstep(h, input, &mut |ev| tv_machine::idle::note(ev));
-        tv_machine::idle::should_present(10_016)
+        let moving = tv_machine::idle::present_moving();
+        was_moving || moving || tv_machine::idle::take_local_damage() > 0
     }
 
     #[test]
@@ -1041,10 +1047,17 @@ mod tests {
         for f in 0..6 {
             assert!(frame_asks(&mut h, rested(7)), "frame {f} of the fade-in must repaint");
         }
-        // ...and so does a hold filling the cap, though no spring is moving then
+        // ...and so do a hold filling the cap and its drain after release, on a hint already shown
+        // and settled, so only the fill's own reports can ask
         let mut h = HoldHint::new();
+        run(&mut h, rested(7), secs(3.5));
+        assert!(h.visible() && !tv_machine::idle::present_moving(), "shown and settled first");
         for f in 0..4 {
             assert!(frame_asks(&mut h, HintInput { hold: Some(f as f32 / 30.0), ..rested(7) }));
+        }
+        for f in 0..2 {
+            assert!(h.fill() > 0.0, "drain frame {f} still has fill to drain");
+            assert!(frame_asks(&mut h, rested(7)), "drain frame {f} must repaint");
         }
     }
 
