@@ -276,6 +276,67 @@ fn e2e_live_a_break_begun_by_audio_that_goes_on_moves_its_video_with_the_run() {
     rig.stop();
 }
 
+/// The programme-change fixture (`ff::programme_tests::programme_change`: a break whose programme
+/// map moves the video and the audio to other PIDs and has three audio tracks for one) and a booted
+/// FFmpeg, or `None` (with the reason printed) to skip.
+fn programme_change() -> Option<crate::ff::programme_tests::Parts> {
+    if !booted() {
+        return None;
+    }
+    let dir = target_dir().join("e2e-fixtures/programme-change");
+    let made = std::fs::create_dir_all(&dir).map_err(|e| e.to_string()).and_then(|()| crate::ff::programme_tests::programme_change(&dir));
+    made.map_err(|why| eprintln!("skipped: no programme-change fixture ({why})")).ok()
+}
+
+/// **Live, a break whose programme map moves the video and the audio to other PIDs and changes the
+/// audio tracks plays through, and out of it again**, as on the C1 (MP2 stereo, then MP2 and AC-3
+/// 5.1): the break's video was on streams the demuxer did not read, the picture stopped and the
+/// watchdog restarted the channel. Breaks before sequences 6 and 12, about 18 s and 54 s in.
+#[test]
+#[ignore]
+fn e2e_live_a_break_that_moves_the_streams_to_other_pids_plays_through() {
+    let Some(parts) = programme_change() else { return };
+    let _serial = tv_base::testlock::serial();
+    let _sink = ClockSink::arm();
+    let o = Origin::spawn();
+    let live = "/ch9/mono.m3u8?token=e2e-secret";
+    serve_live_with_breaks(&o, live, parts.concat(), vec![6, 12]);
+    let mut rig = Rig::new();
+    rig.pb.play_live(&o.url(live), crate::headers::RequestHeaders::none());
+    assert!(rig.run_until(Duration::from_secs(20), |s, _| s.first_frame_ms.is_some()), "no first frame within 20 s");
+    plays_live_through(&mut rig, 70);
+    rig.stop();
+}
+
+/// **A programme with such a break plays through to its end**: from the middle of the first map,
+/// through the break, and on in the first map again. Breaks at 18 s and 54 s of 72 s.
+#[test]
+#[ignore]
+fn e2e_catchup_plays_through_a_break_that_moves_the_streams_to_other_pids() {
+    let Some([a, c, b]) = programme_change() else { return };
+    let _serial = tv_base::testlock::serial();
+    let _sink = ClockSink::arm();
+    let o = Origin::spawn();
+    let mut playlist =
+        String::from("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n");
+    for (q, seg) in [&a[3..], &c[..], &b[..3]].concat().into_iter().enumerate() {
+        if q == 3 || q == 9 {
+            playlist.push_str("#EXT-X-DISCONTINUITY\n");
+        }
+        o.put(&format!("/pc/{q:02}.ts"), Answer::ok(seg));
+        playlist.push_str(&format!("#EXTINF:6.000,\n/pc/{q:02}.ts\n"));
+    }
+    playlist.push_str("#EXT-X-ENDLIST\n");
+    let length_s = 72;
+    let window = format!("/ch10/mono-{PROGRAMME}-{length_s}.m3u8?token=e2e-secret");
+    o.put(&window, Answer::playlist(playlist));
+    let mut rig = Rig::new();
+    rig.pb.play_catchup(Catchup { end: PROGRAMME + length_s, ..programme(&o, &window, 0) });
+    assert!(rig.run_until(Duration::from_secs(20), |s, _| s.state == State::Playing), "no picture within 20 s");
+    plays_through_to_the_end(&mut rig, length_s);
+    rig.stop();
+}
+
 /// Play the live channel for `secs` of wall time: the watchdog never needed, and the playhead
 /// following wall time across every break, never standing still for long.
 fn plays_live_through(rig: &mut Rig, secs: u64) {

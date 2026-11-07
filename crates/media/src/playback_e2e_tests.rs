@@ -39,11 +39,19 @@ fn fixture() -> Option<std::sync::Arc<Fixture>> {
     fixture_from("WEBOSIPTV_E2E_HLS", false, 220)
 }
 
-fn fixture_from(var: &str, two_audio: bool, at_least: usize) -> Option<std::sync::Arc<Fixture>> {
+/// Curl and FFmpeg booted once ([`boot`]); `false`, with the reason printed, to skip.
+fn booted() -> bool {
     // Before anything reads the app directory: `paths::app_dir` resolves once per process.
     static BOOT: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
-    if let Err(why) = BOOT.get_or_init(boot) {
+    let booted = BOOT.get_or_init(boot);
+    if let Err(why) = booted {
         eprintln!("skipped: {why}");
+    }
+    booted.is_ok()
+}
+
+fn fixture_from(var: &str, two_audio: bool, at_least: usize) -> Option<std::sync::Arc<Fixture>> {
+    if !booted() {
         return None;
     }
     let dir = match std::env::var_os(var) {

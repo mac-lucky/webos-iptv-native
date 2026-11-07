@@ -2100,12 +2100,14 @@ unsafe fn pts_ns_opt(pkt: *const AVPacket, st: *mut AVStream) -> Option<i64> {
 
 /// Put an HLS packet on the stream's one timeline across its discontinuities
 /// ([`crate::hls::timeline`]): its timestamps moved by the shift of `run`, the run of segments its
-/// bytes came from. `steers`: the video or the audio played, whose timestamps decide a new run's
-/// shift; any other stream follows. `pkt` is the packet just read, `st` its stream.
-unsafe fn hls_place(tl: &mut crate::hls::Timeline, run: u64, pkt: *mut AVPacket, st: *mut AVStream, steers: bool) {
+/// bytes came from. `steer`: the video (`Some(0)`) or the audio played (`Some(1)`), whose
+/// timestamps decide a new run's shift, keyed by what they play rather than by stream, so a
+/// programme change that moves them to other streams ([`Follow`]) goes on from where they were;
+/// any other stream follows. `pkt` is the packet just read, `st` its stream.
+unsafe fn hls_place(tl: &mut crate::hls::Timeline, run: u64, pkt: *mut AVPacket, st: *mut AVStream, steer: Option<i32>) {
     let tb = stream_time_base(st);
-    let shift = match pts_ns_opt(pkt, st) {
-        Some(ts) if steers => tl.place(run, (*pkt).stream_index, ts, av_rescale_q((*pkt).duration.max(0), tb, NS_TB)),
+    let shift = match (pts_ns_opt(pkt, st), steer) {
+        (Some(ts), Some(key)) => tl.place(run, key, ts, av_rescale_q((*pkt).duration.max(0), tb, NS_TB)),
         _ => tl.shift_of(run),
     };
     if shift != 0 {
@@ -2116,6 +2118,104 @@ unsafe fn hls_place(tl: &mut crate::hls::Timeline, run: u64, pkt: *mut AVPacket,
         if (*pkt).dts != AV_NOPTS_VALUE {
             (*pkt).dts = (*pkt).dts.saturating_add(d);
         }
+    }
+}
+
+/// **Where a programme change moves the played video and audio** (HLS). A discontinuity may bring
+/// another programme map, and mpegts adds a stream under a new index for every PID it names: at a
+/// break whose video moved to another PID, no video reached the lanes until the watchdog restarted
+/// the channel. A run is the source's ([`crate::hls::HlsSource::run_at`]).
+#[derive(Debug, Default)]
+struct Follow {
+    /// The run of the played video's and the played audio's last packet.
+    video_run: u64,
+    audio_run: u64,
+    /// Another audio stream plays in a run the played one has no packet in: that run, and the pts
+    /// of the first such packet.
+    other_audio: Option<(u64, i64)>,
+}
+
+/// How long other audio streams play in a run without the played one before it has left the
+/// programme: longer than a PES of several frames (a muxer's spacing of two streams' packets),
+/// shorter than the timeline's `CONTINUOUS_NS`, so the audio still continues across the gap.
+const AUDIO_GONE_NS: i64 = 300_000_000;
+
+impl Follow {
+    /// A packet of another video stream of the played codec, in `run`: the video moved there when
+    /// the played one has no packet in that run.
+    fn video_moved(&mut self, run: u64) -> bool {
+        let moved = run > self.video_run;
+        if moved {
+            self.video_run = run;
+        }
+        moved
+    }
+
+    /// A packet of another audio stream, in `run` at `pts_ns`: the played audio has left once such
+    /// packets go on for [`AUDIO_GONE_NS`] in a run it has no packet in.
+    fn audio_gone(&mut self, run: u64, pts_ns: Option<i64>) -> bool {
+        let Some(pts) = pts_ns.filter(|_| run > self.audio_run) else { return false };
+        match self.other_audio {
+            Some((r, since)) if r == run => pts.saturating_sub(since) >= AUDIO_GONE_NS,
+            _ => {
+                self.other_audio = Some((run, pts));
+                false
+            }
+        }
+    }
+}
+
+/// The audio track to play after a programme change, of `tracks` (stream index, language, whether
+/// it can be fed), in stream order: the first one that can be fed in the played language `lang`,
+/// else the first one that can be fed.
+fn follow_audio(tracks: &[(c_int, Option<String>, bool)], lang: Option<&str>) -> Option<c_int> {
+    let fed = || tracks.iter().filter(|t| t.2);
+    lang.and_then(|l| fed().find(|t| t.1.as_deref().is_some_and(|tl| tl.eq_ignore_ascii_case(l))))
+        .or_else(|| fed().next())
+        .map(|t| t.0)
+}
+
+#[cfg(test)]
+mod follow_tests {
+    use super::*;
+
+    #[test]
+    fn the_video_moves_at_its_first_packet_of_a_run_it_has_not_played() {
+        let mut f = Follow::default();
+        assert!(!f.video_moved(0), "another video stream of the run played: not a move");
+        assert!(f.video_moved(1));
+        assert!(!f.video_moved(1), "once per run");
+        assert!(!f.video_moved(0), "a packet left over from a run before");
+        assert!(f.video_moved(3));
+    }
+
+    #[test]
+    fn the_audio_is_gone_once_other_tracks_play_on_without_it_in_a_new_run() {
+        const MS: i64 = 1_000_000;
+        let mut f = Follow::default();
+        assert!(!f.audio_gone(0, Some(0)), "the run it plays");
+        assert!(!f.audio_gone(1, Some(1_000 * MS)));
+        assert!(!f.audio_gone(1, None), "an untimed frame");
+        assert!(!f.audio_gone(1, Some(1_000 * MS + AUDIO_GONE_NS - 1)));
+        assert!(f.audio_gone(1, Some(1_000 * MS + AUDIO_GONE_NS)));
+        // It played in run 1 after all: nothing is gone there.
+        f.audio_run = 1;
+        assert!(!f.audio_gone(1, Some(2_000 * MS)));
+        // Run 2 starts its own wait.
+        assert!(!f.audio_gone(2, Some(3_000 * MS)));
+        assert!(f.audio_gone(2, Some(3_000 * MS + AUDIO_GONE_NS)));
+    }
+
+    #[test]
+    fn the_audio_follows_the_played_language_else_the_first_track_it_can_feed() {
+        let t = |i: c_int, lang: &str, fed: bool| (i, (!lang.is_empty()).then(|| lang.to_owned()), fed);
+        let tracks = [t(3, "eng", true), t(4, "pol", true), t(5, "pol", false)];
+        assert_eq!(follow_audio(&tracks, Some("POL")), Some(4));
+        assert_eq!(follow_audio(&tracks, Some("deu")), Some(3), "no such language: the first");
+        assert_eq!(follow_audio(&tracks, None), Some(3));
+        assert_eq!(follow_audio(&[t(3, "pol", false), t(4, "", true)], Some("pol")), Some(4), "only one that can be fed");
+        assert_eq!(follow_audio(&[t(3, "pol", false)], Some("pol")), None);
+        assert_eq!(follow_audio(&[], Some("pol")), None);
     }
 }
 
@@ -3888,12 +3988,12 @@ pub fn demux(
                     }
                     *SHARED.chapters.lock().unwrap_or_else(|e| e.into_inner()) = chapters;
                 }
-                let vi =
+                let mut vi =
                     av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, std::ptr::null_mut(), 0);
                 // native audio-track selection: feed the chosen Nth audio stream (SHARED.desired_
                 // audio_idx, set by the track menu), else the pipeline's best/default audio.
                 let want_aidx = SHARED.desired_audio_idx.load(Ordering::Relaxed);
-                let ai = if want_aidx >= 0 {
+                let mut ai = if want_aidx >= 0 {
                     nth_audio_stream(fmt, want_aidx).unwrap_or_else(|| {
                         av_find_best_stream(
                             fmt,
@@ -3934,13 +4034,13 @@ pub fn demux(
                     break;
                 }
                 let streams = (*fmt).streams;
-                let vst = *streams.add(vi as usize);
+                let mut vst = *streams.add(vi as usize);
                 let vcp = stream_codecpar(vst);
                 // AAC needs ADTS framing for LG's decoder (mp4/mkv carry raw AAC). Precompute the
                 // per-frame ADTS fields (freq index + channel config) for the selected audio stream;
                 // None => not AAC (or a non-standard rate) => fed verbatim.
                 let mut audio_clock = AudioClock::default();
-                let aac_adts: Option<(u8, u8)> = if ai >= 0 {
+                let mut aac_adts: Option<(u8, u8)> = if ai >= 0 {
                     let acp = stream_codecpar(*streams.add(ai as usize));
                     if (*acp).codec_id == AV_CODEC_ID_AAC {
                         adts_params(acp)
@@ -4140,6 +4240,16 @@ pub fn demux(
                 let mut video_start = VideoStart::default();
                 // HLS: the shifts that keep one timeline across the playlist's discontinuities.
                 let mut timeline = crate::hls::Timeline::default();
+                // HLS: the streams a programme change moves the played video and audio to, and
+                // what the audio played at open is (its language, and its codec for a feed that
+                // is not decoded here).
+                let mut follow = Follow::default();
+                let (audio_lang, audio_codec) = if ai >= 0 {
+                    let ast = *streams.add(ai as usize);
+                    (stream_language(ast), (*stream_codecpar(ast)).codec_id)
+                } else {
+                    (None, 0)
+                };
                 // The video lane's pre-audio headroom (`PreAudioHeadroom`): granted at the first
                 // video push that WOULD PARK at the base cap with no audio yet, held until the
                 // engine's audio lead-in has been pushed, then released as the consumer drains.
@@ -4232,7 +4342,79 @@ pub fn demux(
                     // stream, which can move it.
                     if let Src::Hls(h) = &state.src {
                         let run = timeline.run_of(si, u64::try_from((*pkt).pos).ok(), |pos| h.run_at(pos));
-                        hls_place(&mut timeline, run, pkt, *(*fmt).streams.add(si as usize), si == vi || si == ai);
+                        let st = *(*fmt).streams.add(si as usize);
+                        let cp = stream_codecpar(st);
+                        if si == vi {
+                            follow.video_run = run;
+                        } else if si == ai {
+                            follow.audio_run = run;
+                        } else if (*cp).codec_type == AVMEDIA_TYPE_VIDEO && (*cp).codec_id == (*vcp).codec_id && follow.video_moved(run) {
+                            crate::player::log(&format!("ff: the programme changed (run {run}): video #{vi} -> #{si}"));
+                            (vi, vst) = (si, st);
+                        } else if ai >= 0
+                            && FEED_AUDIO.load(Ordering::Relaxed)
+                            && (*cp).codec_type == AVMEDIA_TYPE_AUDIO
+                            && follow.audio_gone(run, pts_ns_opt(pkt, st))
+                        {
+                            // The new programme's tracks: the audio streams with a packet in this run.
+                            let mut tracks = Vec::new();
+                            for i in 0..(*fmt).nb_streams as c_int {
+                                let s = *(*fmt).streams.add(i as usize);
+                                let c = stream_codecpar(s);
+                                if (*c).codec_type == AVMEDIA_TYPE_AUDIO && timeline.stream_run(i) == Some(run) {
+                                    let name = std::ffi::CStr::from_ptr(avcodec_get_name((*c).codec_id)).to_string_lossy();
+                                    let fed = if pcm.is_some() { adec::is_soft(&name) } else { (*c).codec_id == audio_codec };
+                                    tracks.push((i, stream_language(s), fed));
+                                }
+                            }
+                            let opened = follow_audio(&tracks, audio_lang.as_deref()).map(|n| {
+                                let ast = *(*fmt).streams.add(n as usize);
+                                let acp = stream_codecpar(ast);
+                                let decoder = match pcm.as_mut() {
+                                    Some(p) => adec::PcmFeed::open(acp, stream_time_base(ast), pcm_ch).map(|f| *p = f),
+                                    None => Ok(()),
+                                };
+                                (n, acp, decoder)
+                            });
+                            match opened {
+                                Some((n, acp, Ok(()))) => {
+                                    crate::player::log(&format!(
+                                        "ff: the programme changed (run {run}): audio #{ai} -> #{n} ({}, {}) of {} tracks",
+                                        std::ffi::CStr::from_ptr(avcodec_get_name((*acp).codec_id)).to_string_lossy(),
+                                        stream_language(*(*fmt).streams.add(n as usize)).as_deref().unwrap_or("und"),
+                                        tracks.len()
+                                    ));
+                                    aac_adts = if (*acp).codec_id == AV_CODEC_ID_AAC { adts_params(acp) } else { None };
+                                    audio_clock = AudioClock::default();
+                                    ai = n;
+                                    follow.audio_run = run;
+                                }
+                                // Nothing the pipeline was set up for: fail the source, so the
+                                // playback restarts and decides this programme's audio afresh.
+                                failed => {
+                                    let why = match failed {
+                                        Some((_, _, Err(e))) => e,
+                                        _ => "no track the audio feed can carry".to_owned(),
+                                    };
+                                    crate::player::log(&format!(
+                                        "ff: the programme changed (run {run}) and none of its {} audio tracks plays here ({why}); failing the source",
+                                        tracks.len()
+                                    ));
+                                    SHARED.demux_failed.store(true, Ordering::Release);
+                                    SHARED.demux_io_failed.store(true, Ordering::Release);
+                                    av_packet_unref(pkt);
+                                    break;
+                                }
+                            }
+                        }
+                        let steer = if si == vi {
+                            Some(0)
+                        } else if si == ai {
+                            Some(1)
+                        } else {
+                            None
+                        };
+                        hls_place(&mut timeline, run, pkt, st, steer);
                     }
                     if si == vi {
                         let is_key = if is_av1 {
@@ -4585,3 +4767,7 @@ mod adec_tests;
 #[cfg(test)]
 #[path = "ff_subdec_tests.rs"]
 mod subdec_tests;
+
+#[cfg(test)]
+#[path = "ff_programme_tests.rs"]
+pub(crate) mod programme_tests;

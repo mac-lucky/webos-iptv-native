@@ -190,6 +190,11 @@ impl Timeline {
         run
     }
 
+    /// The run of `stream`'s last packet with a position, if it had one.
+    pub fn stream_run(&self, stream: i32) -> Option<u64> {
+        self.last_runs.iter().find(|(s, _)| *s == stream).map(|&(_, run)| run)
+    }
+
     /// The shift for a packet of `run` from a steering stream (the video, the audio played) at
     /// `ts_ns` lasting `dur_ns` (0: unknown). The first one of a run past the newest begins it.
     pub fn place(&mut self, run: u64, stream: i32, ts_ns: i64, dur_ns: i64) -> i64 {

@@ -14,13 +14,13 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 /// The host FFmpeg and the decoder bound, the path detected; undone however the test leaves.
-struct Bound {
+pub(super) struct Bound {
     _ffmpeg: HostFfmpeg,
 }
 
 impl Bound {
     /// `None`, after a SKIP line, when no host FFmpeg is staged.
-    fn new() -> Option<Bound> {
+    pub(super) fn new() -> Option<Bound> {
         let dir = host_ffmpeg_dir();
         if !avcodec::CANDIDATES.iter().any(|n| dir.join(n).is_file()) {
             eprintln!("SKIP: no host FFmpeg in {} - run `cargo xtask ffmpeg --host`", dir.display());
