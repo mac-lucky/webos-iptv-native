@@ -300,14 +300,24 @@ fn the_wheel_steps_through_lists_but_never_zaps() {
 }
 
 #[test]
-fn the_wheel_turns_the_details_pages_and_a_click_on_the_picture_closes_them() {
+fn a_click_opens_the_details_the_wheel_turns_their_pages_and_a_click_on_the_picture_closes_them() {
     let mut s = Sim::new();
     s.live(0);
     s.shell.navigate(Navigate::Player, None);
     s.shell.settle(s.t);
     s.run(10_000);
-    s.press("OK");
-    s.press("OK");
+    // Opened with the pointer: a click on the picture is OK, the info panel; the Description
+    // tile is the first one, pointed at and clicked. Tile centres: 248x168 tiles at a 264 px
+    // pitch from (81, 822).
+    let tile = |i: f32| (81.0 + 124.0 + i * 264.0, 822.0 + 84.0);
+    s.click((500.0, 400.0));
+    assert_eq!(s.shell.bottom.screen.overlay(), Overlay::Info { tile: 0 });
+    s.move_to(tile(1.0));
+    assert_eq!(s.shell.bottom.screen.overlay(), Overlay::Info { tile: 1 });
+    s.move_to(tile(0.0));
+    assert_eq!(s.shell.bottom.screen.overlay(), Overlay::Info { tile: 0 });
+    s.click(tile(0.0));
+    assert_eq!(s.shell.bottom.screen.overlay(), Overlay::Card { index: 0 });
     s.frame();
     assert_eq!(s.shell.rect, Some(READ_VIDEO));
     // On to a programme with pages to turn: the synthetic guide's 90-minute ones.
