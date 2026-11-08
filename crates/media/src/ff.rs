@@ -775,6 +775,12 @@ unsafe fn stream_language(s: *mut AVStream) -> Option<String> {
     stream_tag(s, c"language")
 }
 
+/// A [`stream_language`] for an event-log line: the tag comes off the stream untouched, so its
+/// control characters are escaped, where a line break would write a forged line into the log.
+fn logged_lang(lang: Option<&str>) -> String {
+    lang.map_or_else(|| "und".to_owned(), |l| l.escape_debug().to_string())
+}
+
 /// One metadata tag of the stream, trimmed, or None when absent or empty. A COPY: the entry
 /// points into the stream's dictionary, which `avformat_close_input` frees.
 unsafe fn stream_tag(s: *mut AVStream, key: &std::ffi::CStr) -> Option<String> {
@@ -2254,6 +2260,15 @@ mod follow_tests {
         f.audio_run = 5;
         assert!(!f.back_to_lang(4), "a packet left over from a run before the played audio's");
         assert!(f.back_to_lang(5), "the played audio's run");
+    }
+
+    #[test]
+    fn a_language_tag_cannot_break_an_event_log_line() {
+        assert_eq!(logged_lang(Some("pol")), "pol");
+        assert_eq!(logged_lang(None), "und");
+        let forged = logged_lang(Some("pol\nhls: forged\r"));
+        assert!(!forged.contains(['\n', '\r']), "{forged}");
+        assert!(forged.starts_with("pol"));
     }
 
     #[test]
@@ -4493,7 +4508,7 @@ pub fn demux(
                                         "ff: {} (run {run}): audio #{ai} -> #{n} ({}, {}) of {} tracks",
                                         if gone { "the programme changed" } else { "the audio goes back to its language" },
                                         std::ffi::CStr::from_ptr(avcodec_get_name((*acp).codec_id)).to_string_lossy(),
-                                        lang.as_deref().unwrap_or("und"),
+                                        logged_lang(lang.as_deref()),
                                         tracks.len()
                                     ));
                                     aac_adts = if (*acp).codec_id == AV_CODEC_ID_AAC { adts_params(acp) } else { None };
@@ -4519,7 +4534,7 @@ pub fn demux(
                                     let (n, track, codec, channels) = reload.expect("checked");
                                     crate::player::log(&format!(
                                         "ff: the programme changed (run {run}): audio #{ai} -> #{n} ({codec} {channels}ch, {}) of {} tracks needs another Load",
-                                        tracks.iter().find(|t| t.0 == n).and_then(|t| t.1.as_deref()).unwrap_or("und"),
+                                        logged_lang(tracks.iter().find(|t| t.0 == n).and_then(|t| t.1.as_deref())),
                                         tracks.len()
                                     ));
                                     // The earliest pick stands: a later break read ahead before the
