@@ -2172,8 +2172,9 @@ impl Follow {
 
     /// A packet in `run` of another audio stream in the language chosen at open, while the played
     /// one is in another (a programme change moved it there): the audio goes back, tried once a run.
+    /// Not for a packet of a run before the played one's: a leftover of the programme it left.
     fn back_to_lang(&mut self, run: u64) -> bool {
-        let back = self.lang_run.is_none_or(|r| run > r);
+        let back = run >= self.audio_run && self.lang_run.is_none_or(|r| run > r);
         if back {
             self.lang_run = Some(run);
         }
@@ -2252,8 +2253,10 @@ mod follow_tests {
         let mut f = Follow::default();
         assert!(f.back_to_lang(2));
         assert!(!f.back_to_lang(2), "tried in this run");
-        assert!(!f.back_to_lang(1), "a packet left over from a run before");
         assert!(f.back_to_lang(3));
+        f.audio_run = 5;
+        assert!(!f.back_to_lang(4), "a packet left over from a run before the played audio's");
+        assert!(f.back_to_lang(5), "the played audio's run");
     }
 
     #[test]
