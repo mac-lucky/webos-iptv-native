@@ -27,6 +27,7 @@ mod transport;
 use std::ops::ControlFlow;
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::LazyLock;
 use std::time::Instant;
 
 use iptv::refresh::Transport;
@@ -39,6 +40,11 @@ use tv_base::task::MainThread;
 /// The process-shaped name: the window title, the simulator's data dir and the first line of the
 /// event log.
 const NAME: &str = "webosiptv";
+
+/// The package's version: the log's first line, About, the User-Agent and a backup's `app`.
+static VERSION: LazyLock<String> = LazyLock::new(|| {
+    appinfo_version(include_str!("../../../pkg/appinfo.json")).unwrap_or_else(|| "?".to_owned())
+});
 
 /// The longest the loop sleeps without an event: the refresher's status and the player's
 /// reports are read at least this often.
@@ -57,11 +63,7 @@ pub fn main() -> ExitCode {
     };
     // webOS passes the launch parameters as one JSON argument; nothing reads them yet.
     logs::start();
-    let version = appinfo_version(include_str!("../../../pkg/appinfo.json"));
-    log(&format!(
-        "{NAME} {} starting",
-        version.as_deref().unwrap_or("?")
-    ));
+    log(&format!("{NAME} {} starting", *VERSION));
     // The platform (video sink, the set's probe), then the TV's language for every screen string.
     port::install();
     tv_platform::i18n::initialize(tv_platform::i18n::Preference::System, false);
@@ -78,7 +80,7 @@ pub fn main() -> ExitCode {
     tv_gfx::gfx::init_image();
     tv_gfx::text::init_text();
     // The process's User-Agent, then libcurl's process init, before any thread can make a request.
-    let user_agent = format!("{NAME}/{}", env!("CARGO_PKG_VERSION"));
+    let user_agent = format!("{NAME}/{}", *VERSION);
     if tv_net::net::set_user_agent(user_agent).is_err() {
         log("net: User-Agent refused");
     }
@@ -260,10 +262,10 @@ mod tests {
         assert_eq!(appinfo_version(r#"{"id": "x"}"#), None, "none declared");
         assert_eq!(appinfo_version(r#"{"version": 1}"#), None, "not a string");
         assert_eq!(appinfo_version("not json"), None);
-        let package = appinfo_version(include_str!("../../../pkg/appinfo.json"));
         assert!(
-            package.as_deref().is_some_and(|v| v != "0.0.0"),
-            "the package's own: {package:?}"
+            VERSION.as_str() != "0.0.0" && VERSION.as_str() != "?",
+            "the package's own: {}",
+            *VERSION
         );
     }
 }

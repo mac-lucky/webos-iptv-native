@@ -158,7 +158,7 @@ pub fn to_json(
     let mut backup = serde_json::json!({
         "format": FORMAT,
         "version": VERSION,
-        "app": env!("CARGO_PKG_VERSION"),
+        "app": crate::VERSION.as_str(),
         "settings": settings,
         "favorites": favorites,
     });
@@ -383,6 +383,8 @@ mod tests {
         let keys = back.favorites.unwrap();
         assert_eq!(keys, [ChannelKey(-3), ChannelKey(i64::MAX), ChannelKey(7)]);
         assert!(json.contains("\"name\": \"Jeden\""), "names for a reader");
+        let app = format!("\"app\": \"{}\"", *crate::VERSION);
+        assert!(json.contains(&app), "the package's version: {json}");
         let bare = to_json(&s, &[], None).unwrap();
         let back = parse(bare.as_bytes()).unwrap();
         assert!(

@@ -693,10 +693,9 @@ impl Shell {
                 return self.replace(Box::new(vod));
             }
             Navigate::History => Box::new(History::open(&*self.store)),
-            Navigate::Settings => Box::new(SettingsPanel::new(
-                self.settings.clone(),
-                env!("CARGO_PKG_VERSION"),
-            )),
+            Navigate::Settings => {
+                Box::new(SettingsPanel::new(self.settings.clone(), &crate::VERSION))
+            }
             Navigate::Search => Box::new(Search::new(&*self.store)),
             Navigate::Pin(task) => {
                 Box::new(PinDialog::new(task, self.settings.get(keys::PARENTAL_PIN)))
