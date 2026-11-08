@@ -511,6 +511,8 @@ impl PlayerScreen {
         let had_tiles = matches!(self.overlay, Overlay::Info { .. } | Overlay::Playback);
         self.overlay = overlay;
         if !had_tiles {
+            // The row last shown is stale: no tile of it is carried into the new one.
+            self.tiles.clear();
             self.sync(data, true);
         }
         self.show(self.overlay, now_ms);

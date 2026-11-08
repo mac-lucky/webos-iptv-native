@@ -992,6 +992,24 @@ fn a_reread_tile_row_keeps_the_focused_tile_when_the_description_tile_appears() 
 }
 
 #[test]
+fn a_fresh_info_panel_focuses_the_first_tile_of_its_new_row() {
+    // No guide yet: the row starts at TV guide.
+    let mut bare = FakeData::new(T, 6).with_schedule(|_, _, _| Vec::new());
+    bare.playback.channel = Some(bare.key(0));
+    let mut s = screen();
+    short(&mut s, &bare, Key::Ok, 0);
+    assert_eq!(s.tiles()[0].kind, TileKind::Guide);
+    short(&mut s, &bare, Key::Back, 10);
+    assert_eq!(s.overlay(), Overlay::Hidden);
+    // The guide arrives with the panel down; OK reads the row again and focuses its first tile.
+    let w = world();
+    s.refresh(&w);
+    short(&mut s, &w, Key::Ok, 20);
+    assert_eq!(s.overlay(), Overlay::Info { tile: 0 });
+    assert_eq!(s.tiles()[0].kind, TileKind::Description);
+}
+
+#[test]
 fn ok_ok_opens_the_programme_details_beside_the_picture() {
     let w = world();
     let mut s = screen();
