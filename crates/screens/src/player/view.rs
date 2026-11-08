@@ -227,6 +227,11 @@ fn top_bar(out: &mut Vec<Piece>, h: &Header, m: &dyn Measure) {
         false,
         theme::TEXT,
     ));
+    clock(out, h);
+}
+
+/// The clock, top right: over the top bar and in the programme details alike.
+fn clock(out: &mut Vec<Piece>, h: &Header) {
     out.push(text(
         draw::run(&h.clock),
         SCR_W - space::XL,
@@ -552,15 +557,7 @@ fn read(out: &mut Vec<Piece>, s: &PlayerScreen, m: &dyn Measure) -> usize {
         out.push(Piece::solid(r, 0.0, theme::BG));
     }
     let h = &s.header;
-    out.push(text(
-        draw::run(&h.clock),
-        SCR_W - space::XL,
-        space::L,
-        size::BODY,
-        false,
-        theme::TEXT,
-        HAlign::Right,
-    ));
+    clock(out, h);
 
     // Under the video: the channel on the left, the minutes left on the right.
     let strip_y = v.y + v.h + space::L;
