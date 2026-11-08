@@ -826,9 +826,8 @@ unsafe fn audio_stream_matching(fmt: *mut AVFormatContext, want: &str) -> Option
     if want.is_empty() {
         return None;
     }
-    (0..(*fmt).nb_streams as c_int).find(|&i| {
-        (*stream_codecpar(*(*fmt).streams.add(i as usize))).codec_type == AVMEDIA_TYPE_AUDIO && stream_codec_is(fmt, i, want)
-    })
+    (0..(*fmt).nb_streams as c_int)
+        .find(|&i| (*stream_codecpar(*(*fmt).streams.add(i as usize))).codec_type == AVMEDIA_TYPE_AUDIO && stream_codec_is(fmt, i, want))
 }
 
 /// Whether stream `i` of `fmt` is of the codec named `want` (FFmpeg's name, any case).
