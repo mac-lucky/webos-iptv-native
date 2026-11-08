@@ -629,13 +629,15 @@ impl Shell {
             layer.wake = layer.screen.next_wake(now);
         }
         // The player places the video only while it is drawn: nothing open over it.
-        let player_in_front = self.top().is_none();
-        let mut open = self.stack.iter().rev().filter(|l| !l.screen.closing());
-        let rect = open.find_map(|l| l.screen.video_rect()).or_else(|| {
-            player_in_front
-                .then(|| self.bottom.screen.video_rect())
-                .flatten()
-        });
+        let rect = match self.top() {
+            Some(_) => self
+                .stack
+                .iter()
+                .rev()
+                .filter(|l| !l.screen.closing())
+                .find_map(|l| l.screen.video_rect()),
+            None => self.bottom.screen.video_rect(),
+        };
         if rect != self.rect {
             self.rect = rect;
             self.player.set_rect(rect);
