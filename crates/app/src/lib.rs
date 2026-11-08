@@ -57,7 +57,11 @@ pub fn main() -> ExitCode {
     };
     // webOS passes the launch parameters as one JSON argument; nothing reads them yet.
     logs::start();
-    log(&format!("{NAME} {} starting", env!("CARGO_PKG_VERSION")));
+    let version = appinfo_version(include_str!("../../../pkg/appinfo.json"));
+    log(&format!(
+        "{NAME} {} starting",
+        version.as_deref().unwrap_or("?")
+    ));
     // The platform (video sink, the set's probe), then the TV's language for every screen string.
     port::install();
     tv_platform::i18n::initialize(tv_platform::i18n::Preference::System, false);
@@ -226,6 +230,12 @@ fn frame(video: &Video, shell: &mut Shell, dt: f32) {
     video.swap();
 }
 
+/// The `version` of an appinfo.json: `pkg/appinfo.json` is the one place the package's is written.
+fn appinfo_version(appinfo: &str) -> Option<String> {
+    let info: serde_json::Value = serde_json::from_str(appinfo).ok()?;
+    info.get("version")?.as_str().map(str::to_owned)
+}
+
 /// [`frame`] without presenting it.
 fn draw(video: &Video, shell: &mut Shell, dt: f32) {
     video.begin_frame();
@@ -235,4 +245,25 @@ fn draw(video: &Video, shell: &mut Shell, dt: f32) {
     // The simulator's decoded picture, under the UI (armed by the `simvideo` dev trigger).
     #[cfg(feature = "hostsim")]
     tv_media::player::sim_video::composite_under();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_version_is_the_one_appinfo_declares() {
+        assert_eq!(
+            appinfo_version(r#"{"id": "x", "version": "1.2.3"}"#).as_deref(),
+            Some("1.2.3")
+        );
+        assert_eq!(appinfo_version(r#"{"id": "x"}"#), None, "none declared");
+        assert_eq!(appinfo_version(r#"{"version": 1}"#), None, "not a string");
+        assert_eq!(appinfo_version("not json"), None);
+        let package = appinfo_version(include_str!("../../../pkg/appinfo.json"));
+        assert!(
+            package.as_deref().is_some_and(|v| v != "0.0.0"),
+            "the package's own: {package:?}"
+        );
+    }
 }
