@@ -332,6 +332,32 @@ fn a_programme_change_with_no_track_of_the_fed_codec_asks_for_another_load() {
     assert!((ac3_end - 100_000_000..=ac3_end).contains(&asked.at_ns), "from where the AC-3 fed ends: {} of {ac3_end}", asked.at_ns);
 }
 
+/// **A pick still waiting for the playhead is not lost to a later break**: an AAC Load reads ahead
+/// through an AC-3 break, back into AAC and into a second AC-3 break before the pump has taken the
+/// first break's pick. That pick stands (the first break would otherwise play with no audio); the
+/// demuxer the reload opens asks for the second one again when it gets there.
+#[test]
+fn a_pick_waiting_for_the_playhead_stands_through_a_later_break() {
+    let Some((_g, _ffmpeg)) = gate() else { return };
+    if !tool_present("ffmpeg") {
+        eprintln!("SKIP: no ffmpeg command line tool to write the fixture");
+        return;
+    }
+    let dir = Scratch::new("codec-change-twice");
+    let [a, c, b] = codec_change(&dir.0).expect("the fixture");
+    let o = Origin::spawn();
+    let url = archive(&o, &[("a", &a), ("c", &c), ("b", &b), ("d", &c)]);
+    *SHARED.programme_audio.lock().unwrap() = None;
+    let fed = demux_hls(&url, "aac", false);
+    assert!(!SHARED.demux_io_failed.load(Ordering::Acquire), "the source did not fail");
+    assert!(span_ms(&fed.video).0 >= 4 * PART_S * 1000 - 1_000, "the video goes on through both breaks");
+    let asked = SHARED.programme_audio.lock().unwrap().take().expect("another Load asked for");
+    assert_eq!((asked.codec.as_str(), asked.channels, asked.seq), ("ac3", 6, Some(6)), "the first break's AC-3, from its first segment");
+    // The AAC fed before the first break: up to the gap the break leaves in it.
+    let a_end = fed.audio.windows(2).find(|w| w[1].1 - w[0].1 > PART_S * 1_000_000_000 / 2).map_or(0, |w| w[0].1);
+    assert!((a_end - 100_000_000..=a_end + 100_000_000).contains(&asked.at_ns), "from where the AAC fed ends: {} of {a_end}", asked.at_ns);
+}
+
 /// **An open with no audio track of the Load's codec fails the source instead of feeding another
 /// one**: an AC-3 Load over the MP2 programme (a reload for the programme after a break that opened
 /// before it) would feed MP2 to a pipeline set up for AC-3, which wedges a television. Decoded to

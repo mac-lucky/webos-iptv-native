@@ -4522,14 +4522,14 @@ pub fn demux(
                                         tracks.iter().find(|t| t.0 == n).and_then(|t| t.1.as_deref()).unwrap_or("und"),
                                         tracks.len()
                                     ));
-                                    *SHARED.programme_audio.lock().unwrap_or_else(|e| e.into_inner()) =
-                                        Some(crate::player::ProgrammeAudio {
-                                            track,
-                                            codec,
-                                            channels,
-                                            at_ns: SHARED.audio_tail_ns.load(Ordering::Acquire),
-                                            seq: h.run_start(run),
-                                        });
+                                    // The earliest pick stands: a later break read ahead before the
+                                    // pump took it is asked for again by the demuxer its reload opens.
+                                    let at_ns = SHARED.audio_tail_ns.load(Ordering::Acquire);
+                                    let mut pending = SHARED.programme_audio.lock().unwrap_or_else(|e| e.into_inner());
+                                    if pending.as_ref().is_none_or(|p| at_ns < p.at_ns) {
+                                        *pending =
+                                            Some(crate::player::ProgrammeAudio { track, codec, channels, at_ns, seq: h.run_start(run) });
+                                    }
                                     follow.audio_run = run;
                                 }
                                 // Nothing the television plays: fail the source, so the playback
