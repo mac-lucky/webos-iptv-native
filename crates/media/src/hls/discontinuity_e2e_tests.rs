@@ -321,24 +321,65 @@ fn e2e_catchup_plays_through_a_break_that_moves_the_streams_to_other_pids() {
     let _serial = tv_base::testlock::serial();
     let _sink = ClockSink::arm();
     let o = Origin::spawn();
-    let mut playlist =
-        String::from("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n");
-    for (q, seg) in [&a[3..], &c[..], &b[..3]].concat().into_iter().enumerate() {
-        if q == 3 || q == 9 {
-            playlist.push_str("#EXT-X-DISCONTINUITY\n");
-        }
-        o.put(&format!("/pc/{q:02}.ts"), Answer::ok(seg));
-        playlist.push_str(&format!("#EXTINF:6.000,\n/pc/{q:02}.ts\n"));
-    }
-    playlist.push_str("#EXT-X-ENDLIST\n");
     let length_s = 72;
     let window = format!("/ch10/mono-{PROGRAMME}-{length_s}.m3u8?token=e2e-secret");
-    o.put(&window, Answer::playlist(playlist));
+    serve_runs(&o, &window, &[&a[3..], &c[..], &b[..3]]);
     let mut rig = Rig::new();
     rig.pb.play_catchup(Catchup { end: PROGRAMME + length_s, ..programme(&o, &window, 0) });
     assert!(rig.run_until(Duration::from_secs(20), |s, _| s.state == State::Playing), "no picture within 20 s");
     plays_through_to_the_end(&mut rig, length_s);
     rig.stop();
+}
+
+/// **A programme opened in such a break plays out of it without a restart**, as on the C1 after a
+/// restart had landed in the MP2 + AC-3 programme: the AC-3 5.1 track, which the television decodes
+/// and so plays first, is fed as it is, and the map after the break has only MP2, which it plays
+/// decoded to PCM. The playback reloads in place for that track, as soon as the demuxer, which
+/// reads ahead, meets the break. Break at 18 s of 54 s.
+#[test]
+#[ignore]
+fn e2e_catchup_opened_in_a_break_reloads_for_the_audio_after_it() {
+    let Some([_, c, b]) = programme_change() else { return };
+    let _serial = tv_base::testlock::serial();
+    let _sink = ClockSink::arm();
+    let o = Origin::spawn();
+    let length_s = 54;
+    let window = format!("/ch11/mono-{PROGRAMME}-{length_s}.m3u8?token=e2e-secret");
+    serve_runs(&o, &window, &[&c[3..], &b[..]]);
+    let mut rig = Rig::new();
+    rig.pb.play_catchup(Catchup { end: PROGRAMME + length_s, ..programme(&o, &window, 0) });
+    let mut first = String::new();
+    let playing = rig.run_until(Duration::from_secs(20), |s, _| {
+        if first.is_empty() {
+            first.clone_from(&s.media.audio_codec);
+        }
+        s.state == State::Playing
+    });
+    assert!(playing, "no picture within 20 s");
+    assert_eq!(first, "ac3", "the break's AC-3 is declared first");
+    plays_through_to_the_end(&mut rig, length_s);
+    assert_eq!(rig.pb.status().media.audio_codec, "mp2", "the MP2 after it, by another Load");
+    rig.stop();
+}
+
+/// An archive playlist at `path` of `runs`, an `EXT-X-DISCONTINUITY` between two, its segments
+/// served beside it.
+fn serve_runs(o: &Origin, path: &str, runs: &[&[Vec<u8>]]) {
+    let mut playlist =
+        String::from("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n");
+    let mut q = 0;
+    for (n, run) in runs.iter().enumerate() {
+        if n > 0 {
+            playlist.push_str("#EXT-X-DISCONTINUITY\n");
+        }
+        for seg in run.iter() {
+            o.put(&format!("/pc/{q:02}.ts"), Answer::ok(seg.clone()));
+            playlist.push_str(&format!("#EXTINF:6.000,\n/pc/{q:02}.ts\n"));
+            q += 1;
+        }
+    }
+    playlist.push_str("#EXT-X-ENDLIST\n");
+    o.put(path, Answer::playlist(playlist));
 }
 
 /// Play the live channel for `secs` of wall time: the watchdog never needed, and the playhead

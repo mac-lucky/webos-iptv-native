@@ -826,17 +826,15 @@ unsafe fn audio_stream_matching(fmt: *mut AVFormatContext, want: &str) -> Option
     if want.is_empty() {
         return None;
     }
-    let streams = (*fmt).streams;
-    for i in 0..(*fmt).nb_streams {
-        let cp = stream_codecpar(*streams.add(i as usize));
-        if (*cp).codec_type == AVMEDIA_TYPE_AUDIO {
-            let name = std::ffi::CStr::from_ptr(avcodec_get_name((*cp).codec_id)).to_string_lossy();
-            if name.eq_ignore_ascii_case(want) {
-                return Some(i as c_int);
-            }
-        }
-    }
-    None
+    (0..(*fmt).nb_streams as c_int).find(|&i| {
+        (*stream_codecpar(*(*fmt).streams.add(i as usize))).codec_type == AVMEDIA_TYPE_AUDIO && stream_codec_is(fmt, i, want)
+    })
+}
+
+/// Whether stream `i` of `fmt` is of the codec named `want` (FFmpeg's name, any case).
+unsafe fn stream_codec_is(fmt: *mut AVFormatContext, i: c_int, want: &str) -> bool {
+    let cp = stream_codecpar(*(*fmt).streams.add(i as usize));
+    std::ffi::CStr::from_ptr(avcodec_get_name((*cp).codec_id)).to_string_lossy().eq_ignore_ascii_case(want)
 }
 
 /// The ffmpeg stream index of the `n`-th audio stream in file order (for native audio-track
@@ -4047,33 +4045,18 @@ pub fn demux(
                 let mut vi =
                     av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, std::ptr::null_mut(), 0);
                 // native audio-track selection: feed the chosen Nth audio stream (SHARED.desired_
-                // audio_idx, set by the track menu), else the pipeline's best/default audio.
+                // audio_idx, set by the track menu or a programme change) while it is of the codec
+                // the Load declared (a reload after a programme change may open the stream in
+                // another programme, whose Nth track is another one); else the track matching the
+                // Load payload's codec (Media[0].audioCodec), NOT av_find_best_stream - a codec
+                // mismatch stalls the audio ES and wedges video.
                 let want_aidx = SHARED.desired_audio_idx.load(Ordering::Relaxed);
-                let mut ai = if want_aidx >= 0 {
-                    nth_audio_stream(fmt, want_aidx).unwrap_or_else(|| {
-                        av_find_best_stream(
-                            fmt,
-                            AVMEDIA_TYPE_AUDIO,
-                            -1,
-                            -1,
-                            std::ptr::null_mut(),
-                            0,
-                        )
-                    })
-                } else {
-                    // default: feed the track matching the Load payload's codec (Media[0].audioCodec),
-                    // NOT av_find_best_stream - a codec mismatch stalls the audio ES and wedges video.
-                    audio_stream_matching(fmt, &acodec).unwrap_or_else(|| {
-                        av_find_best_stream(
-                            fmt,
-                            AVMEDIA_TYPE_AUDIO,
-                            -1,
-                            -1,
-                            std::ptr::null_mut(),
-                            0,
-                        )
-                    })
-                };
+                let mut ai = (want_aidx >= 0)
+                    .then(|| nth_audio_stream(fmt, want_aidx))
+                    .flatten()
+                    .filter(|&i| acodec.is_empty() || stream_codec_is(fmt, i, &acodec))
+                    .or_else(|| audio_stream_matching(fmt, &acodec))
+                    .unwrap_or_else(|| av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, std::ptr::null_mut(), 0));
                 if vi < 0 {
                     // "No video stream" alone reads as a demuxer fault. When audio IS present the
                     // demuxer worked fine - the stream itself arrived without video (an audio-only
@@ -4460,6 +4443,27 @@ pub fn demux(
                                 };
                                 (n, acp, decoder)
                             });
+                            // With no track this Load can be fed: the one the television plays
+                            // after another Load, (stream, its position among the tracks, codec,
+                            // channels).
+                            let reload = if gone && opened.is_none() {
+                                // Its codec and channels, and whether the television plays it.
+                                let about = |i: c_int| {
+                                    let c = stream_codecpar(*(*fmt).streams.add(i as usize));
+                                    let name = std::ffi::CStr::from_ptr(avcodec_get_name((*c).codec_id)).to_string_lossy().into_owned();
+                                    let channels = i64::from((*c).ch_layout.nb_channels);
+                                    let sw = crate::stream::SoftwareAudio::detected();
+                                    let feed = crate::stream::AudioFeed::decide(&name, channels, tv_platform::devcaps::caps(), sw);
+                                    (name, channels, feed.rank() < 2)
+                                };
+                                let choices: Vec<_> = tracks.iter().map(|(i, lang, _)| (*i, lang.clone(), about(*i).2)).collect();
+                                follow_audio(&choices, audio_lang.as_deref()).map(|n| {
+                                    let (codec, channels, _) = about(n);
+                                    (n, tracks.iter().position(|t| t.0 == n).unwrap_or(0) as i32, codec, channels)
+                                })
+                            } else {
+                                None
+                            };
                             match opened {
                                 Some((n, acp, Ok(()))) => {
                                     let lang = stream_language(*(*fmt).streams.add(n as usize));
@@ -4486,8 +4490,21 @@ pub fn demux(
                                     crate::player::log(&format!("ff: the audio stays on #{ai}: #{si} in its language does not open ({e})"));
                                 }
                                 _ if !gone => {}
-                                // Nothing the pipeline was set up for: fail the source, so the
-                                // playback restarts and decides this programme's audio afresh.
+                                // Nothing this Load can be fed, but a track the television plays
+                                // after another Load (a pick of it, which the pump reloads in
+                                // place): asked for once, the video going on meanwhile.
+                                None if reload.is_some() => {
+                                    let (n, track, codec, channels) = reload.expect("checked");
+                                    crate::player::log(&format!(
+                                        "ff: the programme changed (run {run}): audio #{ai} -> #{n} ({codec} {channels}ch, {}) of {} tracks needs another Load",
+                                        tracks.iter().find(|t| t.0 == n).and_then(|t| t.1.as_deref()).unwrap_or("und"),
+                                        tracks.len()
+                                    ));
+                                    *SHARED.programme_audio.lock().unwrap_or_else(|e| e.into_inner()) = Some((track, codec, channels));
+                                    follow.audio_run = run;
+                                }
+                                // Nothing the television plays: fail the source, so the playback
+                                // restarts and decides this programme's audio afresh.
                                 failed => {
                                     let why = match failed {
                                         Some((_, _, Err(e))) => e,

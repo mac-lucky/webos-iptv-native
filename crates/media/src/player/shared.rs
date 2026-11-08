@@ -458,6 +458,10 @@ pub struct Shared {
     // PERSISTS across seeks/reloads (reset only on a new item, not in reset_session). Whether a
     // reload is pending is `Transport::audio_reload`, which reset_session does not touch.
     pub desired_audio_idx: AtomicI32,
+    // demux (D) -> main (M): an HLS programme change left no audio this Load can be fed, and the
+    // track the television plays after another Load: (its position among the programme's audio
+    // tracks, codec, channels). The pump takes it as a pick and reloads (`ff::demux`).
+    pub programme_audio: Mutex<Option<(i32, String, i64)>>,
     // the derived UI state (a `PlaybackState`), published by the pump once a frame and read by
     // the HUD. Written only on the main thread; atomic because it is read from the draw path.
     pub pb_state: AtomicU8,
@@ -734,6 +738,7 @@ impl Shared {
             seeking: AtomicBool::new(false),
             seek_display_ns: AtomicI64::new(-1),
             desired_audio_idx: AtomicI32::new(-1),
+            programme_audio: Mutex::new(None),
             pb_state: AtomicU8::new(PlaybackState::Idle as u8),
             demux_failed: AtomicBool::new(false),
             demux_io_failed: AtomicBool::new(false),
@@ -1335,6 +1340,7 @@ impl Shared {
         self.demux_failed.store(false, Ordering::Relaxed);
         self.demux_io_failed.store(false, Ordering::Relaxed);
         self.demux_no_video.store(false, Ordering::Relaxed);
+        *self.programme_audio.lock().unwrap_or_else(|e| e.into_inner()) = None;
         self.load_failed.store(false, Ordering::Relaxed);
         self.load_timed_out.store(false, Ordering::Relaxed);
         self.decoder_revoked.store(false, Ordering::Relaxed);

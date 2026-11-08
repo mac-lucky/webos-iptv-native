@@ -288,23 +288,23 @@ fn a_break_whose_streams_the_open_already_saw_keeps_its_video_and_audio_going() 
     assert!(span >= length_ms - 1_000 && step < 1_500, "the audio goes on through both breaks: {span} ms, a step of {step} ms");
 }
 
-/// **A break with no track the pipeline was set up for fails the source**, so the playback restarts
-/// and decides its audio afresh (an undecodable codec is refused there): AC-3 fed as it is, from the
-/// break, has nothing to go on with after it, where the only track is MP2.
+/// **A break with no track the pipeline was set up for asks for another Load of one the television
+/// plays**, as the C1 met it after a restart had opened the AC-3 programme: AC-3 fed as it is, from
+/// the break, has nothing to go on with after it, where the only track is MP2, which the television
+/// plays decoded to PCM. The demuxer asks for that track (the programme's first; the pump reloads
+/// for it), the video goes on meanwhile, and nothing fails.
 #[test]
-fn a_programme_change_with_no_track_to_feed_fails_the_source() {
+fn a_programme_change_with_no_track_of_the_fed_codec_asks_for_another_load() {
     let Some((_g, _ffmpeg, fx)) = ready() else { return };
     let o = Origin::spawn();
     let url = archive(&o, &[("c", &fx[1]), ("b", &fx[2])]);
+    *SHARED.programme_audio.lock().unwrap() = None;
     let fed = demux_hls(&url, "ac3", false);
-    assert!(SHARED.demux_io_failed.load(Ordering::Acquire), "the source failed at the break");
-    let (span, _) = span_ms(&fed.video);
-    let gone_ms = AUDIO_GONE_NS / 1_000_000;
-    let ends = PART_S * 1000 - 2_000..PART_S * 1000 + gone_ms + 1_000;
-    assert!(ends.contains(&span), "the break played to its end, and on while its audio was missed for {gone_ms} ms: {span} ms");
+    assert!(!SHARED.demux_io_failed.load(Ordering::Acquire), "the source did not fail");
+    assert_eq!(SHARED.programme_audio.lock().unwrap().take(), Some((0, "mp2".to_owned(), 2)), "the break's MP2 asked for");
+    let (span, step) = span_ms(&fed.video);
+    assert!(span >= 2 * PART_S * 1000 - 1_000 && step < 200, "the video goes on through the break: {span} ms, a step of {step} ms");
     assert!(!fed.audio.is_empty() && fed.audio.iter().all(|a| a.0.len() == 768), "AC-3 frames until then: {}", fed.audio.len());
-    SHARED.demux_failed.store(false, Ordering::Relaxed);
-    SHARED.demux_io_failed.store(false, Ordering::Relaxed);
 }
 
 /// The audio AUs' timestamps.
@@ -399,10 +399,11 @@ fn audio_that_starts_late_on_new_pids_does_not_move_the_video_back() {
     assert!(span_ms(&audio_pts(&fed)).0 >= length_ms - 1_500, "the audio goes on");
 }
 
-/// **Decoded to PCM, a break whose only track is a codec the PCM path does not decode fails the
-/// source**, so the restart refuses it as undecodable: Opus, after MP2.
+/// **A break whose only track the television cannot play fails the source**, so the restart refuses
+/// it as undecodable: Opus, after MP2 decoded to PCM, and after MP2 fed as it is, where no other
+/// Load would play it either.
 #[test]
-fn decoded_to_pcm_a_break_with_only_an_undecodable_track_fails_the_source() {
+fn a_break_with_only_a_track_the_television_cannot_play_fails_the_source() {
     let Some((_g, _ffmpeg)) = gate() else { return };
     let opus: &[Track] = &[("eng", "libopus", "96k", 2, 660)];
     let parts = [
@@ -413,11 +414,15 @@ fn decoded_to_pcm_a_break_with_only_an_undecodable_track_fails_the_source() {
     let Some([a, c, _]) = written("opus-only", parts) else { return };
     let o = Origin::spawn();
     let url = archive(&o, &[("a", &a), ("c", &c)]);
-    let fed = demux_hls(&url, "mp2", true);
-    assert!(SHARED.demux_io_failed.load(Ordering::Acquire), "the source failed at the break");
-    let (span, _) = span_ms(&fed.video);
-    assert!((PART_S * 1000 - 2_000..PART_S * 1000 + 2_000).contains(&span), "the first part played to its end: {span} ms");
-    assert!(span_ms(&audio_pts(&fed)).0 >= PART_S * 1000 - 2_000, "PCM until then");
-    SHARED.demux_failed.store(false, Ordering::Relaxed);
-    SHARED.demux_io_failed.store(false, Ordering::Relaxed);
+    for pcm in [true, false] {
+        *SHARED.programme_audio.lock().unwrap() = None;
+        let fed = demux_hls(&url, "mp2", pcm);
+        assert!(SHARED.demux_io_failed.load(Ordering::Acquire), "the source failed at the break (pcm {pcm})");
+        assert_eq!(*SHARED.programme_audio.lock().unwrap(), None, "no other Load asked for");
+        let (span, _) = span_ms(&fed.video);
+        assert!((PART_S * 1000 - 2_000..PART_S * 1000 + 2_000).contains(&span), "the first part played to its end: {span} ms");
+        assert!(span_ms(&audio_pts(&fed)).0 >= PART_S * 1000 - 2_000, "audio until then");
+        SHARED.demux_failed.store(false, Ordering::Relaxed);
+        SHARED.demux_io_failed.store(false, Ordering::Relaxed);
+    }
 }

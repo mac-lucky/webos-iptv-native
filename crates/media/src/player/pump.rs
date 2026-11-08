@@ -480,6 +480,25 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
     }
     let stream = matches!(eng.source, Source::Stream);
 
+    // ---------- an HLS programme change left no audio this Load can be fed (`ff::demux`) ----------
+    // Its track becomes the pick, re-Loaded below as a viewer's is. One the television cannot play
+    // fails the source as the demuxer would, so the restart refuses it with its reason.
+    let programme_audio = SHARED.programme_audio.lock().unwrap_or_else(|e| e.into_inner()).take();
+    if let Some((track, codec, channels)) = programme_audio {
+        match ps.select_audio(track, &codec, channels, false) {
+            Ok(()) => {
+                super::log(&format!("pump: the programme's audio is {codec} {channels}ch now; reloading for it"));
+                SHARED.desired_audio_idx.store(track, Relaxed);
+                TX.audio_reload.store(true, Relaxed);
+            }
+            Err(r) => {
+                super::log(&format!("pump: the programme's audio does not play here ({r:?}); failing the source"));
+                SHARED.demux_io_failed.store(true, Release);
+                return;
+            }
+        }
+    }
+
     // ---------- a viewer's audio-track pick (`player::request_audio_track`) ----------
     // The session already re-decided the feed for the new track; the pipeline must be re-Loaded
     // to configure the new audio decoder. A simultaneous seek supplies the reload's target, so the
@@ -1726,6 +1745,32 @@ mod native_seek_pump_tests {
         assert!(plays >= 1, "the prime Play fired through the opened gate before the frame was presented");
         assert_eq!(reloads(), vec![pos], "no second reload");
         assert_ended_paused();
+    }
+
+    /// An HLS programme change left no audio the Load can be fed (`ff::demux`): the programme's
+    /// track is taken as a pick and reloaded at the playhead, no failure in between; a track the
+    /// television cannot play fails the source instead, and nothing reloads.
+    #[test]
+    fn a_programme_change_that_needs_another_load_is_reloaded_for_its_track() {
+        let _serial = tv_base::testlock::serial();
+        let mut rig = Rig::new(None);
+        let pos = SHARED.playpos_ns.load(Relaxed);
+        *SHARED.programme_audio.lock().unwrap() = Some((1, "ac3".into(), 6));
+        rig.frame();
+        assert_eq!(reloads(), vec![pos], "reloaded at the playhead");
+        assert_eq!(SHARED.desired_audio_idx.load(Relaxed), 1, "for the programme's track");
+        assert!(!SHARED.demux_io_failed.load(Relaxed));
+        assert_eq!(*SHARED.programme_audio.lock().unwrap(), None, "taken once");
+        drop(rig);
+
+        let mut rig = Rig::new(None);
+        *SHARED.programme_audio.lock().unwrap() = Some((0, "opus".into(), 2));
+        rig.frame();
+        assert!(SHARED.demux_io_failed.load(Relaxed), "the source failed");
+        rig.frame();
+        assert_eq!(super::super::state(&rig.ps), super::super::shared::PlaybackState::Error);
+        assert_eq!(reloads(), Vec::<i64>::new(), "nothing reloaded");
+        SHARED.desired_audio_idx.store(-1, Relaxed);
     }
 
     /// The prime's Play already fired (`prime_play` cleared, the clock Running) and the viewer then
