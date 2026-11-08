@@ -12,8 +12,10 @@
 //!   a target duration when it did not ([`Schedule::reload_due_ms`]). RFC 8216 waited a whole
 //!   target after a change; a packager whose segments run far shorter than its target (6 s
 //!   segments under a 22 s target, a six-segment window of about 30 s) slides that window past a
-//!   client reloading every target duration, and its buffer runs dry between two reloads. Never
-//!   sooner than [`RELOAD_FLOOR_MS`] after the last, whatever a tiny (or zero) target says.
+//!   client reloading every target duration, and its buffer runs dry between two reloads. A reload
+//!   while known segments are still left to read waits as RFC 8216 says, a whole target after a
+//!   change ([`Schedule::ahead_due_ms`]). Never sooner than [`RELOAD_FLOOR_MS`] after the last,
+//!   whatever a tiny (or zero) target says.
 //! - **The next segment** is found by media sequence number, never by position: a reload slides the
 //!   window, and `EXT-X-MEDIA-SEQUENCE` says by how much ([`locate`]). A client that fell behind the
 //!   window (its next segment already expired) jumps to the oldest segment still listed.
@@ -154,8 +156,18 @@ impl Schedule {
     /// When the next reload may begin (RFC 8216bis section 6.3.4), never sooner than
     /// [`RELOAD_FLOOR_MS`] after the last began.
     pub fn reload_due_ms(&self) -> u64 {
-        let wait = if self.changed { self.changed_wait_ms } else { self.target_ms.div_ceil(2) };
-        self.load_began_ms.saturating_add(wait.max(RELOAD_FLOOR_MS))
+        self.due_after(if self.changed { self.changed_wait_ms } else { self.target_ms.div_ceil(2) })
+    }
+
+    /// When a reload ahead of need (known segments are left to read) may begin: RFC 8216 6.3.4 as
+    /// written, a whole target duration after a load that changed the playlist, half a target
+    /// after one that did not, never sooner than [`RELOAD_FLOOR_MS`].
+    pub fn ahead_due_ms(&self) -> u64 {
+        self.due_after(if self.changed { self.target_ms } else { self.target_ms.div_ceil(2) })
+    }
+
+    fn due_after(&self, wait_ms: u64) -> u64 {
+        self.load_began_ms.saturating_add(wait_ms.max(RELOAD_FLOOR_MS))
     }
 
     /// How long the playlist may go without growing before it is dead.
@@ -276,8 +288,10 @@ mod tests {
         let p = live(0, &[6.0, 4.0, 6.0, 5.0, 4.5, 4.0], 22);
         let mut s = Schedule::first(&p, 10_000);
         assert_eq!(s.reload_due_ms(), 14_000, "the last segment is 4 s long");
+        assert_eq!(s.ahead_due_ms(), 32_000, "ahead of need: the whole target, as RFC 8216 words it");
         s.reloaded(&p, 14_000, false);
         assert_eq!(s.reload_due_ms(), 25_000, "unchanged: still half the target");
+        assert_eq!(s.ahead_due_ms(), 25_000);
         let grown = live(1, &[4.0, 6.0, 5.0, 4.5, 4.0, 6.5], 22);
         s.reloaded(&grown, 25_000, true);
         assert_eq!(s.reload_due_ms(), 31_500);

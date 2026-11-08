@@ -17,9 +17,9 @@
 //!   byte; a live segment that is gone (4xx, or retries spent) is skipped - at most
 //!   [`MAX_SKIPS_IN_ROW`] in a row - since the live edge has moved on; a VOD one ends the stream
 //!   with an error;
-//! - a live playlist is reloaded on the RFC 8216 6.3.4 cadence while it plays; a reload that
-//!   fails is retried on it, and [`MAX_RELOAD_FAILURES`] in a row end the stream once no known
-//!   segment is left to read; a live playlist that stops growing is declared dead
+//! - a live playlist (not an EVENT one) is reloaded on the RFC 8216 6.3.4 cadence while it plays;
+//!   a reload that fails is retried on it, and [`MAX_RELOAD_FAILURES`] in a row made once no known
+//!   segment is left to read end the stream; a live playlist that stops growing is declared dead
 //!   ([`super::live::Schedule::stalled`]);
 //! - a finite archive playlist followed past its end ([`HlsSource::follow_until`]) is asked for
 //!   again on the same cadence, and its end becomes the stream's, without an error, once it stops
@@ -801,8 +801,12 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
         // held back a few targets behind the edge, and reloading only once every known segment was
         // read (every 2.6-3.2 targets on the C1) brought a short window close to sliding past the
         // next segment. One request at a time, so a reload that falls due waits for the segment
-        // being read.
-        if self.playlist.is_live() && self.clock.now_ms() >= self.schedule.reload_due_ms() {
+        // being read. Not an EVENT playlist: it only grows, so nothing it lists can slide away.
+        if self.playlist.is_live()
+            && self.playlist.playlist_type != Some(playlist::PlaylistType::Event)
+            && self.clock.now_ms() >= self.schedule.ahead_due_ms()
+            && matches!(live::locate(&self.playlist, self.next_seq), Locate::At(_))
+        {
             self.reload(false)?;
         }
         match live::locate(&self.playlist, self.next_seq) {
@@ -908,8 +912,10 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
         }
     }
 
-    /// Reload the live media playlist. `needed`: no known segment is left to read, so reloads that
-    /// failed [`MAX_RELOAD_FAILURES`] times in a row end the stream; before that they are retried.
+    /// Reload the live media playlist. `needed`: no known segment is left to read. Only those
+    /// count toward [`MAX_RELOAD_FAILURES`] in a row, which end the stream; one ahead of need that
+    /// fails is retried on the cadence, so an outage ends the stream no sooner than if the playlist
+    /// were reloaded only once the reader ran out.
     fn reload(&mut self, needed: bool) -> Result<(), HlsError> {
         let began = self.clock.now_ms();
         match self.load_media() {
@@ -933,8 +939,13 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
             Err(HlsError::Playlist(FetchError::Aborted)) => Err(HlsError::Aborted),
             // Not a transient answer: the playlist itself turned unsafe.
             Err(HlsError::Insecure) => Err(HlsError::Insecure),
+            Err(e) if !needed => {
+                self.schedule.failed(began);
+                tv_base::eventlog::log(&format!("hls: playlist reload failed ({e}); retried while segments are left"));
+                Ok(())
+            }
             Err(e) => {
-                if self.reload_failed(&e, began, "playlist") && needed {
+                if self.reload_failed(&e, began, "playlist") {
                     return Err(e);
                 }
                 Ok(())
