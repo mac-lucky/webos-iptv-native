@@ -4170,10 +4170,18 @@ pub fn demux(
 
                 for i in 0..(*fmt).nb_streams as c_int {
                     let s = *streams.add(i as usize);
-                    // HLS reads every audio track: a programme change may drop the played one and
-                    // keep another, and only its packets show `Follow` that the played one is gone.
-                    let audio = is_hls && ai >= 0 && (*stream_codecpar(s)).codec_type == AVMEDIA_TYPE_AUDIO;
-                    set_stream_discard(s, if audio { AVDISCARD_DEFAULT } else { discard_for(i, vi, ai) });
+                    let cp = stream_codecpar(s);
+                    // HLS reads every audio track and every video stream of the played codec: a
+                    // programme change may move the played ones to a stream the open already saw
+                    // (its probe read into the next programme, or the map keeps a PID), and only
+                    // that stream's packets show `Follow` where they went.
+                    let follows = is_hls
+                        && match (*cp).codec_type {
+                            AVMEDIA_TYPE_AUDIO => ai >= 0,
+                            AVMEDIA_TYPE_VIDEO => (*cp).codec_id == (*vcp).codec_id,
+                            _ => false,
+                        };
+                    set_stream_discard(s, if follows { AVDISCARD_DEFAULT } else { discard_for(i, vi, ai) });
                 }
                 // The subtitle tracks, published, read and decoded (their discard lifted).
                 let mut subs = subdec::Reader::open(fmt);

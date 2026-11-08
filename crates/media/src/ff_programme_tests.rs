@@ -262,6 +262,32 @@ fn a_programme_map_that_changes_at_a_discontinuity_keeps_its_video_and_audio_goi
     assert!(span >= length_ms - 1_000 && step < 1_500, "the PCM goes on through both breaks: {span} ms, a step of {step} ms");
 }
 
+/// **A break whose streams the open already saw is followed as well**: opened 1.5 s before the
+/// break, with no keyframe in between (a short segment, or an open late in one), the open's
+/// stream-info probe reads on into the break for the video's parameters and adds the break's
+/// streams before a packet is played: they are not new to the demuxer when the break begins, and
+/// the first map's, which the last part plays again, are not the ones the open chose. The video
+/// and the audio go on through both breaks.
+#[test]
+fn a_break_whose_streams_the_open_already_saw_keeps_its_video_and_audio_going() {
+    let Some((_g, _ffmpeg, fx)) = ready() else { return };
+    let o = Origin::spawn();
+    // The segment before the break: its SDT, PAT and PMT, then its last quarter, cut at a TS packet.
+    let last = &fx[0][5];
+    let tail = [&last[..3 * 188], &last[last.len() - last.len() / 188 / 4 * 188..]].concat();
+    let url = archive(&o, &[("a", &[tail]), ("c", &fx[1]), ("b", &fx[2])]);
+    let length_ms = 2 * PART_S * 1000;
+    let fed = demux_hls(&url, "mp2", false);
+    let seen = SHARED.track_names.lock().unwrap().audio.len();
+    assert_eq!(seen, 4, "the open saw the break's three audio tracks besides the played one");
+    assert!(!SHARED.demux_failed.load(Ordering::Acquire), "the demux did not fail");
+    let (span, step) = span_ms(&fed.video);
+    eprintln!("video: {} AUs over {span} ms, longest step {step} ms", fed.video.len());
+    assert!(span >= length_ms - 1_000 && step < 200, "the video goes on through both breaks: {span} ms, a step of {step} ms");
+    let (span, step) = span_ms(&audio_pts(&fed));
+    assert!(span >= length_ms - 1_000 && step < 1_500, "the audio goes on through both breaks: {span} ms, a step of {step} ms");
+}
+
 /// **A break with no track the pipeline was set up for fails the source**, so the playback restarts
 /// and decides its audio afresh (an undecodable codec is refused there): AC-3 fed as it is, from the
 /// break, has nothing to go on with after it, where the only track is MP2.
