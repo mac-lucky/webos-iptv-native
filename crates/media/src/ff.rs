@@ -2101,9 +2101,13 @@ unsafe fn pts_ns_opt(pkt: *const AVPacket, st: *mut AVStream) -> Option<i64> {
     (t != AV_NOPTS_VALUE).then(|| av_rescale_q(t, stream_time_base(st), NS_TB))
 }
 
+/// The keys [`hls_place`] steers the timeline by: what plays, not a stream index.
+const STEER_VIDEO: i32 = 0;
+const STEER_AUDIO: i32 = 1;
+
 /// Put an HLS packet on the stream's one timeline across its discontinuities
 /// ([`crate::hls::timeline`]): its timestamps moved by the shift of `run`, the run of segments its
-/// bytes came from. `steer`: the video (`Some(0)`) or the audio played (`Some(1)`), whose
+/// bytes came from. `steer`: the video ([`STEER_VIDEO`]) or the audio played ([`STEER_AUDIO`]), whose
 /// timestamps decide a new run's shift, keyed by what they play rather than by stream, so a
 /// programme change that moves them to other streams ([`Follow`]) goes on from where they were;
 /// any other stream follows. `pkt` is the packet just read, `st` its stream.
@@ -4520,7 +4524,7 @@ pub fn demux(
                                     // where the old one stopped, or (back to the language) where
                                     // the old one began the run: measured from where the old one
                                     // got to, it would place the run again and move the video.
-                                    timeline.forget(1);
+                                    timeline.forget(STEER_AUDIO);
                                 }
                                 Some((_, _, Err(e))) if !gone => {
                                     crate::player::log(&format!("ff: the audio stays on #{ai}: #{si} in its language does not open ({e})"));
@@ -4565,9 +4569,9 @@ pub fn demux(
                             }
                         }
                         let steer = if si == vi {
-                            Some(0)
+                            Some(STEER_VIDEO)
                         } else if si == ai {
-                            Some(1)
+                            Some(STEER_AUDIO)
                         } else {
                             None
                         };
