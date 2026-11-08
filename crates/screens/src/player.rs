@@ -500,7 +500,8 @@ impl PlayerScreen {
             o => o,
         };
         self.hide_at_ms = match overlay {
-            Overlay::Hidden | Overlay::Card { .. } => None,
+            Overlay::Hidden => None,
+            Overlay::Card { .. } => Some(now_ms + READ_IDLE_MS),
             _ => Some(now_ms + self.settings.panel_timeout_ms),
         };
     }
@@ -672,8 +673,7 @@ impl PlayerScreen {
                 self.card_page = 0;
                 self.card_pages = 1;
             }
-            self.overlay = Overlay::Card { index };
-            self.hide_at_ms = Some(now_ms + READ_IDLE_MS);
+            self.show(Overlay::Card { index }, now_ms);
         }
     }
 
