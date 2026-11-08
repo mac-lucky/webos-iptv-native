@@ -56,6 +56,22 @@ pub(crate) fn programme_change(dir: &Path) -> Result<Parts, String> {
     write_parts(dir, PROGRAMME_CHANGE)
 }
 
+/// **A fixture whose break shares no audio codec with the programme around it**, written as
+/// [`programme_change`]: `a` and `b` AAC stereo only, the break `c` AC-3 5.1 only, on new PIDs.
+pub(crate) fn codec_change(dir: &Path) -> Result<Parts, String> {
+    const AAC: Track = ("pol", "aac", "128k", 2, 440);
+    let aac = Part { tracks: &[AAC], ..PART };
+    let ac3: &[Track] = &[("pol", "ac3", "384k", 6, 880)];
+    write_parts(
+        dir,
+        [
+            Part { name: "a", ..aac },
+            Part { name: "c", offset: PART_S, tracks: ac3, new_pids: true, ..aac },
+            Part { name: "b", offset: 2 * PART_S, ..aac },
+        ],
+    )
+}
+
 const PROGRAMME_CHANGE: [Part; 3] = [
     Part { name: "a", ..PART },
     Part { name: "c", offset: PART_S, tracks: &[ENG, POL, ("eng", "ac3", "192k", 6, 880)], new_pids: true, ..PART },
@@ -292,7 +308,8 @@ fn a_break_whose_streams_the_open_already_saw_keeps_its_video_and_audio_going() 
 /// plays**, as the C1 met it after a restart had opened the AC-3 programme: AC-3 fed as it is, from
 /// the break, has nothing to go on with after it, where the only track is MP2, which the television
 /// plays decoded to PCM. The demuxer asks for that track (the programme's first; the pump reloads
-/// for it), the video goes on meanwhile, and nothing fails.
+/// for it once the playhead is where the AC-3 fed ends, from the programme's first segment), the
+/// video goes on meanwhile, and nothing fails.
 #[test]
 fn a_programme_change_with_no_track_of_the_fed_codec_asks_for_another_load() {
     let Some((_g, _ffmpeg, fx)) = ready() else { return };
@@ -301,10 +318,56 @@ fn a_programme_change_with_no_track_of_the_fed_codec_asks_for_another_load() {
     *SHARED.programme_audio.lock().unwrap() = None;
     let fed = demux_hls(&url, "ac3", false);
     assert!(!SHARED.demux_io_failed.load(Ordering::Acquire), "the source did not fail");
-    assert_eq!(SHARED.programme_audio.lock().unwrap().take(), Some((0, "mp2".to_owned(), 2)), "the break's MP2 asked for");
     let (span, step) = span_ms(&fed.video);
     assert!(span >= 2 * PART_S * 1000 - 1_000 && step < 200, "the video goes on through the break: {span} ms, a step of {step} ms");
     assert!(!fed.audio.is_empty() && fed.audio.iter().all(|a| a.0.len() == 768), "AC-3 frames until then: {}", fed.audio.len());
+    let asked = SHARED.programme_audio.lock().unwrap().take().expect("another Load asked for");
+    assert_eq!(
+        (asked.track, asked.codec.as_str(), asked.channels, asked.seq),
+        (0, "mp2", 2, Some(6)),
+        "the break's MP2, from its first segment"
+    );
+    // A PES of the AC-3 that mpegts completes in the break is fed after the question.
+    let ac3_end = fed.audio.last().map_or(0, |a| a.1);
+    assert!((ac3_end - 100_000_000..=ac3_end).contains(&asked.at_ns), "from where the AC-3 fed ends: {} of {ac3_end}", asked.at_ns);
+}
+
+/// **An open with no audio track of the Load's codec fails the source instead of feeding another
+/// one**: an AC-3 Load over the MP2 programme (a reload for the programme after a break that opened
+/// before it) would feed MP2 to a pipeline set up for AC-3, which wedges a television. Decoded to
+/// PCM, any track the decoder takes plays, as before.
+#[test]
+fn an_open_with_no_track_of_the_loads_codec_fails_the_source() {
+    let Some((_g, _ffmpeg, fx)) = ready() else { return };
+    let o = Origin::spawn();
+    let url = archive(&o, &[("a", &fx[0])]);
+    let fed = demux_hls(&url, "ac3", false);
+    assert!(SHARED.demux_io_failed.load(Ordering::Acquire), "the source failed");
+    assert!(fed.audio.is_empty() && fed.video.is_empty(), "nothing fed: {} audio, {} video AUs", fed.audio.len(), fed.video.len());
+    SHARED.demux_failed.store(false, Ordering::Relaxed);
+    SHARED.demux_io_failed.store(false, Ordering::Relaxed);
+
+    let decoded = demux_hls(&url, "ac3", true);
+    assert!(!SHARED.demux_failed.load(Ordering::Acquire), "the PCM demux did not fail");
+    assert!(span_ms(&audio_pts(&decoded)).0 >= PART_S * 1000 - 1_000, "the MP2 decoded to PCM plays");
+}
+
+/// **A reload for a programme's audio opens at the segment the programme begins with**, and reads
+/// positions from there: started at the break's first segment, the AC-3 Load finds its track and
+/// feeds it, where an open at the start would fail on the MP2 programme before it.
+#[test]
+fn a_reload_for_a_programmes_audio_opens_where_the_programme_begins() {
+    let Some((_g, _ffmpeg, fx)) = ready() else { return };
+    let o = Origin::spawn();
+    let url = archive(&o, &[("a", &fx[0]), ("c", &fx[1])]);
+    SHARED.hls_start_seq.store(6, Ordering::Relaxed);
+    let fed = demux_hls_track(&url, "ac3", false, 2);
+    assert_eq!(SHARED.hls_start_seq.load(Ordering::Relaxed), -1, "taken by the open");
+    assert!(!SHARED.demux_failed.load(Ordering::Acquire), "the demux did not fail");
+    assert_eq!(SHARED.hls_vod_base_ns.load(Ordering::Acquire), PART_S * 1_000_000_000, "positions from the break's start");
+    assert!(span_ms(&fed.video).0 >= PART_S * 1000 - 1_000, "the break's video");
+    assert!(span_ms(&audio_pts(&fed)).0 >= PART_S * 1000 - 1_500, "its audio");
+    assert!(fed.audio.iter().all(|a| a.0.len() == 768), "every frame the break's AC-3");
 }
 
 /// The audio AUs' timestamps.

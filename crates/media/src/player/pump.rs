@@ -253,6 +253,11 @@ fn fail_engine() {
     set_state(super::shared::PlaybackState::Error);
 }
 
+/// How far short of where the audio before an HLS programme change ends the playhead may be when
+/// the reload for the programme's audio goes (`ProgrammeAudio::at_ns`): a pipeline that runs its
+/// clock on the audio may hold the picture a little before that audio's end.
+const PROGRAMME_EARLY_NS: i64 = 500_000_000;
+
 /// Settle a synchronous native reload. A reload that builds no Engine leaves no pump to publish
 /// the failure, so it is published here.
 pub(super) fn settle_reload(outcome:super::engine::ReloadOutcome, operation: &str) -> bool {
@@ -481,20 +486,30 @@ pub fn pump(ps: &mut crate::session::PlaybackSession, pa: &mut super::adapter::P
     let stream = matches!(eng.source, Source::Stream);
 
     // ---------- an HLS programme change left no audio this Load can be fed (`ff::demux`) ----------
-    // Its track becomes the pick, re-Loaded below as a viewer's is. One the television cannot play
-    // fails the source as the demuxer would, so the restart refuses it with its reason.
-    let programme_audio = SHARED.programme_audio.lock().unwrap_or_else(|e| e.into_inner()).take();
-    if let Some((track, codec, channels)) = programme_audio {
-        match ps.select_audio(track, &codec, channels, false) {
-            Ok(()) => {
-                super::log(&format!("pump: the programme's audio is {codec} {channels}ch now; reloading for it"));
-                SHARED.desired_audio_idx.store(track, Relaxed);
-                TX.audio_reload.store(true, Relaxed);
-            }
-            Err(r) => {
-                super::log(&format!("pump: the programme's audio does not play here ({r:?}); failing the source"));
-                SHARED.demux_io_failed.store(true, Release);
-                return;
+    // Once the playhead has played what came before it (the demuxer reads ahead), its track becomes
+    // the pick, re-Loaded as a viewer's is but from the segment the programme begins with: reopened
+    // at the playhead, the stream may start in the programme before it, which has no track of the
+    // new Load's codec. One the television cannot play fails the source as the demuxer would, so
+    // the restart refuses it with its reason.
+    if stream && eng.stage >= Stage::Playing && !(eng.flushed && eng.rebase_pending) && TX.seek_to_ns.load(Relaxed) < 0 {
+        let at = SHARED.pres_fed.load(Relaxed) - SHARED.pts_shift.load(Relaxed);
+        let due =
+            SHARED.programme_audio.lock().unwrap_or_else(|e| e.into_inner()).take_if(|p| p.at_ns < 0 || at >= p.at_ns - PROGRAMME_EARLY_NS);
+        if let Some(p) = due {
+            match ps.select_audio(p.track, &p.codec, p.channels, false) {
+                Ok(()) => {
+                    super::log(&format!("pump: the programme's audio is {} {}ch now; reloading for it", p.codec, p.channels));
+                    SHARED.hls_start_seq.store(p.seq.and_then(|s| i64::try_from(s).ok()).unwrap_or(-1), Relaxed);
+                    let target = SHARED.playpos_ns.load(Relaxed).max(0);
+                    own_seek_under_pause(target);
+                    settle_reload(super::engine::switch_audio_native(ps, pa, p.track, target), "programme audio");
+                    return; // REPLACED the engine
+                }
+                Err(r) => {
+                    super::log(&format!("pump: the programme's audio does not play here ({r:?}); failing the source"));
+                    SHARED.demux_io_failed.store(true, Release);
+                    return;
+                }
             }
         }
     }
@@ -1747,24 +1762,35 @@ mod native_seek_pump_tests {
         assert_ended_paused();
     }
 
-    /// An HLS programme change left no audio the Load can be fed (`ff::demux`): the programme's
-    /// track is taken as a pick and reloaded at the playhead, no failure in between; a track the
-    /// television cannot play fails the source instead, and nothing reloads.
+    /// An HLS programme change left no audio the Load can be fed (`ff::demux`): once the playhead
+    /// has played the audio fed before it, the programme's track is taken as a pick and reloaded,
+    /// opening at the programme's first segment, no failure in between; a track the television
+    /// cannot play fails the source instead, and nothing reloads.
     #[test]
     fn a_programme_change_that_needs_another_load_is_reloaded_for_its_track() {
+        use crate::player::ProgrammeAudio;
         let _serial = tv_base::testlock::serial();
         let mut rig = Rig::new(None);
         let pos = SHARED.playpos_ns.load(Relaxed);
-        *SHARED.programme_audio.lock().unwrap() = Some((1, "ac3".into(), 6));
+        // The playhead at 18 s of the demuxer's timeline; the audio before the programme ends at 19 s.
+        SHARED.pts_shift.store(-10_000_000_000, Relaxed);
+        SHARED.pres_fed.store(8_000_000_000, Relaxed);
+        let pick = ProgrammeAudio { track: 1, codec: "ac3".into(), channels: 6, at_ns: 19_000_000_000, seq: Some(42) };
+        *SHARED.programme_audio.lock().unwrap() = Some(pick);
         rig.frame();
-        assert_eq!(reloads(), vec![pos], "reloaded at the playhead");
+        assert_eq!(reloads(), Vec::<i64>::new(), "not while what comes before the programme still plays");
+        SHARED.pres_fed.store(8_600_000_000, Relaxed);
+        rig.frame();
+        assert_eq!(reloads(), vec![pos], "reloaded once the playhead is there");
         assert_eq!(SHARED.desired_audio_idx.load(Relaxed), 1, "for the programme's track");
+        assert_eq!(SHARED.hls_start_seq.load(Relaxed), 42, "from the programme's first segment");
         assert!(!SHARED.demux_io_failed.load(Relaxed));
         assert_eq!(*SHARED.programme_audio.lock().unwrap(), None, "taken once");
         drop(rig);
 
         let mut rig = Rig::new(None);
-        *SHARED.programme_audio.lock().unwrap() = Some((0, "opus".into(), 2));
+        *SHARED.programme_audio.lock().unwrap() =
+            Some(ProgrammeAudio { track: 0, codec: "opus".into(), channels: 2, at_ns: -1, seq: None });
         rig.frame();
         assert!(SHARED.demux_io_failed.load(Relaxed), "the source failed");
         rig.frame();

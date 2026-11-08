@@ -45,6 +45,7 @@ use tv_base::task::MainThread;
 
 pub use shared::TrackNames;
 pub use shared::Chapter;
+pub use shared::ProgrammeAudio;
 use shared::{
     PauseCompletion, PlayCompletion, UserPause, UserResume, Shared,
     Transport,

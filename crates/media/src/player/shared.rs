@@ -325,6 +325,21 @@ pub enum PlaybackState {
 /// rebuild is assumed to have been refused.
 pub const AUDIO_PICK_WINDOW_MS: i64 = 30_000;
 
+/// An HLS programme change's audio that needs another Load ([`Shared::programme_audio`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProgrammeAudio {
+    /// The track: its position among the programme's audio tracks, its codec and channels.
+    pub track: i32,
+    pub codec: String,
+    pub channels: i64,
+    /// How far the audio fed before the programme changed had got, on the demuxer's timeline
+    /// (ns; -1 for none): the reload waits for the playhead to get there.
+    pub at_ns: i64,
+    /// The media sequence number of the segment the programme begins with, which the reload
+    /// opens at: a reopen at the playhead may land before it, with no track of the new Load's codec.
+    pub seq: Option<u64>,
+}
+
 /// See [`Shared::audio_switch`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -459,9 +474,14 @@ pub struct Shared {
     // reload is pending is `Transport::audio_reload`, which reset_session does not touch.
     pub desired_audio_idx: AtomicI32,
     // demux (D) -> main (M): an HLS programme change left no audio this Load can be fed, and the
-    // track the television plays after another Load: (its position among the programme's audio
-    // tracks, codec, channels). The pump takes it as a pick and reloads (`ff::demux`).
-    pub programme_audio: Mutex<Option<(i32, String, i64)>>,
+    // track the television plays after another Load (`ff::demux`). The pump takes it as a pick
+    // once the playhead is there and reloads.
+    pub programme_audio: Mutex<Option<ProgrammeAudio>>,
+    // main (M) -> demux (D): the media sequence number the next HLS open starts at, -1 for the
+    // start it chooses itself: where the programme begins that the pump reloads for
+    // (`ProgrammeAudio::seq`). Taken by that open (`ff::open_hls`); a reload keeps it, a new
+    // session forgets it.
+    pub hls_start_seq: AtomicI64,
     // the derived UI state (a `PlaybackState`), published by the pump once a frame and read by
     // the HUD. Written only on the main thread; atomic because it is read from the draw path.
     pub pb_state: AtomicU8,
@@ -739,6 +759,7 @@ impl Shared {
             seek_display_ns: AtomicI64::new(-1),
             desired_audio_idx: AtomicI32::new(-1),
             programme_audio: Mutex::new(None),
+            hls_start_seq: AtomicI64::new(-1),
             pb_state: AtomicU8::new(PlaybackState::Idle as u8),
             demux_failed: AtomicBool::new(false),
             demux_io_failed: AtomicBool::new(false),
@@ -1341,6 +1362,9 @@ impl Shared {
         self.demux_io_failed.store(false, Ordering::Relaxed);
         self.demux_no_video.store(false, Ordering::Relaxed);
         *self.programme_audio.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        if !for_reload {
+            self.hls_start_seq.store(-1, Ordering::Relaxed);
+        }
         self.load_failed.store(false, Ordering::Relaxed);
         self.load_timed_out.store(false, Ordering::Relaxed);
         self.decoder_revoked.store(false, Ordering::Relaxed);

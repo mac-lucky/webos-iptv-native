@@ -1091,6 +1091,26 @@ fn a_resume_past_a_discontinuity_starts_there_in_playlist_time() {
     assert_eq!([src.run_at(0), src.run_at(ts(3).len() as u64)], [0, 1]);
 }
 
+/// Each run knows the segment it begins with, and a reload for the programme a run carries opens
+/// at that segment, in playlist time from its start: wherever the open would have started, and
+/// only before a byte is read and while the playlist lists it.
+#[test]
+fn a_stream_opens_at_the_segment_a_run_begins_with() {
+    let s = Server::new();
+    s.put("/b.m3u8", breaks_playlist());
+    s.put_segments([0, 1, 2, 3, 5]);
+    let mut src = s.open("/b.m3u8", None).unwrap();
+    read_all(&mut src).unwrap();
+    assert_eq!([src.run_start(0), src.run_start(1), src.run_start(2), src.run_start(3)], [Some(0), Some(2), Some(5), None]);
+    assert!(!src.start_at(2), "not once it has been read");
+
+    let mut src = s.open("/b.m3u8", Some(4_000_000)).unwrap();
+    assert!(!src.start_at(6), "not past the playlist");
+    assert!(src.start_at(2), "at the first break's segment");
+    assert_eq!(src.start_us(), 12_000_000, "positions from its start");
+    assert_eq!(read_all(&mut src).unwrap(), [ts(2), ts(3), ts(5)].concat());
+}
+
 /// fMP4: the new initialization section after a break belongs to the run it begins.
 #[test]
 fn an_init_section_after_a_discontinuity_belongs_to_the_new_run() {

@@ -3245,6 +3245,11 @@ fn open_hls(
             if let Ok(until_us) = u64::try_from(HLS_FOLLOW_US.load(Ordering::Acquire)) {
                 h.follow_until(until_us);
             }
+            // A reload for a programme's audio opens where that programme begins.
+            if let Ok(seq) = u64::try_from(SHARED.hls_start_seq.swap(-1, Ordering::AcqRel)) {
+                let how = if h.start_at(seq) { "opens" } else { "could not open" };
+                crate::player::log(&format!("ff: hls {how} at segment {seq}, where the programme begins"));
+            }
             SHARED.file_size.store(-1, Ordering::Release);
             SHARED.dg_http_status.store(200, Ordering::Relaxed);
             let base_ns = if h.in_playlist_time() { i64::try_from(h.start_us()).unwrap_or(0).saturating_mul(1000) } else { -1 };
@@ -4071,6 +4076,24 @@ pub fn demux(
                     free_avio(avio);
                     break;
                 }
+                // HLS fed as it is with no track of the Load's codec: an open in another programme
+                // than the one the Load was made for (a reload for a programme change that missed
+                // it, a seek into another one). Fed, that track would wedge the pipeline; failed,
+                // the restart decides the audio of the programme it lands in.
+                if is_hls
+                    && ai >= 0
+                    && !acodec.is_empty()
+                    && SOFT_PCM_CHANNELS.load(Ordering::Relaxed) == 0
+                    && FEED_AUDIO.load(Ordering::Relaxed)
+                    && !stream_codec_is(fmt, ai, &acodec)
+                {
+                    crate::player::log(&format!("ff: no audio track here is the Load's {acodec}; failing the source"));
+                    SHARED.demux_failed.store(true, Ordering::Release);
+                    SHARED.demux_io_failed.store(true, Ordering::Release);
+                    avformat_close_input(&mut fmt);
+                    free_avio(avio);
+                    break;
+                }
                 let streams = (*fmt).streams;
                 let mut vst = *streams.add(vi as usize);
                 let vcp = stream_codecpar(vst);
@@ -4499,7 +4522,14 @@ pub fn demux(
                                         tracks.iter().find(|t| t.0 == n).and_then(|t| t.1.as_deref()).unwrap_or("und"),
                                         tracks.len()
                                     ));
-                                    *SHARED.programme_audio.lock().unwrap_or_else(|e| e.into_inner()) = Some((track, codec, channels));
+                                    *SHARED.programme_audio.lock().unwrap_or_else(|e| e.into_inner()) =
+                                        Some(crate::player::ProgrammeAudio {
+                                            track,
+                                            codec,
+                                            channels,
+                                            at_ns: SHARED.audio_tail_ns.load(Ordering::Acquire),
+                                            seq: h.run_start(run),
+                                        });
                                     follow.audio_run = run;
                                 }
                                 // Nothing the television plays: fail the source, so the playback

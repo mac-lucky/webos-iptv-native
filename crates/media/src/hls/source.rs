@@ -431,8 +431,9 @@ pub struct HlsSource<T: Transport, C: Clock> {
     /// The end was logged (the demuxer asks again after it).
     end_logged: bool,
     /// Where each run of segments between two discontinuities begins in the delivered stream,
-    /// `(byte offset, run)`, oldest first: the last [`timeline::RUNS_KEPT`] (see [`Self::run_at`]).
-    runs: VecDeque<(u64, u64)>,
+    /// `(byte offset, (run, media sequence of its first segment))`, oldest first: the last
+    /// [`timeline::RUNS_KEPT`] (see [`Self::run_at`]).
+    runs: VecDeque<(u64, (u64, u64))>,
     /// The discontinuity sequence of the segment begun last.
     dseq_now: Option<u64>,
     /// A reload found the media sequence gone backwards: the next segment begun begins a run.
@@ -734,7 +735,30 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
     /// that delivered stream byte `pos`: the newest for a byte not delivered yet, the oldest
     /// remembered for one before it. The demuxer's packet positions are these byte offsets.
     pub fn run_at(&self, pos: u64) -> u64 {
-        timeline::newest_at(&self.runs, pos).unwrap_or(0)
+        timeline::newest_at(&self.runs, pos).map_or(0, |(run, _)| run)
+    }
+
+    /// The media sequence number of the segment `run` begins with, while it is remembered.
+    pub fn run_start(&self, run: u64) -> Option<u64> {
+        self.runs.iter().find(|(_, (r, _))| *r == run).map(|&(_, (_, seq))| seq)
+    }
+
+    /// **Start at the segment of media sequence `seq` instead** (where a programme the reader met
+    /// begins, which a reload for its audio opens at), while nothing has been read and the
+    /// playlist still lists it; false, and the start the open chose, otherwise.
+    pub fn start_at(&mut self, seq: u64) -> bool {
+        let p = &self.playlist;
+        let Some(index) = seq.checked_sub(p.media_sequence).and_then(|i| usize::try_from(i).ok()).filter(|&i| i < p.segments.len()) else {
+            return false;
+        };
+        if self.delivered > 0 || self.active.is_some() {
+            return false;
+        }
+        self.next_seq = seq;
+        if self.playlist_time {
+            self.start_us = live::start_of(p, index);
+        }
+        true
     }
 
     #[cfg(test)]
@@ -1048,8 +1072,8 @@ impl<T: Transport, C: Clock> HlsSource<T, C> {
             || self.dseq_now.is_some_and(|d| seg.discontinuity_sequence > d);
         self.dseq_now = Some(seg.discontinuity_sequence);
         if new_run {
-            let run = self.runs.back().map_or(0, |&(_, run)| run + 1);
-            timeline::remember(&mut self.runs, (self.delivered, run));
+            let run = self.runs.back().map_or(0, |&(_, (run, _))| run + 1);
+            timeline::remember(&mut self.runs, (self.delivered, (run, seg.sequence)));
         }
         let key = self.cipher_for(&seg.key, seg.sequence)?;
         if seg.map != self.map_now {

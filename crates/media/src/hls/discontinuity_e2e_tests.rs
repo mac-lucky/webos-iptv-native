@@ -31,10 +31,15 @@ fn position(s: &Status) -> i64 {
 }
 
 /// Play the programme of `length_s` on to its end: no freeze (the playhead never stands still for
-/// long), the watchdog never needed, and the position goes on past every break to the end.
-fn plays_through_to_the_end(rig: &mut Rig, length_s: i64) {
+/// long), the watchdog never needed, and the position goes on past every break to the end. The
+/// audio codecs declared on the way, in turn.
+fn plays_through_to_the_end(rig: &mut Rig, length_s: i64) -> Vec<String> {
     let (mut last, mut moved_at, mut worst_gap, mut furthest) = (position(&rig.pb.status()), Instant::now(), Duration::ZERO, 0);
+    let mut codecs: Vec<String> = Vec::new();
     let ended = rig.run_until(Duration::from_secs(length_s as u64 + 30), |s, ev| {
+        if !s.media.audio_codec.is_empty() && codecs.last() != Some(&s.media.audio_codec) {
+            codecs.push(s.media.audio_codec.clone());
+        }
         let pos = position(s);
         if pos != last {
             worst_gap = worst_gap.max(moved_at.elapsed());
@@ -48,6 +53,7 @@ fn plays_through_to_the_end(rig: &mut Rig, length_s: i64) {
     assert!(ended, "the programme never ended");
     assert!(furthest >= (length_s - 6) * 1000, "played on past every break to the end: {furthest} ms");
     assert!(worst_gap < Duration::from_secs(3), "no freeze at a break: the playhead stood still for {} ms", worst_gap.as_millis());
+    codecs
 }
 
 /// **Played from its start, it plays through both breaks** ([`plays_through_to_the_end`]).
@@ -281,15 +287,33 @@ fn e2e_live_a_break_begun_by_audio_that_goes_on_moves_its_video_with_the_run() {
 /// FFmpeg, or `None` (with the reason printed) to skip. Written once per test binary, so tests run
 /// side by side never read the segments another one is writing.
 fn programme_change() -> Option<crate::ff::programme_tests::Parts> {
+    static MADE: Fixture = std::sync::OnceLock::new();
+    written_once(&MADE, "programme-change", crate::ff::programme_tests::programme_change)
+}
+
+/// The codec-change fixture (`ff::programme_tests::codec_change`: AAC only, a break with AC-3 5.1
+/// only on other PIDs, AAC only again), as [`programme_change`].
+fn codec_change() -> Option<crate::ff::programme_tests::Parts> {
+    static MADE: Fixture = std::sync::OnceLock::new();
+    written_once(&MADE, "codec-change", crate::ff::programme_tests::codec_change)
+}
+
+type Fixture = std::sync::OnceLock<Result<crate::ff::programme_tests::Parts, String>>;
+
+/// The fixture `write` makes in the e2e fixture directory `name`, once per test binary.
+fn written_once(
+    made: &Fixture,
+    name: &str,
+    write: fn(&std::path::Path) -> Result<crate::ff::programme_tests::Parts, String>,
+) -> Option<crate::ff::programme_tests::Parts> {
     if !booted() {
         return None;
     }
-    static MADE: std::sync::OnceLock<Result<crate::ff::programme_tests::Parts, String>> = std::sync::OnceLock::new();
-    let made = MADE.get_or_init(|| {
-        let dir = target_dir().join("e2e-fixtures/programme-change");
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string()).and_then(|()| crate::ff::programme_tests::programme_change(&dir))
+    let made = made.get_or_init(|| {
+        let dir = target_dir().join("e2e-fixtures").join(name);
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string()).and_then(|()| write(&dir))
     });
-    made.as_ref().map_err(|why| eprintln!("skipped: no programme-change fixture ({why})")).ok().cloned()
+    made.as_ref().map_err(|why| eprintln!("skipped: no {name} fixture ({why})")).ok().cloned()
 }
 
 /// **Live, a break whose programme map moves the video and the audio to other PIDs and changes the
@@ -334,8 +358,8 @@ fn e2e_catchup_plays_through_a_break_that_moves_the_streams_to_other_pids() {
 /// **A programme opened in such a break plays out of it without a restart**, as on the C1 after a
 /// restart had landed in the MP2 + AC-3 programme: the AC-3 5.1 track, which the television decodes
 /// and so plays first, is fed as it is, and the map after the break has only MP2, which it plays
-/// decoded to PCM. The playback reloads in place for that track, as soon as the demuxer, which
-/// reads ahead, meets the break. Break at 18 s of 54 s.
+/// decoded to PCM. The playback reloads in place for that track once the playhead reaches the
+/// break, which the demuxer, reading ahead, met well before. Break at 18 s of 54 s.
 #[test]
 #[ignore]
 fn e2e_catchup_opened_in_a_break_reloads_for_the_audio_after_it() {
@@ -364,8 +388,8 @@ fn e2e_catchup_opened_in_a_break_reloads_for_the_audio_after_it() {
 
 /// **Live, the same: opened in the break, the channel plays on out of it after a Load in place**,
 /// as the C1's second restart in a row showed (MP2 and AC-3 5.1, then MP2 only): the playback
-/// reloads at its live edge for the MP2 instead of failing the source for the watchdog to restart.
-/// Break before sequence 6, about 6 s in; the window ends at about 36 s.
+/// reloads at the break's first segment for the MP2 instead of failing the source for the watchdog
+/// to restart. Break before sequence 6, about 6 s in; the window ends at about 36 s.
 #[test]
 #[ignore]
 fn e2e_live_a_break_to_audio_the_load_cannot_carry_reloads_in_place() {
@@ -395,6 +419,64 @@ fn e2e_live_a_break_to_audio_the_load_cannot_carry_reloads_in_place() {
     assert_eq!(restarts, 0, "the watchdog never fired");
     assert_eq!((s.state, s.media.audio_codec.as_str()), (State::Playing, "mp2"), "playing the MP2 after the break");
     assert!(played_ms >= 20_000, "the playhead went on: {played_ms} ms");
+    rig.stop();
+}
+
+/// **A programme whose break shares none of its audio codecs plays through it and out again**:
+/// AAC only, a break with AC-3 5.1 only, AAC only again, each fed as it is, so each change takes
+/// another Load. The demuxer meets each break seconds before the playhead does; reloaded at the
+/// playhead then, the stream opened before the break, where no track has the new Load's codec,
+/// and the AAC fed under the AC-3 Load met the break again and again. Breaks at 18 s and 54 s of
+/// 72 s.
+#[test]
+#[ignore]
+fn e2e_catchup_plays_through_breaks_that_change_the_audio_codec() {
+    let Some([a, c, b]) = codec_change() else { return };
+    let _serial = tv_base::testlock::serial();
+    let _sink = ClockSink::arm();
+    let o = Origin::spawn();
+    let length_s = 72;
+    let window = format!("/ch13/mono-{PROGRAMME}-{length_s}.m3u8?token=e2e-secret");
+    serve_runs(&o, &window, &[&a[3..], &c[..], &b[..3]]);
+    let mut rig = Rig::new();
+    rig.pb.play_catchup(Catchup { end: PROGRAMME + length_s, ..programme(&o, &window, 0) });
+    assert!(rig.run_until(Duration::from_secs(20), |s, _| s.state == State::Playing), "no picture within 20 s");
+    let codecs = plays_through_to_the_end(&mut rig, length_s);
+    assert_eq!(codecs, ["aac", "ac3", "aac"], "a Load for each programme's audio");
+    rig.stop();
+}
+
+/// **Live, the same**: the channel plays from 18 s before the first break; each break, met by the
+/// demuxer ahead of the playhead, is reloaded for once the playhead reaches it, from its first
+/// segment, wherever the live edge then is. Breaks before sequences 6 and 12.
+#[test]
+#[ignore]
+fn e2e_live_plays_through_breaks_that_change_the_audio_codec() {
+    let Some(parts) = codec_change() else { return };
+    let _serial = tv_base::testlock::serial();
+    let _sink = ClockSink::arm();
+    let o = Origin::spawn();
+    let live = "/ch14/mono.m3u8?token=e2e-secret";
+    serve_live_with_breaks(&o, live, parts.concat(), vec![6, 12]);
+    let mut rig = Rig::new();
+    rig.pb.play_live(&o.url(live), crate::headers::RequestHeaders::none());
+    assert!(rig.run_until(Duration::from_secs(20), |s, _| s.first_frame_ms.is_some()), "no first frame within 20 s");
+    let (pos0, wall0) = (player::playpos_ns(), Instant::now());
+    let mut codecs: Vec<String> = Vec::new();
+    rig.run_until(Duration::from_secs(70), |s, ev| {
+        if !s.media.audio_codec.is_empty() && codecs.last() != Some(&s.media.audio_codec) {
+            codecs.push(s.media.audio_codec.clone());
+        }
+        recovered(ev) > 0
+    });
+    let played_ms = (player::playpos_ns() - pos0) / 1_000_000;
+    let s = rig.pb.status();
+    let restarts = recovered(&rig.events);
+    eprintln!("e2e: live {} s: {:?}, audio {codecs:?}, playhead +{played_ms} ms, {restarts} restarts", wall0.elapsed().as_secs(), s.state);
+    assert_eq!(restarts, 0, "the watchdog never fired");
+    assert_eq!(codecs, ["aac", "ac3", "aac"], "a Load for each programme's audio");
+    assert_eq!(s.state, State::Playing);
+    assert!(played_ms >= 60_000, "the playhead went on through both breaks: {played_ms} ms");
     rig.stop();
 }
 
