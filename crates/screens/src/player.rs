@@ -410,9 +410,9 @@ impl PlayerScreen {
         out: &mut Output,
     ) {
         match key {
-            Key::Right => self.card_at(index + 1, now_ms),
-            Key::Left => self.card_at(index.saturating_sub(1), now_ms),
-            Key::Down | Key::Up => {
+            Key::Right if index + 1 < self.card_list.len() => self.card_at(index + 1, now_ms),
+            Key::Left if index > 0 => self.card_at(index - 1, now_ms),
+            Key::Down | Key::Up | Key::Left | Key::Right => {
                 self.hide_at_ms = Some(now_ms + READ_IDLE_MS);
                 match key {
                     Key::Down if self.card_page + 1 < self.card_pages => self.card_page += 1,

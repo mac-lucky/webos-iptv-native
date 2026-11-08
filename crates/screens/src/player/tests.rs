@@ -891,6 +891,12 @@ fn long_ch_plus_opens_the_programme_card_and_right_steps_on() {
     assert_eq!(c.duration, "30 min");
     assert_eq!(c.progress, Some(0.4));
     assert_eq!(c.category.as_deref(), Some("News"));
+    // Left at the first programme: nothing to draw, and never a zap.
+    let generation = s.generation();
+    let out = short(&mut s, &w, Key::Left, 0);
+    assert!(!out.redraw && out.commands.is_empty(), "{out:?}");
+    assert_eq!(s.generation(), generation);
+    assert_eq!(s.overlay(), Overlay::Card { index: 0 });
     short(&mut s, &w, Key::Right, 0);
     s.key(Key::Right, Press::Long, &w, 0);
     assert_eq!(s.overlay(), Overlay::Card { index: 2 });
