@@ -313,10 +313,12 @@ fn audio_pts(p: &Pushed) -> Vec<i64> {
 }
 
 /// **A programme change that drops the played track and keeps another one from the open**: the
-/// audio goes on in the kept one. The open's map has MP2 `eng` and `pol` on 0x101 and 0x102, `pol`
-/// chosen in the track menu; the break keeps the video and `eng` on their PIDs and drops `pol`;
-/// then the first map again, where `eng` plays on. A track that is not played must still be read,
-/// or no packet of it shows that the played one has gone.
+/// audio goes on in the kept one, and back in the chosen language once its track returns. The
+/// open's map has MP2 `eng` and `pol` on 0x101 and 0x102, `pol` chosen in the track menu; the break
+/// keeps the video and `eng` on their PIDs and drops `pol`; then the first map again, where `pol`
+/// plays, from where `eng` had got to, as fed to a television that decodes it and decoded to PCM. A
+/// track that is not played must still be read, or no packet of it shows that the played one has
+/// gone.
 #[test]
 fn a_programme_change_that_drops_the_played_track_moves_the_audio_to_one_it_keeps() {
     let Some((_g, _ffmpeg)) = gate() else { return };
@@ -330,15 +332,22 @@ fn a_programme_change_that_drops_the_played_track_moves_the_audio_to_one_it_keep
     let o = Origin::spawn();
     let url = archive(&o, &[("x", &x), ("y", &y), ("z", &z)]);
     let length_ms = 3 * PART_S * 1000;
-    let fed = demux_hls_track(&url, "mp2", false, 1);
-    assert!(!SHARED.demux_failed.load(Ordering::Acquire), "the demux did not fail");
-    assert!(span_ms(&fed.video).0 >= length_ms - 1_000, "the video goes on");
-    let (span, step) = span_ms(&audio_pts(&fed));
-    eprintln!("audio: {} AUs over {span} ms, longest step {step} ms", fed.audio.len());
-    assert!(span >= length_ms - 1_000 && step < 1_500, "the audio goes on through both breaks: {span} ms, a step of {step} ms");
-    let mut tracks: Vec<usize> = fed.audio.iter().map(|a| a.0.len()).collect();
-    tracks.dedup();
-    assert_eq!(tracks, [MP2_POL_FRAME, MP2_ENG_FRAME], "pol as chosen, then eng from the break on");
+    for pcm in [false, true] {
+        let fed = demux_hls_track(&url, "mp2", pcm, 1);
+        assert!(!SHARED.demux_failed.load(Ordering::Acquire), "the demux did not fail");
+        assert!(span_ms(&fed.video).0 >= length_ms - 1_000, "the video goes on");
+        let pts = audio_pts(&fed);
+        let (span, step) = span_ms(&pts);
+        let back = pts.windows(2).map(|w| w[1] - w[0]).min().unwrap_or(0) / 1_000_000;
+        eprintln!("audio (pcm {pcm}): {} AUs over {span} ms, steps from {back} to {step} ms", fed.audio.len());
+        assert!(span >= length_ms - 1_000 && step < 1_500, "the audio goes on through both breaks: {span} ms, a step of {step} ms");
+        assert!(back >= 0, "no audio fed twice where the track changed: a step of {back} ms");
+        if !pcm {
+            let mut tracks: Vec<usize> = fed.audio.iter().map(|a| a.0.len()).collect();
+            tracks.dedup();
+            assert_eq!(tracks, [MP2_POL_FRAME, MP2_ENG_FRAME, MP2_POL_FRAME], "pol as chosen, eng in the break, pol once it is back");
+        }
+    }
 }
 
 /// **A track the break keeps is not taken for gone while its muxer holds its audio back**: a muxer

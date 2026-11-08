@@ -2133,6 +2133,11 @@ struct Follow {
     /// Another audio stream plays in a run the played one has no packet in: that run, and the pts
     /// of the first such packet.
     other_audio: Option<(u64, i64)>,
+    /// The run the audio last went back to the language chosen at open in, or tried to.
+    lang_run: Option<u64>,
+    /// Where the audio fed had got to when it last moved, which the new track's first frames may
+    /// repeat.
+    fed_to: Option<i64>,
 }
 
 /// How long other audio streams play in a run without the played one before it has left the
@@ -2163,6 +2168,29 @@ impl Follow {
                 false
             }
         }
+    }
+
+    /// A packet in `run` of another audio stream in the language chosen at open, while the played
+    /// one is in another (a programme change moved it there): the audio goes back, tried once a run.
+    fn back_to_lang(&mut self, run: u64) -> bool {
+        let back = self.lang_run.is_none_or(|r| run > r);
+        if back {
+            self.lang_run = Some(run);
+        }
+        back
+    }
+
+    /// An AU of the played audio at `pts`: whether it repeats what the track before the last move
+    /// had fed. Going back to the chosen language both tracks play the run, so the new one's first
+    /// frames lie up to where the old one got to; a frame further back than [`AUDIO_GONE_NS`], as
+    /// far as a muxer holds a track back, is no repeat. The first AU that is not one ends the check.
+    fn repeats(&mut self, pts: i64) -> bool {
+        let Some(to) = self.fed_to else { return false };
+        let repeat = pts <= to && to.saturating_sub(pts) < AUDIO_GONE_NS;
+        if !repeat {
+            self.fed_to = None;
+        }
+        repeat
     }
 }
 
@@ -2217,6 +2245,30 @@ mod follow_tests {
         assert_eq!(follow_audio(&[t(3, "pol", false), t(4, "", true)], Some("pol")), Some(4), "only one that can be fed");
         assert_eq!(follow_audio(&[t(3, "pol", false)], Some("pol")), None);
         assert_eq!(follow_audio(&[], Some("pol")), None);
+    }
+
+    #[test]
+    fn the_audio_goes_back_to_its_language_once_a_run() {
+        let mut f = Follow::default();
+        assert!(f.back_to_lang(2));
+        assert!(!f.back_to_lang(2), "tried in this run");
+        assert!(!f.back_to_lang(1), "a packet left over from a run before");
+        assert!(f.back_to_lang(3));
+    }
+
+    #[test]
+    fn after_a_move_the_frames_up_to_where_the_audio_had_got_repeat_it() {
+        const MS: i64 = 1_000_000;
+        let mut f = Follow::default();
+        assert!(!f.repeats(0), "no move");
+        f.fed_to = Some(10_000 * MS);
+        assert!(f.repeats(9_600 * MS));
+        assert!(f.repeats(10_000 * MS), "the last frame fed again");
+        assert!(!f.repeats(10_024 * MS), "past it");
+        assert!(!f.repeats(9_700 * MS), "the check ended at the first frame past it");
+        f.fed_to = Some(10_000 * MS);
+        assert!(!f.repeats(10_000 * MS - AUDIO_GONE_NS), "further back than a muxer holds a track: no repeat");
+        assert_eq!(f.fed_to, None);
     }
 }
 
@@ -4263,6 +4315,7 @@ pub fn demux(
                 } else {
                     (None, 0)
                 };
+                let mut played_lang = audio_lang.clone();
                 // The video lane's pre-audio headroom (`PreAudioHeadroom`): granted at the first
                 // video push that WOULD PARK at the base cap with no audio yet, held until the
                 // engine's audio lead-in has been pushed, then released as the consumer drains.
@@ -4364,20 +4417,35 @@ pub fn demux(
                         } else if (*cp).codec_type == AVMEDIA_TYPE_VIDEO && (*cp).codec_id == (*vcp).codec_id && follow.video_moved(run) {
                             crate::player::log(&format!("ff: the programme changed (run {run}): video #{vi} -> #{si}"));
                             (vi, vst) = (si, st);
-                        } else if ai >= 0
-                            && FEED_AUDIO.load(Ordering::Relaxed)
-                            && (*cp).codec_type == AVMEDIA_TYPE_AUDIO
-                            && follow.audio_gone(run, pts_ns_opt(pkt, st))
-                        {
-                            // The new programme's tracks: the audio streams with a packet in this run.
+                        } else if ai >= 0 && FEED_AUDIO.load(Ordering::Relaxed) && (*cp).codec_type == AVMEDIA_TYPE_AUDIO {
+                            let soft = pcm.is_some();
+                            // A track this Load can be fed: of the fed codec, or one the PCM path decodes.
+                            let feeds = |c: *mut AVCodecParameters| {
+                                if soft {
+                                    adec::is_soft(&std::ffi::CStr::from_ptr(avcodec_get_name((*c).codec_id)).to_string_lossy())
+                                } else {
+                                    (*c).codec_id == audio_codec
+                                }
+                            };
+                            let chosen = |l: Option<&str>| l.zip(audio_lang.as_deref()).is_some_and(|(l, c)| l.eq_ignore_ascii_case(c));
+                            let gone = follow.audio_gone(run, pts_ns_opt(pkt, st));
+                            // Where the audio may go (stream, language, whether it can be fed): the
+                            // new programme's tracks, the audio streams with a packet in this run,
+                            // once the played one has gone; this track, in the language chosen at
+                            // open, while the played one is not (a programme change moved it).
                             let mut tracks = Vec::new();
-                            for i in 0..(*fmt).nb_streams as c_int {
-                                let s = *(*fmt).streams.add(i as usize);
-                                let c = stream_codecpar(s);
-                                if (*c).codec_type == AVMEDIA_TYPE_AUDIO && timeline.stream_run(i) == Some(run) {
-                                    let name = std::ffi::CStr::from_ptr(avcodec_get_name((*c).codec_id)).to_string_lossy();
-                                    let fed = if pcm.is_some() { adec::is_soft(&name) } else { (*c).codec_id == audio_codec };
-                                    tracks.push((i, stream_language(s), fed));
+                            if gone {
+                                for i in 0..(*fmt).nb_streams as c_int {
+                                    let s = *(*fmt).streams.add(i as usize);
+                                    let c = stream_codecpar(s);
+                                    if (*c).codec_type == AVMEDIA_TYPE_AUDIO && timeline.stream_run(i) == Some(run) {
+                                        tracks.push((i, stream_language(s), feeds(c)));
+                                    }
+                                }
+                            } else if audio_lang.is_some() && !chosen(played_lang.as_deref()) && feeds(cp) {
+                                let lang = stream_language(st);
+                                if chosen(lang.as_deref()) && follow.back_to_lang(run) {
+                                    tracks.push((si, lang, true));
                                 }
                             }
                             let opened = follow_audio(&tracks, audio_lang.as_deref()).map(|n| {
@@ -4391,21 +4459,30 @@ pub fn demux(
                             });
                             match opened {
                                 Some((n, acp, Ok(()))) => {
+                                    let lang = stream_language(*(*fmt).streams.add(n as usize));
                                     crate::player::log(&format!(
-                                        "ff: the programme changed (run {run}): audio #{ai} -> #{n} ({}, {}) of {} tracks",
+                                        "ff: {} (run {run}): audio #{ai} -> #{n} ({}, {}) of {} tracks",
+                                        if gone { "the programme changed" } else { "the audio goes back to its language" },
                                         std::ffi::CStr::from_ptr(avcodec_get_name((*acp).codec_id)).to_string_lossy(),
-                                        stream_language(*(*fmt).streams.add(n as usize)).as_deref().unwrap_or("und"),
+                                        lang.as_deref().unwrap_or("und"),
                                         tracks.len()
                                     ));
                                     aac_adts = if (*acp).codec_id == AV_CODEC_ID_AAC { adts_params(acp) } else { None };
                                     audio_clock = AudioClock::default();
                                     ai = n;
+                                    played_lang = lang;
                                     follow.audio_run = run;
+                                    follow.fed_to = Some(SHARED.audio_tail_ns.load(Ordering::Acquire));
                                     // The new track begins AUDIO_GONE_NS into the run, well past
-                                    // where the old one stopped: measured from there, it would
-                                    // place the run again and move the video back.
+                                    // where the old one stopped, or (back to the language) where
+                                    // the old one began the run: measured from where the old one
+                                    // got to, it would place the run again and move the video.
                                     timeline.forget(1);
                                 }
+                                Some((_, _, Err(e))) if !gone => {
+                                    crate::player::log(&format!("ff: the audio stays on #{ai}: #{si} in its language does not open ({e})"));
+                                }
+                                _ if !gone => {}
                                 // Nothing the pipeline was set up for: fail the source, so the
                                 // playback restarts and decides this programme's audio afresh.
                                 failed => {
@@ -4587,6 +4664,9 @@ pub fn demux(
                         };
                         let mut lane_closed = false;
                         for a in frames {
+                            if follow.repeats(a.pts_ns) {
+                                continue;
+                            }
                             if headroom.first_audio_ns.is_none() {
                                 SHARED.first_audio_pts.store(a.pts_ns, Ordering::Release);
                             }
@@ -4613,6 +4693,10 @@ pub fn demux(
                         let raw_audio: &[u8] = if (*pkt).data.is_null() { &[] } else { std::slice::from_raw_parts((*pkt).data, (*pkt).size.max(0) as usize) };
                         let frame_ns = adts_frame_ns(raw_audio).or_else(|| aac_adts.and_then(|(fi, _)| aac_frame_ns(fi))).unwrap_or(0);
                         let pts = audio_clock.stamp(pts_ns_opt(pkt, ast), frame_ns);
+                        if follow.repeats(pts) {
+                            av_packet_unref(pkt);
+                            continue;
+                        }
                         // MPEG-TS AAC is ADTS already: never wrap it in a second header.
                         let already_adts = raw_audio.len() >= 2 && raw_audio[0] == 0xFF && raw_audio[1] & 0xF6 == 0xF0;
                         if headroom.first_audio_ns.is_none() {
