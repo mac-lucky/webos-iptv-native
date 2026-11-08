@@ -362,6 +362,42 @@ fn e2e_catchup_opened_in_a_break_reloads_for_the_audio_after_it() {
     rig.stop();
 }
 
+/// **Live, the same: opened in the break, the channel plays on out of it after a Load in place**,
+/// as the C1's second restart in a row showed (MP2 and AC-3 5.1, then MP2 only): the playback
+/// reloads at its live edge for the MP2 instead of failing the source for the watchdog to restart.
+/// Break before sequence 6, about 6 s in; the window ends at about 36 s.
+#[test]
+#[ignore]
+fn e2e_live_a_break_to_audio_the_load_cannot_carry_reloads_in_place() {
+    let Some([_, c, b]) = programme_change() else { return };
+    let _serial = tv_base::testlock::serial();
+    let _sink = ClockSink::arm();
+    let o = Origin::spawn();
+    let live = "/ch12/mono.m3u8?token=e2e-secret";
+    serve_live_with_breaks(&o, live, [c, b].concat(), vec![6]);
+    let mut rig = Rig::new();
+    rig.pb.play_live(&o.url(live), crate::headers::RequestHeaders::none());
+    let mut first = String::new();
+    let framed = rig.run_until(Duration::from_secs(20), |s, _| {
+        if first.is_empty() {
+            first.clone_from(&s.media.audio_codec);
+        }
+        s.first_frame_ms.is_some()
+    });
+    assert!(framed, "no first frame within 20 s");
+    assert_eq!(first, "ac3", "the break's AC-3 is declared first");
+    let pos0 = player::playpos_ns();
+    rig.run_until(Duration::from_secs(28), |_, ev| recovered(ev) > 0);
+    let played_ms = (player::playpos_ns() - pos0) / 1_000_000;
+    let s = rig.pb.status();
+    let restarts = recovered(&rig.events);
+    eprintln!("e2e: live after the break: {:?}, audio {}, playhead +{played_ms} ms, {restarts} restarts", s.state, s.media.audio_codec);
+    assert_eq!(restarts, 0, "the watchdog never fired");
+    assert_eq!((s.state, s.media.audio_codec.as_str()), (State::Playing, "mp2"), "playing the MP2 after the break");
+    assert!(played_ms >= 20_000, "the playhead went on: {played_ms} ms");
+    rig.stop();
+}
+
 /// An archive playlist at `path` of `runs`, an `EXT-X-DISCONTINUITY` between two, its segments
 /// served beside it.
 fn serve_runs(o: &Origin, path: &str, runs: &[&[Vec<u8>]]) {
