@@ -2136,9 +2136,10 @@ struct Follow {
 }
 
 /// How long other audio streams play in a run without the played one before it has left the
-/// programme: longer than a PES of several frames (a muxer's spacing of two streams' packets),
-/// shorter than the timeline's `CONTINUOUS_NS`, so the audio still continues across the gap.
-const AUDIO_GONE_NS: i64 = 300_000_000;
+/// programme: longer than a muxer holds one track's audio back to fill a PES while it writes
+/// another one a frame at a time (ffmpeg: up to half its `-muxdelay`, 350 ms by default), so a
+/// track the new map keeps has its first PES of the run read by then. A move misses that much audio.
+const AUDIO_GONE_NS: i64 = 1_000_000_000;
 
 impl Follow {
     /// A packet of another video stream of the played codec, in `run`: the video moved there when
@@ -4168,7 +4169,11 @@ pub fn demux(
                 ));
 
                 for i in 0..(*fmt).nb_streams as c_int {
-                    set_stream_discard(*streams.add(i as usize), discard_for(i, vi, ai));
+                    let s = *streams.add(i as usize);
+                    // HLS reads every audio track: a programme change may drop the played one and
+                    // keep another, and only its packets show `Follow` that the played one is gone.
+                    let audio = is_hls && ai >= 0 && (*stream_codecpar(s)).codec_type == AVMEDIA_TYPE_AUDIO;
+                    set_stream_discard(s, if audio { AVDISCARD_DEFAULT } else { discard_for(i, vi, ai) });
                 }
                 // The subtitle tracks, published, read and decoded (their discard lifted).
                 let mut subs = subdec::Reader::open(fmt);
@@ -4388,6 +4393,10 @@ pub fn demux(
                                     audio_clock = AudioClock::default();
                                     ai = n;
                                     follow.audio_run = run;
+                                    // The new track begins AUDIO_GONE_NS into the run, well past
+                                    // where the old one stopped: measured from there, it would
+                                    // place the run again and move the video back.
+                                    timeline.forget(1);
                                 }
                                 // Nothing the pipeline was set up for: fail the source, so the
                                 // playback restarts and decides this programme's audio afresh.

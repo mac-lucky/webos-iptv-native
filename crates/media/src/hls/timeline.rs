@@ -195,6 +195,12 @@ impl Timeline {
         self.last_runs.iter().find(|(s, _)| *s == stream).map(|&(_, run)| run)
     }
 
+    /// Forget where steering stream `stream` has got to: it goes on in another track, whose first
+    /// packet is measured from where the furthest stream has got to, as a stream new to the run.
+    pub fn forget(&mut self, stream: i32) {
+        self.reach.retain(|r| r.stream != stream);
+    }
+
     /// The shift for a packet of `run` from a steering stream (the video, the audio played) at
     /// `ts_ns` lasting `dur_ns` (0: unknown). The first one of a run past the newest begins it.
     pub fn place(&mut self, run: u64, stream: i32, ts_ns: i64, dur_ns: i64) -> i64 {
@@ -490,6 +496,25 @@ mod tests {
         }
         // Audio appears only after the break, 30 s back.
         assert_eq!(tl.place(1, A, -25_000 * MS, 20 * MS), 32_000 * MS);
+    }
+
+    /// The audio goes on in another track a second into a run that has not settled yet: forgotten,
+    /// its first packet there is measured from where the video is and leaves the run as it is;
+    /// measured from where the old track stopped, it would shift the run, and the video, back.
+    #[test]
+    fn a_stream_forgotten_for_another_track_goes_on_from_the_furthest_stream() {
+        for forget in [true, false] {
+            let mut tl = Timeline::default();
+            let _ = play(&mut tl, 0, 0, 10_000);
+            for t in (10_000..10_720).step_by(40) {
+                assert_eq!(tl.place(1, V, t * MS, 40 * MS), 0, "the run goes on");
+            }
+            if forget {
+                tl.forget(A);
+            }
+            let shift = tl.place(1, A, 11_100 * MS, 20 * MS);
+            assert_eq!(shift == 0, forget, "forgotten: {forget}, the run shifted {} ms", shift / MS);
+        }
     }
 
     #[test]

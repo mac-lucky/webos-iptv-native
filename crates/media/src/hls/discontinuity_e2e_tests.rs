@@ -278,14 +278,18 @@ fn e2e_live_a_break_begun_by_audio_that_goes_on_moves_its_video_with_the_run() {
 
 /// The programme-change fixture (`ff::programme_tests::programme_change`: a break whose programme
 /// map moves the video and the audio to other PIDs and has three audio tracks for one) and a booted
-/// FFmpeg, or `None` (with the reason printed) to skip.
+/// FFmpeg, or `None` (with the reason printed) to skip. Written once per test binary, so tests run
+/// side by side never read the segments another one is writing.
 fn programme_change() -> Option<crate::ff::programme_tests::Parts> {
     if !booted() {
         return None;
     }
-    let dir = target_dir().join("e2e-fixtures/programme-change");
-    let made = std::fs::create_dir_all(&dir).map_err(|e| e.to_string()).and_then(|()| crate::ff::programme_tests::programme_change(&dir));
-    made.map_err(|why| eprintln!("skipped: no programme-change fixture ({why})")).ok()
+    static MADE: std::sync::OnceLock<Result<crate::ff::programme_tests::Parts, String>> = std::sync::OnceLock::new();
+    let made = MADE.get_or_init(|| {
+        let dir = target_dir().join("e2e-fixtures/programme-change");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string()).and_then(|()| crate::ff::programme_tests::programme_change(&dir))
+    });
+    made.as_ref().map_err(|why| eprintln!("skipped: no programme-change fixture ({why})")).ok().cloned()
 }
 
 /// **Live, a break whose programme map moves the video and the audio to other PIDs and changes the
