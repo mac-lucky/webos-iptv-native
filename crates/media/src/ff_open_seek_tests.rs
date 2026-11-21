@@ -258,6 +258,53 @@ fn probe(url: &str) -> Result<crate::stream::ProbedStreams, crate::stream::Probe
     super::probe::probe(url, &crate::headers::RequestHeaders::none(), &io)
 }
 
+/// Real VOD containers must be recognized by the bundled build, not only by the host's full
+/// FFmpeg used to generate the files. The release's IPTV-only component list omitted both.
+#[test]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+fn matroska_vod_is_recognized_with_video_and_audio() {
+    let _g = tv_base::testlock::serial();
+    let Some((_s, file)) = fixture("vod-matroska") else { return };
+    let _ffmpeg = super::test_support::bind_host_ffmpeg();
+    let server = Debrid::start(file, |_| Answer::File);
+    let streams = probe(&server.url()).expect("the bundled build must open Matroska VOD");
+    let video = streams.video.expect("Matroska video");
+    assert_eq!(video.codec, "h264");
+    assert_eq!((video.width, video.height), (320, 240));
+    assert!(streams.audio.iter().any(|audio| audio.codec == "aac"));
+    assert!(streams.duration_ns >= 9_000_000_000);
+    let run = demux_run(server.url(), &[], 25);
+    assert!(!run.demux_failed);
+    assert!(run.video_pts.len() >= 25, "Matroska must deliver video packets");
+}
+
+#[test]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+fn avi_vod_is_recognized_with_video_and_audio() {
+    let _g = tv_base::testlock::serial();
+    let Some((scratch, _)) = fixture("vod-avi") else { return };
+    let out = scratch.0.join("film.avi");
+    let status = Command::new("ffmpeg")
+        .args(["-nostdin", "-v", "error", "-y", "-i"])
+        .arg(scratch.0.join("film.mkv"))
+        .args(["-map", "0:v", "-map", "0:a", "-map_chapters", "-1", "-c", "copy", "-bsf:v", "h264_mp4toannexb"])
+        .arg(&out)
+        .status()
+        .expect("remux the synthetic fixture to AVI");
+    assert!(status.success(), "ffmpeg could not write the AVI fixture");
+    let _ffmpeg = super::test_support::bind_host_ffmpeg();
+    let server = Debrid::start(Arc::new(std::fs::read(out).unwrap()), |_| Answer::File);
+    let streams = probe(&server.url()).expect("the bundled build must open AVI VOD");
+    let video = streams.video.expect("AVI video");
+    assert_eq!(video.codec, "h264");
+    assert_eq!((video.width, video.height), (320, 240));
+    assert!(streams.audio.iter().any(|audio| audio.codec == "aac"));
+    assert!(streams.duration_ns >= 9_000_000_000);
+    let run = demux_run(server.url(), &[], 25);
+    assert!(!run.demux_failed);
+    assert!(run.video_pts.len() >= 25, "AVI must deliver video packets");
+}
+
 #[test]
 #[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
 fn a_probe_whose_first_hop_serves_an_error_page_retries_once_and_opens() {

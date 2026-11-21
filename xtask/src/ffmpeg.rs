@@ -23,9 +23,9 @@ const URL: &str = "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz";
 const SHA256: &str = "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e";
 
 /// LGPL-2.1-or-later only: no `--enable-gpl`/`--enable-nonfree`, and `--disable-autodetect` keeps
-/// out every external library. Only what live IPTV needs: MPEG-TS and fMP4 HLS segments, raw
-/// audio segments, and elementary H.264/HEVC, demuxed with the parsers filling the stream
-/// parameters; plus the IPTV audio decoders and libswresample for the software decode -> PCM
+/// out every external library. Live IPTV and VOD containers: MPEG-TS and fMP4 HLS segments,
+/// Matroska/WebM and AVI files, raw audio segments, and elementary H.264/HEVC, demuxed with
+/// the parsers filling the stream parameters; plus the IPTV audio decoders and libswresample for the software decode -> PCM
 /// path: the C1 plays nothing for MP2 declared as MP3, and on webOS 10+ (the C5) the pipeline
 /// plays only PCM. And DVB subtitles, native and LGPL: the parser that takes the PES data header
 /// off each packet (the decoder refuses it) and the decoder, whose bitmaps the app draws over the
@@ -52,7 +52,7 @@ const CONFIGURE: &[&str] = &[
     "--disable-autodetect",
     "--enable-swresample",
     "--enable-protocol=file",
-    "--enable-demuxer=mpegts,mov,aac,ac3,eac3,mp3,h264,hevc",
+    "--enable-demuxer=mpegts,mov,matroska,avi,aac,ac3,eac3,mp3,h264,hevc",
     "--enable-parser=h264,hevc,aac,aac_latm,ac3,mpegaudio,dvbsub",
     "--enable-bsf=h264_mp4toannexb,hevc_mp4toannexb,extract_extradata",
     "--enable-decoder=mp2,mp3,aac,aac_latm,ac3,eac3,dvbsub",
