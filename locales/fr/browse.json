@@ -1,0 +1,49 @@
+{
+  "browse.action.more": {
+    "value": "PLUS",
+    "description": "browse action more"
+  },
+  "browse.diagnostics.dv_forced": {
+    "value": "forcé",
+    "description": "Diagnostics: the Dolby Vision answer was forced by a test override rather than asked of the TV."
+  },
+  "browse.diagnostics.dv_no": {
+    "value": "non",
+    "description": "Diagnostics header: the TV does not support Dolby Vision."
+  },
+  "browse.diagnostics.dv_supported": {
+    "value": "pris en charge",
+    "description": "Diagnostics: the TV reports Dolby Vision support."
+  },
+  "browse.diagnostics.dv_unsupported": {
+    "value": "non pris en charge",
+    "description": "Diagnostics: the TV reports no Dolby Vision support."
+  },
+  "browse.diagnostics.dv_yes": {
+    "value": "oui",
+    "description": "Diagnostics header: the TV supports Dolby Vision."
+  },
+  "browse.diagnostics.unknown": {
+    "value": "inconnu",
+    "description": "Diagnostics panel: unknown"
+  },
+  "browse.diagnostics.unknown_os": {
+    "value": "webOS inconnu — os_info.json illisible",
+    "description": "Diagnostics panel: unknown os"
+  },
+  "browse.person.filmography": {
+    "value": "Filmographie",
+    "description": "browse person filmography"
+  },
+  "browse.search.items": {
+    "value": {
+      "one": "{count} élément",
+      "many": "{count} éléments",
+      "other": "{count} éléments"
+    },
+    "args": {
+      "count": "i64"
+    },
+    "description": "Number of items inside one collection, shared by search results, collection tiles and the collection page"
+  }
+}

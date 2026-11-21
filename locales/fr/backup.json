@@ -1,0 +1,46 @@
+{
+  "backup.title": {
+    "value": "Sauvegarde",
+    "description": "Settings page under General: export and import of settings and favorites"
+  },
+  "backup.export": {
+    "value": "Exporter les réglages",
+    "description": "Settings row: save settings and favorites to the backup file on this TV"
+  },
+  "backup.import": {
+    "value": "Importer les réglages",
+    "description": "Settings row: restore settings and favorites from the backup file on this TV"
+  },
+  "backup.import_question": {
+    "value": "Remplacer les réglages et les favoris ?",
+    "description": "Settings page title: confirm that an import replaces the current settings and favorites"
+  },
+  "backup.import_confirm": {
+    "value": "Importer et remplacer",
+    "description": "Settings row: confirm the import"
+  },
+  "backup.exported": {
+    "value": "Réglages exportés",
+    "description": "Toast: the backup file was written"
+  },
+  "backup.export_failed": {
+    "value": "Impossible d’exporter les réglages",
+    "description": "Toast: the backup file could not be written"
+  },
+  "backup.imported": {
+    "value": "Réglages importés",
+    "description": "Toast: settings and favorites were restored from the backup file"
+  },
+  "backup.none": {
+    "value": "Aucune sauvegarde sur cette TV",
+    "description": "Toast: there is no backup file to import"
+  },
+  "backup.newer": {
+    "value": "La sauvegarde provient d’une version plus récente",
+    "description": "Toast: the backup file was written by a newer app version and is not read"
+  },
+  "backup.invalid": {
+    "value": "Le fichier de sauvegarde est invalide",
+    "description": "Toast: the backup file is damaged or holds a value the app does not accept; nothing was changed"
+  }
+}

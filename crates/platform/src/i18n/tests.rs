@@ -1,4 +1,24 @@
 use super::*;
+
+#[test]
+fn french_is_selectable_and_follows_the_tv_language() {
+    assert_eq!(Preference::from_tag("fr"), Preference::Fr);
+    assert!(Preference::ALL.contains(&Preference::Fr));
+    assert_eq!(Preference::Fr.native_name(), "Français");
+    for tag in ["fr", "fr-FR", "fr-CA", "fr_FR"] {
+        let cx = LocaleContext::resolve(Preference::System, Some(tag), None, None, None);
+        assert_eq!(cx.language(), Language::Fr);
+        assert_eq!(msg::common_settings_in(&cx), "Réglages");
+        assert_eq!(msg::nav_epg_in(&cx), "Guide TV");
+    }
+    let cx = LocaleContext::resolve(Preference::Fr, None, None, None, None);
+    assert_eq!(cx.format_locale(), "fr-FR");
+    assert_eq!(cx.decimal(45, 1), "4,5");
+    assert_eq!(cx.date(2026, 11, 21).as_deref(), Some("21/11/2026"));
+    assert_eq!(msg::library_channel_count_in(&cx, 1), "1 chaîne");
+    assert!(msg::library_channel_count_in(&cx, 2).ends_with("chaînes"));
+    assert!(msg::library_channel_count_in(&cx, 1_000_000).ends_with("chaînes"));
+}
 #[test]
 fn the_webos_release_line_reads_unknown_rather_than_inventing_a_release() {
     let known = crate::tv::device::Info { release: "4.10.2".into(), major: 4, ..Default::default() };

@@ -1,0 +1,82 @@
+{
+  "parental.change_pin": {
+    "value": "Changer le code PIN",
+    "description": "Parental control row: set a new PIN"
+  },
+  "parental.channel_locked": {
+    "value": "Chaîne verrouillée",
+    "description": "Toast after locking a channel"
+  },
+  "parental.channel_unlocked": {
+    "value": "Chaîne déverrouillée",
+    "description": "Toast after removing a channel's lock"
+  },
+  "parental.confirm_pin": {
+    "value": "Confirmez le nouveau code PIN",
+    "description": "PIN dialog title: confirm the new PIN"
+  },
+  "parental.enter_pin": {
+    "value": "Saisissez le code PIN",
+    "description": "PIN dialog title: the parental PIN is needed"
+  },
+  "parental.full": {
+    "value": "Trop d’éléments verrouillés",
+    "description": "Toast: the lock list has no room for another entry"
+  },
+  "parental.group_locked": {
+    "value": "Groupe verrouillé",
+    "description": "Toast after locking a group"
+  },
+  "parental.group_unlocked": {
+    "value": "Groupe déverrouillé",
+    "description": "Toast after removing a group's lock"
+  },
+  "parental.hint": {
+    "value": "Touches numériques, ou Haut et Bas puis OK",
+    "description": "PIN dialog: how to type the digits"
+  },
+  "parental.lock_channel": {
+    "value": "Verrouiller la chaîne",
+    "description": "Channel menu action: the channel needs the PIN to play"
+  },
+  "parental.lock_group": {
+    "value": "Verrouiller le groupe",
+    "description": "Group menu action: the group needs the PIN to open"
+  },
+  "parental.locked_channels": {
+    "value": "Chaînes verrouillées",
+    "description": "Setting: channels that need the PIN"
+  },
+  "parental.locked_groups": {
+    "value": "Groupes verrouillés",
+    "description": "Setting: groups that need the PIN"
+  },
+  "parental.mismatch": {
+    "value": "Les codes PIN ne correspondent pas",
+    "description": "PIN dialog: the confirmation differed from the new PIN"
+  },
+  "parental.new_pin": {
+    "value": "Saisissez un nouveau code PIN",
+    "description": "PIN dialog title: choose the new PIN"
+  },
+  "parental.pin_changed": {
+    "value": "Code PIN modifié",
+    "description": "Toast after the PIN was changed"
+  },
+  "parental.title": {
+    "value": "Contrôle parental",
+    "description": "Settings section: PIN and locks"
+  },
+  "parental.unlock_channel": {
+    "value": "Déverrouiller la chaîne",
+    "description": "Channel menu action: remove the channel's lock"
+  },
+  "parental.unlock_group": {
+    "value": "Déverrouiller le groupe",
+    "description": "Group menu action: remove the group's lock"
+  },
+  "parental.wrong_pin": {
+    "value": "Code PIN incorrect, réessayez",
+    "description": "PIN dialog: the digits were not the PIN"
+  }
+}

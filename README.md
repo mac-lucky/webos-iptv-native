@@ -16,7 +16,7 @@ The app ships no channels or playlists. Add an M3U playlist from a provider you 
 - movies and series sections for playlists that carry VOD
 - DVB and WebVTT subtitles, audio track selection, picture in picture
 - programme reminders, channel renaming, a parental PIN, settings backup, accent colours
-- English and Polish
+- English, Polish and French
 
 It is developed on an LG C1 (webOS 6) and an LG C5 (webOS 25). Older TVs are untested.
 

@@ -1,0 +1,68 @@
+{
+  "playback.audio_offset": {
+    "value": "Décalage audio",
+    "description": "Player menu row and its page: shifts this channel's sound against the picture"
+  },
+  "playback.default_audio_offset": {
+    "value": "Décalage audio par défaut",
+    "description": "Settings > Playback row: the audio offset of every channel without its own"
+  },
+  "playback.display_16_9": {
+    "value": "16:9",
+    "description": "Display mode: the picture shown at 16:9"
+  },
+  "playback.display_4_3": {
+    "value": "4:3",
+    "description": "Display mode: the picture shown at 4:3"
+  },
+  "playback.display_fill": {
+    "value": "Remplir",
+    "description": "Display mode: the screen covered, the overhang cropped"
+  },
+  "playback.display_mode": {
+    "value": "Format d’image",
+    "description": "Player menu row and Settings > Appearance > Player row: how the picture fills the screen"
+  },
+  "playback.display_normal": {
+    "value": "Normal",
+    "description": "Display mode: the picture's own aspect, fitted inside the screen"
+  },
+  "playback.sleep_cancelled": {
+    "value": "Minuterie désactivée",
+    "description": "Toast: the sleep timer was turned off"
+  },
+  "playback.sleep_done": {
+    "value": "La minuterie a arrêté la lecture",
+    "description": "Toast: the sleep timer ran out and playback stopped"
+  },
+  "playback.sleep_left": {
+    "value": {
+      "one": "Encore {count} min",
+      "many": "Encore {count} min",
+      "other": "Encore {count} min"
+    },
+    "args": {
+      "count": "i64"
+    },
+    "description": "Player menu value of the sleep timer row: minutes until playback stops"
+  },
+  "playback.sleep_off": {
+    "value": "Désactivée",
+    "description": "Sleep timer option and row value: no timer"
+  },
+  "playback.sleep_set": {
+    "value": "Arrêt de la lecture dans {minutes} min",
+    "args": {
+      "minutes": "i64"
+    },
+    "description": "Toast: a sleep timer was set"
+  },
+  "playback.sleep_soon": {
+    "value": "Arrêt de la lecture dans une minute",
+    "description": "Toast one minute before the sleep timer stops playback"
+  },
+  "playback.sleep_timer": {
+    "value": "Minuterie d’arrêt",
+    "description": "Player menu row and its page: stop playback after a while"
+  }
+}

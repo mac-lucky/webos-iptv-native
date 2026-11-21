@@ -210,9 +210,10 @@ fn translation(v: &Value) -> &Value {
 /// The shipped catalogs in `Language` order: the `locales/` directory, the `Language` variant and
 /// the plural categories CLDR gives the language's whole numbers, each of which a plural message
 /// must spell out. English is first: it is the source catalog and carries the context.
-pub const LOCALES: [(&str, &str, &[&str]); 2] = [
+pub const LOCALES: [(&str, &str, &[&str]); 3] = [
     ("en", "En", &["one", "other"]),
     ("pl", "Pl", &["one", "few", "many", "other"]),
+    ("fr", "Fr", &["one", "many", "other"]),
 ];
 pub fn compile(catalogs: &[BTreeMap<String, Value>; LOCALES.len()]) -> Result<String, String> {
     let keys: BTreeSet<_> = catalogs[0].keys().collect();
@@ -411,19 +412,24 @@ pub fn compile(catalogs: &[BTreeMap<String, Value>; LOCALES.len()]) -> Result<St
     Ok(out)
 }
 pub fn build(root: &Path, out: &Path) -> Result<(), String> {
-    let catalogs = [read_locale(root, LOCALES[0].0)?, read_locale(root, LOCALES[1].0)?];
+    let catalogs = [
+        read_locale(root, LOCALES[0].0)?,
+        read_locale(root, LOCALES[1].0)?,
+        read_locale(root, LOCALES[2].0)?,
+    ];
     std::fs::write(out.join("messages.rs"), compile(&catalogs)?).map_err(|e| e.to_string())
 }
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn catalogs() -> [BTreeMap<String, Value>; 2] {
+    fn catalogs() -> [BTreeMap<String, Value>; 3] {
         [
             BTreeMap::from([(
                 "test.label".into(),
                 serde_json::json!({"value":"Hello {name}","args":{"name":"str"},"description":"Greeting"}),
             )]),
             BTreeMap::from([("test.label".into(), serde_json::json!("Cze\u{15b}\u{107} {name}"))]),
+            BTreeMap::from([("test.label".into(), serde_json::json!("Bonjour {name}"))]),
         ]
     }
     #[test]
@@ -474,7 +480,19 @@ mod tests {
             "test.label".into(),
             serde_json::json!({"one":"{count}","few":"{count}","many":"{count}","other":"{count}"}),
         );
+        cs[2].insert(
+            "test.label".into(),
+            serde_json::json!({"one":"{count}","many":"{count}","other":"{count}"}),
+        );
         assert!(compile(&cs).is_ok());
+        let mut missing_french_plural = cs.clone();
+        missing_french_plural[2]
+            .get_mut("test.label")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove("many");
+        assert!(compile(&missing_french_plural).is_err());
         cs[1]
             .get_mut("test.label")
             .unwrap()

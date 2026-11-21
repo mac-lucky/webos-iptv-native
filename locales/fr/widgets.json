@@ -1,0 +1,310 @@
+{
+  "widgets.action.mark_unwatched": {
+    "value": "Marquer comme non vu",
+    "description": "Action verb shared by the media context menu and detail-page controls."
+  },
+  "widgets.action.mark_watched": {
+    "value": "Marquer comme vu",
+    "description": "Action verb shared by the media context menu and detail-page controls."
+  },
+  "widgets.action.play_start": {
+    "value": "Lire depuis le début",
+    "description": "Action verb shared by the media context menu and detail-page controls."
+  },
+  "widgets.action.play_trailer": {
+    "value": "Voir la bande-annonce",
+    "description": "Action verb shared by the media context menu and detail-page controls."
+  },
+  "widgets.badge.ad": {
+    "value": "AD",
+    "description": "Badge: the title has an audio-description track. Must match the abbreviation in browse.detail.audio_description (es: audiodescripción, AD)."
+  },
+  "widgets.badge.cc": {
+    "value": "CC",
+    "description": "Badge: the title has closed captions. The mark the explanation text browse.detail.closed_captions defines; keep the two in step. Latin CC is the international mark in Spain and in the be catalog's own explanation."
+  },
+  "widgets.badge.forced": {
+    "value": "FORCÉS",
+    "description": "Compact media-track badge. This describes a subtitle or audio track."
+  },
+  "widgets.badge.sdh": {
+    "value": "SDH",
+    "description": "Badge: subtitles for the deaf and hard of hearing. Must match the abbreviation in browse.detail.sdh, which introduces it."
+  },
+  "widgets.card.episode": {
+    "value": "E{episode}",
+    "description": "Secondary caption beneath a focused media card.",
+    "args": {
+      "episode": "i64"
+    }
+  },
+  "widgets.card.new_episode": {
+    "value": "Nouvel épisode",
+    "description": "Secondary caption beneath a focused media card."
+  },
+  "widgets.card.season_episode": {
+    "value": "S{season} • E{episode}",
+    "description": "Secondary caption beneath a focused media card.",
+    "args": {
+      "episode": "i64",
+      "season": "i64"
+    }
+  },
+  "widgets.card.show_new_episode": {
+    "value": "{show} · Nouvel épisode",
+    "description": "Secondary caption beneath a focused media card.",
+    "args": {
+      "show": "str"
+    }
+  },
+  "widgets.cards.more_failed": {
+    "value": "Impossible d’en charger davantage",
+    "description": "The tile at the end of a row of posters whose next page failed to load (first line)."
+  },
+  "widgets.cards.see_all": {
+    "value": "Tout voir",
+    "description": "The tile at the end of a row of cards (and the last row of a row shown as a list) that opens the whole row. Must fit one line on a poster card at BODY size in every shipped language."
+  },
+  "widgets.cards.try_again": {
+    "value": "Réessayer",
+    "description": "The tile at the end of a row of posters whose next page failed: the action line under the reason; OK asks again."
+  },
+  "widgets.failure.audio_unsupported": {
+    "value": "Échec de lecture — cette TV ne peut pas décoder la piste audio",
+    "description": "Player error caption: the selected audio track's format (or channel count) has no decoder on this TV and the app has no software decoder for it yet."
+  },
+  "widgets.failure.dolby_vision": {
+    "value": "Échec de lecture — ce flux Dolby Vision ne peut pas être affiché correctement",
+    "description": "Player error caption: a Dolby Vision stream whose base layer alone is a wrong picture, on a TV that cannot be told it is Dolby Vision."
+  },
+  "widgets.failure.jail": {
+    "value": "Échec de lecture — les restrictions de la TV bloquent la vidéo native",
+    "description": "failure jail"
+  },
+  "widgets.failure.load_timeout": {
+    "value": "Échec de lecture — le démarrage du flux a pris trop de temps",
+    "description": "failure load_timeout"
+  },
+  "widgets.failure.no_video": {
+    "value": "Échec de lecture — aucune vidéo dans le fichier",
+    "description": "Player error caption or supporting subscription fact."
+  },
+  "widgets.failure.not_video_archive": {
+    "value": "Ce flux est une archive ZIP/RAR, pas une vidéo",
+    "description": "Player error caption: the stream link answered a ZIP or RAR archive instead of the video. Keep ZIP/RAR untranslated."
+  },
+  "widgets.failure.not_video_document": {
+    "value": "Ce flux est un fichier texte, pas une vidéo",
+    "description": "Player error caption: the stream link answered a text file (JSON, plain text, a subtitle or .nfo) instead of the video."
+  },
+  "widgets.failure.not_video_image": {
+    "value": "Ce flux est une image, pas une vidéo",
+    "description": "Player error caption: the stream link answered an image (PNG/JPEG/GIF/WebP) instead of the video — the addon picked the wrong file in a torrent."
+  },
+  "widgets.failure.open": {
+    "value": "Échec de lecture — impossible d’ouvrir le flux multimédia",
+    "description": "Player error caption or supporting subscription fact."
+  },
+  "widgets.failure.stopped": {
+    "value": "Échec de lecture — la lecture s’est interrompue",
+    "description": "Player error caption or supporting subscription fact."
+  },
+  "widgets.failure.tv_rejected": {
+    "value": "Échec de lecture — la TV a refusé le flux",
+    "description": "Player error caption or supporting subscription fact."
+  },
+  "widgets.failure.video_not_streamable": {
+    "value": "Échec de lecture — ce format ne peut pas être diffusé sur cette TV",
+    "description": "Player error caption: the stream's video codec (MPEG-4 Part 2/Xvid/DivX, MPEG-2, H.263, VC-1/WMV, RealVideo) is one the TV's streaming player cannot be fed, though the TV's own file player may know it."
+  },
+  "widgets.failure.video_unsupported": {
+    "value": "Échec de lecture — cette TV ne peut pas décoder la vidéo",
+    "description": "Player error caption: the stream's video codec has no decoder on this TV."
+  },
+  "widgets.failure.web_page": {
+    "value": "Le service a renvoyé une page web au lieu de la vidéo",
+    "description": "Player error caption: the streaming (debrid) service answered with an HTML web page instead of the video file, even after retrying."
+  },
+  "widgets.hint.hold_options": {
+    "value": "Maintenez {key} pour les options",
+    "description": "Complete sentence in the Home screen's standing hint capsule, teaching that holding the remote's OK button on a card opens its context menu. {key} is the OK button rendered as a keycap; keep exactly one occurrence. Must fit one line in the capsule at CAPTION size in every shipped language.",
+    "args": {
+      "key": "str"
+    }
+  },
+  "widgets.panel.audio_unsupported": {
+    "value": "la TV ne possède pas de décodeur pour la piste audio",
+    "description": "Diagnostics panel verdict suffix: the audio track cannot be decoded by the TV."
+  },
+  "widgets.panel.dolby_vision": {
+    "value": "flux Dolby Vision sans couche de base affichable",
+    "description": "Diagnostics panel verdict suffix: a Dolby Vision stream refused because its base layer is not a correct picture."
+  },
+  "widgets.panel.jail": {
+    "value": "les restrictions de cette installation bloquent /dev/rtkmem ; la réparation nécessite une TV rootée avec Homebrew Channel",
+    "description": "panel jail"
+  },
+  "widgets.panel.load_timeout": {
+    "value": "le système multimédia de la TV n’a pas démarré le flux à temps",
+    "description": "panel load_timeout"
+  },
+  "widgets.panel.no_video": {
+    "value": "le flux ne contient aucune piste vidéo",
+    "description": "Player diagnostic reason; preserve technical device paths and protocol endpoints."
+  },
+  "widgets.panel.not_video_archive": {
+    "value": "le flux est une archive, pas une vidéo",
+    "description": "Diagnostics panel verdict suffix: the stream is an archive, not a video."
+  },
+  "widgets.panel.not_video_document": {
+    "value": "le flux est un fichier texte, pas une vidéo",
+    "description": "Diagnostics panel verdict suffix: the stream is a text file, not a video."
+  },
+  "widgets.panel.not_video_image": {
+    "value": "le flux est une image, pas une vidéo",
+    "description": "Diagnostics panel verdict suffix: the stream is an image, not a video."
+  },
+  "widgets.panel.open": {
+    "value": "impossible d’ouvrir ou de lire le flux multimédia",
+    "description": "Player diagnostic reason; preserve technical device paths and protocol endpoints."
+  },
+  "widgets.panel.stopped": {
+    "value": "la source multimédia s’est arrêtée avant la fin de la lecture",
+    "description": "Player diagnostic reason; preserve technical device paths and protocol endpoints."
+  },
+  "widgets.panel.tv_rejected": {
+    "value": "le système multimédia de la TV a refusé le flux",
+    "description": "Player diagnostic reason; preserve technical device paths and protocol endpoints."
+  },
+  "widgets.panel.unknown": {
+    "value": "le lecteur s’est arrêté sans indiquer la cause",
+    "description": "Player diagnostic reason; preserve technical device paths and protocol endpoints."
+  },
+  "widgets.panel.video_not_streamable": {
+    "value": "le lecteur de la TV ne peut pas diffuser ce format vidéo",
+    "description": "Diagnostics panel verdict suffix: the video codec cannot be fed to the TV's streaming player."
+  },
+  "widgets.panel.video_unsupported": {
+    "value": "la TV ne possède pas de décodeur pour la vidéo",
+    "description": "Diagnostics panel verdict suffix: the video codec cannot be decoded by the TV."
+  },
+  "widgets.panel.web_page": {
+    "value": "le service a renvoyé une page web",
+    "description": "Diagnostics panel verdict suffix: the service answered a web page instead of the video."
+  },
+  "widgets.reason.audio_unsupported": {
+    "value": "Cette TV ne peut pas décoder cette piste audio ; choisissez une autre piste ou un autre flux",
+    "description": "Explanation beneath the playback-failed heading when the audio track cannot be decoded by the TV."
+  },
+  "widgets.reason.dolby_vision": {
+    "value": "Ce flux Dolby Vision ne contient aucune image affichable sans Dolby Vision ; choisissez un autre flux",
+    "description": "Explanation beneath the playback-failed heading for a Dolby Vision stream that cannot be shown correctly."
+  },
+  "widgets.reason.jail": {
+    "value": "Les restrictions de cette TV empêchent l’application d’accéder à /dev/rtkmem",
+    "description": "reason jail"
+  },
+  "widgets.reason.jail_help": {
+    "value": "La réparation nécessite une TV rootée avec Homebrew Channel.",
+    "description": "reason jail_help"
+  },
+  "widgets.reason.load_timeout": {
+    "value": "Cette TV n’a pas démarré le flux vidéo à temps",
+    "description": "reason load_timeout"
+  },
+  "widgets.reason.no_video": {
+    "value": "Ce fichier ne contient aucune piste vidéo",
+    "description": "Explanation beneath the playback-failed heading. Device paths and project identifiers stay unchanged."
+  },
+  "widgets.reason.open": {
+    "value": "Impossible d’ouvrir le flux multimédia",
+    "description": "Explanation beneath the playback-failed heading. Device paths and project identifiers stay unchanged."
+  },
+  "widgets.reason.stopped": {
+    "value": "La lecture s’est interrompue après son démarrage",
+    "description": "Explanation beneath the playback-failed heading. Device paths and project identifiers stay unchanged."
+  },
+  "widgets.reason.tv_rejected": {
+    "value": "Cette TV n’a pas pu démarrer le flux vidéo",
+    "description": "Explanation beneath the playback-failed heading. Device paths and project identifiers stay unchanged."
+  },
+  "widgets.reason.unknown": {
+    "value": "Le lecteur s’est arrêté sans pouvoir identifier le problème",
+    "description": "Explanation beneath the playback-failed heading. Device paths and project identifiers stay unchanged."
+  },
+  "widgets.reason.video_not_streamable": {
+    "value": "Cette TV diffuse uniquement les vidéos H.264, HEVC, AV1, VP9 et VP8 — pas Xvid/DivX, MPEG-2, H.263, VC-1/WMV ou RealVideo ; choisissez un autre flux",
+    "description": "Explanation beneath the playback-failed heading when the video codec is one the TV's streaming player cannot take. Keep the codec names untranslated."
+  },
+  "widgets.reason.video_unsupported": {
+    "value": "Cette TV ne peut pas décoder ce format vidéo ; choisissez un autre flux",
+    "description": "Explanation beneath the playback-failed heading when the video codec cannot be decoded by the TV."
+  },
+  "widgets.reason.web_page": {
+    "value": "Le service prépare peut-être encore le fichier. Réessayez dans un instant ou choisissez un autre flux.",
+    "description": "Explanation beneath the web-page heading: the debrid service may still be preparing the file; try again shortly or pick another stream."
+  },
+  "widgets.reason.wrong_file": {
+    "value": "L’extension a choisi le mauvais fichier dans ce torrent. Essayez une autre version.",
+    "description": "Explanation beneath the not-a-video heading: the addon chose the wrong file from the torrent; the viewer should pick another release (another stream)."
+  },
+  "widgets.runtime.main_thread": {
+    "value": "FIL PRINCIPAL {kind} {milliseconds}ms · {label}",
+    "description": "Developer warning; kind and label are technical diagnostic identifiers",
+    "args": {
+      "kind": "str",
+      "label": "str",
+      "milliseconds": "i64"
+    }
+  },
+  "widgets.status.buffering": {
+    "value": "Mise en mémoire tampon…",
+    "description": "Short player status beside a spinner or terminal playback error."
+  },
+  "widgets.status.connecting": {
+    "value": "Connexion…",
+    "description": "Short player status beside a spinner or terminal playback error."
+  },
+  "widgets.status.failed": {
+    "value": "Échec de lecture",
+    "description": "Short player status beside a spinner or terminal playback error."
+  },
+  "widgets.status.preparing": {
+    "value": "Préparation…",
+    "description": "Short player status beside a spinner or terminal playback error."
+  },
+  "widgets.status.seeking": {
+    "value": "Recherche de position…",
+    "description": "Short player status beside a spinner or terminal playback error."
+  },
+  "widgets.status.switching_audio": {
+    "value": "Changement de piste audio…",
+    "description": "Short player status beside a spinner while the stream is rebuilt for an audio track the viewer picked."
+  },
+  "widgets.toggle.off": {
+    "value": "Désactivé",
+    "description": "Trailing value of an on/off settings switch."
+  },
+  "widgets.toggle.on": {
+    "value": "Activé",
+    "description": "Trailing value of an on/off settings switch."
+  },
+  "widgets.tracks.empty": {
+    "value": "Aucune piste",
+    "description": "Label or formatted fact in the media track information sheet or track selector."
+  },
+  "widgets.tracks.kbps": {
+    "value": "{rate} kbit/s",
+    "description": "Label or formatted fact in the media track information sheet or track selector.",
+    "args": {
+      "rate": "str"
+    }
+  },
+  "widgets.tracks.mbps": {
+    "value": "{rate} Mbit/s",
+    "description": "Label or formatted fact in the media track information sheet or track selector.",
+    "args": {
+      "rate": "str"
+    }
+  }
+}
