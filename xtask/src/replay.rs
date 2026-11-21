@@ -829,10 +829,10 @@ mod tests {
         let t = Target::television("/tmp/webosiptv-events.log".into());
         let p = program(
             &steps("Left\nBack\nlong OK\nshot a"),
-            "io.github.maclucky.webosiptv",
+            "com.macluckylab.iptv",
             &t,
         );
-        assert!(p.starts_with("# cargo xtask tv-replay\nAPP = \"io.github.maclucky.webosiptv\"\n"));
+        assert!(p.starts_with("# cargo xtask tv-replay\nAPP = \"com.macluckylab.iptv\"\n"));
         assert!(p.contains("    (\"key\", 105, 100, \"Left\"),\n"));
         assert!(p.contains("    (\"key\", 412, 100, \"Back\"),\n"));
         assert!(p.contains("    (\"key\", 28, 1500, \"OK\"),\n"));

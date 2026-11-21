@@ -184,14 +184,14 @@ mod tests {
         let called = std::cell::Cell::new(false);
         for (path, id) in [
             (dir("com.evil"), "com.evil"),
-            (dir("io.github.maclucky.webosiptv.bad;id"), "io.github.maclucky.webosiptv.bad;id"),
+            (dir("com.macluckylab.iptv.bad;id"), "com.macluckylab.iptv.bad;id"),
             (
-                PathBuf::from("/tmp/io.github.maclucky.webosiptv"),
+                PathBuf::from("/tmp/com.macluckylab.iptv"),
                 tv_base::paths::STABLE_APP_ID,
             ),
             (
                 PathBuf::from(
-                    "/media/developer/apps/usr/palm/applications/io.github.maclucky.webosiptv.debug",
+                    "/media/developer/apps/usr/palm/applications/com.macluckylab.iptv.debug",
                 ),
                 tv_base::paths::STABLE_APP_ID,
             ),
@@ -214,11 +214,11 @@ mod tests {
 
     #[test]
     fn command_is_fixed_and_contains_the_only_validated_install_arguments() {
-        let id = "io.github.maclucky.webosiptv.debug-1";
+        let id = "com.macluckylab.iptv.debug-1";
         let c = command(&dir(id), id).unwrap();
-        assert!(c.contains("/usr/bin/jailer -t native -p '/media/developer/apps/usr/palm/applications/io.github.maclucky.webosiptv.debug-1' -i 'io.github.maclucky.webosiptv.debug-1' /bin/true"));
+        assert!(c.contains("/usr/bin/jailer -t native -p '/media/developer/apps/usr/palm/applications/com.macluckylab.iptv.debug-1' -i 'com.macluckylab.iptv.debug-1' /bin/true"));
         assert!(c.contains("id -u"));
         assert!(c.contains("[ ! -c /dev/rtkmem ]"));
-        assert!(c.contains("/var/palm/jail/io.github.maclucky.webosiptv.debug-1/dev/rtkmem"));
+        assert!(c.contains("/var/palm/jail/com.macluckylab.iptv.debug-1/dev/rtkmem"));
     }
 }

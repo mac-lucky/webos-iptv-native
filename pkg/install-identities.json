@@ -1,17 +1,17 @@
 [
   {
     "name": "stable",
-    "app_id": "io.github.maclucky.webosiptv",
+    "app_id": "com.macluckylab.iptv",
     "object_id": "wistate.stable"
   },
   {
     "name": "debug",
-    "app_id": "io.github.maclucky.webosiptv.debug",
+    "app_id": "com.macluckylab.iptv.debug",
     "object_id": "wistate.debug"
   },
   {
     "name": "beta",
-    "app_id": "io.github.maclucky.webosiptv.beta",
+    "app_id": "com.macluckylab.iptv.beta",
     "object_id": "wistate.beta"
   }
 ]

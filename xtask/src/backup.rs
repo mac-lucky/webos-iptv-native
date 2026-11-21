@@ -243,7 +243,7 @@ mod tests {
     use crate::provision::DB_FILE;
     use std::os::unix::fs::PermissionsExt;
 
-    const ID: &str = "io.github.maclucky.webosiptv";
+    const ID: &str = "com.macluckylab.iptv";
 
     /// A scratch dir with a fake `ssh` that records its argv and stdin and acts as `script`.
     fn rig(name: &str, script: &str) -> (PathBuf, PathBuf) {

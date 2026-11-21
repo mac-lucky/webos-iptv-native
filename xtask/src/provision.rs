@@ -281,7 +281,7 @@ mod tests {
         std::fs::write(&file, format!("\n{}\n", url())).unwrap();
         let guide = dir.join(".epg");
         std::fs::write(&guide, "https://guide.example/epg.xml.gz\n").unwrap();
-        let id = "io.github.maclucky.webosiptv";
+        let id = "com.macluckylab.iptv";
         let landed = provision(&ssh, "tv-1", id, Some(&file), Some(&guide)).unwrap();
         assert_eq!(landed, "/media/developer/x-data");
         let stdin = std::fs::read_to_string(dir.join("stdin")).unwrap();
@@ -298,7 +298,7 @@ mod tests {
         let argv = std::fs::read_to_string(dir.join("argv")).unwrap();
         assert!(!argv.contains(&url()) && !argv.contains("iptv.example"));
         assert!(argv.contains("tv-1\n") && argv.contains("BatchMode=yes"));
-        assert!(argv.contains("'/media/developer/io.github.maclucky.webosiptv-data'"));
+        assert!(argv.contains("'/media/developer/com.macluckylab.iptv-data'"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -511,11 +511,8 @@ mod tests {
 
     #[test]
     fn flavours_and_aliases() {
-        assert_eq!(app_id("stable").unwrap(), "io.github.maclucky.webosiptv");
-        assert_eq!(
-            app_id("debug").unwrap(),
-            "io.github.maclucky.webosiptv.debug"
-        );
+        assert_eq!(app_id("stable").unwrap(), "com.macluckylab.iptv");
+        assert_eq!(app_id("debug").unwrap(), "com.macluckylab.iptv.debug");
         assert!(app_id("nope").is_err());
         let args = |s: &str| s.split_whitespace().map(String::from).collect::<Vec<_>>();
         assert_eq!(
@@ -539,7 +536,7 @@ mod tests {
     /// Both install roots are covered; nothing under a world-writable dir is.
     #[test]
     fn candidates_cover_both_installs_and_skip_shared_dirs() {
-        let id = "io.github.maclucky.webosiptv";
+        let id = "com.macluckylab.iptv";
         let apps = Path::new("/media/cryptofs/apps/usr/palm/applications").join(id);
         let dev = Path::new("/media/developer/apps/usr/palm/applications").join(id);
         let all = candidates(id);

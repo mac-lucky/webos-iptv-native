@@ -1308,14 +1308,14 @@ mod tests {
                 calls: vec![],
             },
             Flavor::Stable,
-            "io.github.maclucky.webosiptv.storage".into(),
+            "com.macluckylab.iptv.storage".into(),
         )
     }
     fn record(rev: u64) -> Value {
         let state = CanonicalState::new(Flavor::Stable, Generation([1; 16]));
         let mut value = serde_json::to_value(state).unwrap();
         value["_rev"] = json!(rev);
-        value["_kind"] = json!("io.github.maclucky.webosiptv.storage:1");
+        value["_kind"] = json!("com.macluckylab.iptv.storage:1");
         json!({"returnValue":true,"results":[value]})
     }
     fn commit(expected: Expectation) -> Request {
@@ -1346,7 +1346,7 @@ mod tests {
         .unwrap();
         let current = initial.apply(&operation).unwrap().0;
         let mut object = serde_json::to_value(&current).unwrap();
-        object["_kind"] = json!("io.github.maclucky.webosiptv.storage:1");
+        object["_kind"] = json!("com.macluckylab.iptv.storage:1");
         object["_rev"] = json!(9);
         object["operations"][0]["_id"] = json!("B3K8aZ");
         (json!({"returnValue":true,"results":[object]}), current)
@@ -1354,7 +1354,7 @@ mod tests {
     fn wrapped_record(state: &CanonicalState, rev: u64) -> Value {
         json!({"returnValue":true,"results":[{
             "_id":state.id,
-            "_kind":"io.github.maclucky.webosiptv.storage:1",
+            "_kind":"com.macluckylab.iptv.storage:1",
             "_rev":rev,
             "state":String::from_utf8(state.encode().unwrap()).unwrap()
         }]})
@@ -1547,8 +1547,8 @@ mod tests {
             (
                 "luna://com.palm.db/putKind".into(),
                 json!({
-                    "id":"io.github.maclucky.webosiptv.storage:1",
-                    "owner":"io.github.maclucky.webosiptv.storage",
+                    "id":"com.macluckylab.iptv.storage:1",
+                    "owner":"com.macluckylab.iptv.storage",
                     "private":true,
                     "indexes":[]
                 })
@@ -1799,7 +1799,7 @@ mod tests {
                 removed: vec![],
             },
             Flavor::Stable,
-            "io.github.maclucky.webosiptv.storage".into(),
+            "com.macluckylab.iptv.storage".into(),
         )
     }
     fn changing_request(mutation: WireMutation) -> Request {
@@ -1960,7 +1960,7 @@ mod tests {
                 repair_failure: None,
             },
             Flavor::Stable,
-            "io.github.maclucky.webosiptv.storage".into(),
+            "com.macluckylab.iptv.storage".into(),
         )
     }
     fn protected_auth(public: state::PublicPayload) -> WireMutation {
@@ -3350,7 +3350,7 @@ mod tests {
         let wrapped = wrapped_record(&current, 20);
         let mut object = serde_json::to_value(current).unwrap();
         object["_rev"] = json!(20);
-        object["_kind"] = json!("io.github.maclucky.webosiptv.storage:1");
+        object["_kind"] = json!("com.macluckylab.iptv.storage:1");
         add_db8_array_ids(&mut object);
         let record = json!({"returnValue":true,"results":[object]});
         let reconcile = Request::Reconcile {
@@ -3399,7 +3399,7 @@ mod tests {
         }
         let mut object = serde_json::to_value(current).unwrap();
         object["_rev"] = json!(20);
-        object["_kind"] = json!("io.github.maclucky.webosiptv.storage:1");
+        object["_kind"] = json!("com.macluckylab.iptv.storage:1");
         let record = json!({"returnValue":true,"results":[object]});
         let mut b = backend(vec![Ok(record.clone()), Ok(record)]);
         assert!(matches!(

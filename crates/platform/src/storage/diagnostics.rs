@@ -848,7 +848,7 @@ mod tests {
     fn fixture() -> Snapshot {
         Snapshot {
             seq: 1,
-            app_id: Identifier::new("io.github.maclucky.webosiptv"),
+            app_id: Identifier::new("com.macluckylab.iptv"),
             flavour: Identifier::new("stable"),
             version: Identifier::new("0.6.0"),
             uid: 6303,

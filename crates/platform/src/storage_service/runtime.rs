@@ -261,16 +261,16 @@ mod tests {
 
     #[test]
     fn beta_app_identity() {
-        assert_eq!(app_identity(Path::new("/media/developer/apps/usr/palm/services/io.github.maclucky.webosiptv.beta.storage/webosiptv-storage")), Ok("io.github.maclucky.webosiptv.beta"));
+        assert_eq!(app_identity(Path::new("/media/developer/apps/usr/palm/services/com.macluckylab.iptv.beta.storage/webosiptv-storage")), Ok("com.macluckylab.iptv.beta"));
     }
 
     #[test]
     fn rejects_foreign_or_malformed_install_paths() {
         for path in [
-            "/usr/palm/services/io.github.maclucky.webosiptv.typo.storage/webosiptv-storage",
-            "/usr/palm/services/io.github.maclucky.webosiptv.beta/webosiptv-storage",
-            "/usr/palm/applications/io.github.maclucky.webosiptv.beta.storage/webosiptv-storage",
-            "/usr/palm/services/io.github.maclucky.webosiptv.beta.storage/other",
+            "/usr/palm/services/com.macluckylab.iptv.typo.storage/webosiptv-storage",
+            "/usr/palm/services/com.macluckylab.iptv.beta/webosiptv-storage",
+            "/usr/palm/applications/com.macluckylab.iptv.beta.storage/webosiptv-storage",
+            "/usr/palm/services/com.macluckylab.iptv.beta.storage/other",
             "webosiptv-storage",
         ] {
             assert_eq!(app_identity(Path::new(path)), Err(ErrorCode::Invalid));

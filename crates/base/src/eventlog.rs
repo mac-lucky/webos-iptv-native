@@ -511,8 +511,8 @@ mod log_sink_tests {
         }
 
         let mut sink = Sink::default();
-        write_log_line(&mut sink, "install: id=io.github.maclucky.webosiptv.debug").unwrap();
+        write_log_line(&mut sink, "install: id=com.macluckylab.iptv.debug").unwrap();
         assert_eq!(sink.calls, 1);
-        assert_eq!(sink.bytes, b"install: id=io.github.maclucky.webosiptv.debug\n");
+        assert_eq!(sink.bytes, b"install: id=com.macluckylab.iptv.debug\n");
     }
 }

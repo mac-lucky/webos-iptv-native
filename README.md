@@ -51,15 +51,15 @@ Native webOS apps are built with the community
 ```sh
 cargo xtask setup              # once: the Rust target and the webosbrew NDK (in ~/webos-ndk, or $WEBOS_SDK)
 cargo xtask ffmpeg             # once per FFmpeg pin: the bundled LGPL FFmpeg
-cargo xtask package            # target/ipk/io.github.maclucky.webosiptv_<version>_arm.ipk
+cargo xtask package            # target/ipk/com.macluckylab.iptv_<version>_arm.ipk
 cargo xtask verify             # webosbrew-ipk-verify for webOS 6 and newer (needs Docker)
 cargo xtask release            # the release assets in target/release-assets/
 ```
 
-The app id is `io.github.maclucky.webosiptv`. The package version lives in one place,
+The app id is `com.macluckylab.iptv`. The package version lives in one place,
 `version` in `pkg/appinfo.json`: three integers `X.Y.Z`, as webOS requires, and a release tag
 `vX.Y.Z` matches it. `cargo xtask package --flavor debug` (or `beta`) builds
-`io.github.maclucky.webosiptv.debug`, which installs beside the regular app with its own title.
+`com.macluckylab.iptv.debug`, which installs beside the regular app with its own title.
 
 ## Layout
 
