@@ -27,6 +27,12 @@ and install it on a TV in Developer Mode or with the
 [Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel), for example with
 `ares-install`.
 
+## Navigation
+
+Settings → Appearance → Left menu lets you choose Always visible or Open at startup.
+In either mode, Back from a browsing list focuses the main menu; Right or OK opens a section.
+The menu stays hidden during playback and modal dialogs. Classic navigation remains the default.
+
 ## Building
 
 ```sh

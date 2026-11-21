@@ -16,6 +16,7 @@ use crate::player::Stream as Open;
 mod accent;
 mod backup;
 mod nav;
+mod navigation;
 mod pip;
 mod playback;
 mod pointer;

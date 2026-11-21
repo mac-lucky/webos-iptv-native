@@ -44,6 +44,7 @@ use crate::logs::log;
 use crate::player::{self, Player};
 use crate::store::Store;
 
+mod navigation;
 mod backup;
 mod gate;
 mod pointer;
@@ -98,6 +99,7 @@ impl<S: Screen + ?Sized> Layer<S> {
 }
 
 pub struct Shell {
+    navigation: navigation::Navigation,
     store: Box<dyn Store>,
     player: Box<dyn Player>,
     /// Makes the network transport the refresher fetches through; `None` without a network.
@@ -167,6 +169,7 @@ impl Shell {
             net,
             logos,
             settings,
+            navigation: navigation::Navigation::default(),
             remote: Remote::default(),
             stack: Vec::new(),
             group: None,
@@ -210,6 +213,10 @@ impl Shell {
         }
         if self.store.playback_mut().channel.is_none() {
             self.navigate(Navigate::Guide, None);
+        }
+        if self.settings.get(keys::LEFT_MENU) != "classic" {
+            if self.top().is_none() { self.navigate(Navigate::Guide, None); }
+            self.navigation.focused = true;
         }
         self.settle(now);
     }
@@ -264,7 +271,7 @@ impl Shell {
                 if !self.key_down(key, ev.at_ms) {
                     return;
                 }
-                let hold = self.screen(self.top()).0.hold(key);
+                let hold = if self.navigation_available() && self.navigation.focused { navigation::hold(key) } else { self.screen(self.top()).0.hold(key) };
                 self.remote.down(key, ev.at_ms, hold)
             }
             Edge::Repeat => {
@@ -483,9 +490,12 @@ impl Shell {
         if self.top().is_none() {
             self.bottom.screen.draw(p, &m, &self.logos);
         }
+        let sidebar = self.navigation_visible();
+        let content = if sidebar && self.navigation_persistent() { navigation::content_painter(p) } else { p };
         for layer in &mut self.stack {
-            layer.screen.draw(p, &m, &self.logos);
+            layer.screen.draw(content, &m, &self.logos);
         }
+        if sidebar { self.paint_navigation(p); }
         if let Some(t) = &mut self.toast {
             let w = *t
                 .width
@@ -530,6 +540,7 @@ impl Shell {
     fn act(&mut self, action: Action, now: u64) {
         self.dirty = true;
         self.player.on_key();
+        if self.navigation_action(action, now) { self.settle(now); return; }
         let from = self.top();
         let (screen, data) = self.screen(from);
         let out = screen.key(action.key, action.press, data, now);
@@ -638,6 +649,9 @@ impl Shell {
                 .find_map(|l| l.screen.video_rect()),
             None => self.bottom.screen.video_rect(),
         };
+        let rect = if self.navigation_visible() && self.navigation_persistent() {
+            rect.map(navigation::content_rect)
+        } else { rect };
         if rect != self.rect {
             self.rect = rect;
             self.player.set_rect(rect);
@@ -654,6 +668,11 @@ impl Shell {
     }
 
     fn navigate(&mut self, nav: Navigate, from: Option<usize>) {
+        if nav == Navigate::MainMenu && self.navigation_available() {
+            self.select_navigation();
+            return;
+        }
+        self.navigation.focused = false;
         let screen: Box<dyn Screen> = match nav {
             Navigate::Close => {
                 if let Some(i) = from.filter(|&i| i < self.stack.len()) {

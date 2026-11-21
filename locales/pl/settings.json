@@ -36,5 +36,29 @@
   "settings.update_on_start": "Aktualizuj przy starcie",
   "settings.update_playlist": "Aktualizuj playlistę teraz",
   "settings.updating_epg": "Aktualizowanie EPG",
-  "settings.updating_playlist": "Aktualizowanie playlisty"
+  "settings.updating_playlist": "Aktualizowanie playlisty",
+  "settings.left_menu": {
+    "value": "Menu po lewej",
+    "description": "Left navigation accessibility setting or hint"
+  },
+  "settings.left_menu_persistent": {
+    "value": "Zawsze widoczne",
+    "description": "Left navigation accessibility setting or hint"
+  },
+  "settings.left_menu_startup": {
+    "value": "Otwórz przy starcie",
+    "description": "Left navigation accessibility setting or hint"
+  },
+  "settings.left_menu_back": {
+    "value": "Wstecz: menu",
+    "description": "Left navigation accessibility setting or hint"
+  },
+  "settings.left_menu_open": {
+    "value": "Prawo / OK: otwórz",
+    "description": "Left navigation accessibility setting or hint"
+  },
+  "settings.left_menu_classic": {
+    "value": "Klasyczna nawigacja",
+    "description": "Original navigation, for compatibility"
+  }
 }

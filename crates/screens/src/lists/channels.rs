@@ -809,6 +809,8 @@ impl ChannelList {
 }
 
 impl Screen for ChannelList {
+    fn navigation_target(&self) -> Option<Navigate> { Some(Navigate::ChannelList { preview: false }) }
+
     fn hold(&self, key: Key) -> Hold {
         match self.column {
             Column::Groups => GroupsPanel::hold(key),

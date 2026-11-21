@@ -225,6 +225,7 @@ fn effect_test(key: &str) -> Option<fn()> {
         keys::SUBTITLES_SHOW | keys::SUBTITLES_SIZE => {
             the_subtitle_settings_reach_the_overlay_at_once
         }
+        keys::LEFT_MENU => super::navigation::the_left_menu_mode_applies_at_once,
         keys::ACCENT_COLOR => super::accent::the_accent_colour_applies_at_once,
         keys::PLAYER_DISPLAY_MODE | keys::AUDIO_OFFSET_MS | keys::CHANNEL_AUDIO_OFFSETS => {
             super::playback::the_display_mode_and_the_audio_offsets_reach_the_player_at_once

@@ -432,6 +432,8 @@ fn item_step(key: Key) -> isize {
 }
 
 impl Screen for VodScreen {
+    fn navigation_target(&self) -> Option<Navigate> { if self.player.is_none() && self.prompt().is_none() { Some(Navigate::Vod(self.section)) } else { None } }
+
     fn hold(&self, key: Key) -> Hold {
         if let Some(player) = &self.player {
             return player.hold(key);

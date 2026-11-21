@@ -31,7 +31,7 @@ const WHEEL_MS: u32 = 80;
 
 /// Which kind of edge pressed the OK the remote holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum By {
+pub(super) enum By {
     Key,
     Button,
 }
@@ -61,7 +61,7 @@ impl Pointer {
     }
 
     /// The pointer is at `(x, y)`: whether it has the focus.
-    fn moved(&mut self, x: f32, y: f32) -> bool {
+    pub(super) fn moved(&mut self, x: f32, y: f32) -> bool {
         if let (Some((px, py)), Some(travel)) = (self.at, self.gated.as_mut()) {
             *travel += (x - px).abs() + (y - py).abs();
         }
@@ -75,7 +75,7 @@ impl Pointer {
     /// An OK down by `by` at `at`: `false` when it is the other report of the press the remote
     /// already holds, or of one that was dropped. A button report after the key report takes
     /// back the gate the key put on the pointer.
-    fn ok_down(&mut self, by: By, at: u32, held: bool) -> bool {
+    pub(super) fn ok_down(&mut self, by: By, at: u32, held: bool) -> bool {
         let twin = self.ok.is_some_and(|(b, t, dropped)| {
             (held || dropped) && b != by && at.wrapping_sub(t) < TWIN_MS
         });
@@ -109,10 +109,11 @@ impl Shell {
 
     /// One pointer event. While the TV keyboard is up it has the remote, and the pointer is
     /// left to it.
-    pub fn pointer(&mut self, ev: PointerEvent) {
+    pub fn pointer(&mut self, mut ev: PointerEvent) {
         if self.typing {
             return;
         }
+        if self.navigation_pointer(&mut ev) { return; }
         let now = u64::from(ev.at_ms);
         match ev.kind {
             PointerKind::Move => {
@@ -138,7 +139,7 @@ impl Shell {
                 if free {
                     self.hover(ev.x, ev.y, now);
                 }
-                let hold = self.screen(self.top()).0.hold(Key::Ok);
+                let hold = if self.navigation_available() && self.navigation.focused { super::navigation::hold(Key::Ok) } else { self.screen(self.top()).0.hold(Key::Ok) };
                 if let Some(action) = self.remote.down(Key::Ok, ev.at_ms, hold) {
                     self.act(action, now);
                 }

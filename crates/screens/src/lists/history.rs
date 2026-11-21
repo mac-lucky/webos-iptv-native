@@ -279,6 +279,8 @@ impl History {
 }
 
 impl Screen for History {
+    fn navigation_target(&self) -> Option<Navigate> { Some(Navigate::History) }
+
     fn hold(&self, key: Key) -> Hold {
         super::hold(key)
     }

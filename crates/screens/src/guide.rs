@@ -261,6 +261,8 @@ impl GuideScreen {
 }
 
 impl Screen for GuideScreen {
+    fn navigation_target(&self) -> Option<Navigate> { Some(Navigate::Guide) }
+
     fn hold(&self, key: Key) -> Hold {
         if self.panel {
             return GroupsPanel::hold(key);

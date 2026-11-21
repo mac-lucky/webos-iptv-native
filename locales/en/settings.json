@@ -150,5 +150,29 @@
   "settings.updating_playlist": {
     "value": "Updating the playlist",
     "description": "Toast after Update playlist now"
+  },
+  "settings.left_menu": {
+    "value": "Left menu",
+    "description": "Left navigation accessibility setting or hint"
+  },
+  "settings.left_menu_persistent": {
+    "value": "Always visible",
+    "description": "Left navigation accessibility setting or hint"
+  },
+  "settings.left_menu_startup": {
+    "value": "Open at startup",
+    "description": "Left navigation accessibility setting or hint"
+  },
+  "settings.left_menu_back": {
+    "value": "Back: menu",
+    "description": "Left navigation accessibility setting or hint"
+  },
+  "settings.left_menu_open": {
+    "value": "Right / OK: open",
+    "description": "Left navigation accessibility setting or hint"
+  },
+  "settings.left_menu_classic": {
+    "value": "Classic navigation",
+    "description": "Original navigation, for compatibility"
   }
 }

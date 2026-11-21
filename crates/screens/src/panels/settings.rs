@@ -60,6 +60,7 @@ pub mod keys {
     pub const CHANNEL_AUDIO_OFFSETS: &str = "playback.channel_audio_offsets";
     pub const LONG_PRESS_MS: &str = "remote.long_press_ms";
     /// A [`crate::theme::Accent`] key; the shell paints the accent roles in it.
+    pub const LEFT_MENU: &str = "appearance.left_menu";
     pub const ACCENT_COLOR: &str = "appearance.accent_color";
     /// The parental PIN's salted verifier ([`crate::parental::hash_pin`]); empty is 0000.
     pub const PARENTAL_PIN: &str = "parental.pin";
@@ -124,6 +125,11 @@ pub struct Spec {
     pub kind: Kind,
 }
 
+const LEFT_MENU_MODES: &[(&str, Label)] = &[
+    ("classic", Label::Text(msg::settings_left_menu_classic)),
+    ("persistent", Label::Text(msg::settings_left_menu_persistent)),
+    ("startup", Label::Text(msg::settings_left_menu_startup)),
+];
 const HOURS: &[(&str, Label)] = &[
     ("6", Hours(6)),
     ("12", Hours(12)),
@@ -370,6 +376,7 @@ pub const SPECS: &[Spec] = &[
         default: "500",
         kind: Kind::Choice(LONG_PRESS),
     },
+    Spec { key: keys::LEFT_MENU, label: msg::settings_left_menu, default: "classic", kind: Kind::Choice(LEFT_MENU_MODES) },
     Spec {
         key: keys::ACCENT_COLOR,
         label: msg::accent_color,
@@ -692,6 +699,7 @@ impl Section {
             ],
             Section::Appearance => &[
                 Setting(keys::ACCENT_COLOR),
+                Setting(keys::LEFT_MENU),
                 Open(Section::Player),
                 Open(Section::Groups),
             ],
@@ -1245,7 +1253,7 @@ mod tests {
         let mut panel = panel;
         open(&mut panel, "Appearance");
         let subs: Vec<_> = labels(&panel).into_iter().map(|(l, _)| l).collect();
-        assert_eq!(subs, ["Accent color", "Player", "Groups"]);
+        assert_eq!(subs, ["Accent color", "Left menu", "Player", "Groups"]);
         open(&mut panel, "Groups");
         assert_eq!(
             labels(&panel)[0],

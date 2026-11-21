@@ -545,6 +545,9 @@ impl Output {
 /// [`Timestamp`] deadline onto it. `Any`, so the app's remote-driven navigation tests can read
 /// the screen in front through its own accessors.
 pub trait Screen: std::any::Any {
+    /// A browsing page that can share the left navigation. Modal dialogs and playback opt out.
+    fn navigation_target(&self) -> Option<Navigate> { None }
+
     /// How the input layer treats `key` held down in the current state.
     fn hold(&self, key: Key) -> Hold;
 
