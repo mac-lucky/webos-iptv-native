@@ -513,6 +513,8 @@ impl StoreData {
         let sort = self.settings.get(keys::GROUPS_CHANNEL_SORT);
         let all = || 0..self.channels.len();
         let mut picked: Vec<usize> = match group {
+            // A screen of its own: it lists no channel.
+            Group::Search => return Rc::new([]),
             Group::All if !matches!(sort, "number" | "name") => {
                 return Rc::clone(&self.channels);
             }

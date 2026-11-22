@@ -37,7 +37,8 @@ use crate::data::{
     Command, GridProgramme, Group, Logos, Navigate, Output, Rect, Screen, ScreenMessage, Stream,
     TvData,
 };
-use crate::groups::{Act, GroupsPanel};
+use crate::draw;
+use crate::groups::{self, Act, GroupsPanel};
 use crate::input::{Hold, Key, Press};
 use crate::point::Spot;
 use crate::time::{self, When, DAY};
@@ -575,7 +576,11 @@ impl ChannelList {
             Nav::PageDown => self.move_channel(page, false, settle),
             Nav::Top => self.move_channel(-(self.cursor.index as isize), false, None),
             Nav::Left => {
-                self.groups = Some(GroupsPanel::new(data.groups(), &self.group, view::GROUPS));
+                self.groups = Some(GroupsPanel::new(
+                    groups::with_search(data.groups()),
+                    &self.group,
+                    view::GROUPS,
+                ));
                 self.epg_due = None;
                 self.column = Column::Groups;
             }
@@ -809,6 +814,12 @@ impl ChannelList {
 }
 
 impl Screen for ChannelList {
+    fn navigation_target(&self) -> Option<Navigate> {
+        Some(Navigate::ChannelList {
+            preview: self.mode == Mode::Preview,
+        })
+    }
+
     fn hold(&self, key: Key) -> Hold {
         match self.column {
             Column::Groups => GroupsPanel::hold(key),
@@ -904,7 +915,7 @@ impl Screen for ChannelList {
             .as_ref()
             .map(|e| (e.window, e.day, e.focused().map(|p| p.start)));
         if let Some(panel) = self.groups.as_mut() {
-            panel.set(data.groups(), &self.group);
+            panel.set(groups::with_search(data.groups()), &self.group);
             // A group the playlist lost: the one the panel falls back to.
             if let Some(g) = panel.shown().filter(|g| **g != self.group) {
                 self.group = g.clone();
@@ -947,9 +958,12 @@ impl Screen for ChannelList {
         view.prepare(self, m);
         view.draw(p, logos);
         self.view = view;
-        if let Some(panel) = self.groups.as_mut() {
-            panel.prepare(m);
-            panel.paint(p, logos);
+        match self.groups.as_mut() {
+            Some(panel) => {
+                panel.prepare(m);
+                panel.paint(p, logos);
+            }
+            None => draw::paint(&groups::handle(view::HEADER_H, groups::SCREEN_H), p, logos),
         }
     }
 }

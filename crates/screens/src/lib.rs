@@ -13,6 +13,7 @@ pub mod time;
 pub mod data;
 pub mod groups;
 pub mod guide;
+pub mod home;
 pub mod library;
 pub mod lists;
 pub mod panels;

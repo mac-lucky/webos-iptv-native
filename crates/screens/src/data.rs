@@ -28,6 +28,8 @@ pub enum Group {
     Playlist(String),
     /// A group the viewer made and filled.
     Custom(String),
+    /// Search, first in the groups panel: a screen of its own, as History is.
+    Search,
 }
 
 impl Group {
@@ -37,8 +39,14 @@ impl Group {
             Group::Favorites => msg::channel_favorites(),
             Group::All => msg::channel_all(),
             Group::History => msg::channel_history(),
+            Group::Search => msg::common_search(),
             Group::Playlist(name) | Group::Custom(name) => name,
         }
+    }
+
+    /// The group opens a screen of its own instead of listing channels.
+    pub fn opens_screen(&self) -> bool {
+        matches!(self, Group::History | Group::Search)
     }
 }
 
@@ -450,6 +458,8 @@ pub enum Navigate {
     PlayerMenu,
     Settings,
     Search,
+    /// Search in one section: its results only.
+    SearchIn(SearchScope),
     /// The playlists or the viewer's groups, on this page.
     Library(crate::library::LibraryPage),
     /// The parental PIN dialog, doing `PinTask` once the PIN is right.
@@ -458,6 +468,19 @@ pub enum Navigate {
     ChannelNames,
     /// TiviMate's Movies or Shows section, in place of every screen over the player.
     Vod(VodSection),
+    /// The home page of the home navigation, alone over the player ([`crate::home`]).
+    Home,
+    /// A VOD section opened on the movie, or the series, of this item (a search result).
+    VodAt(VodSection, ChannelKey),
+}
+
+/// The section a scoped search looks in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SearchScope {
+    /// The channels and their programmes.
+    Channels,
+    Movies,
+    Shows,
 }
 
 /// The VOD sections of the main menu.
@@ -545,6 +568,25 @@ impl Output {
 /// [`Timestamp`] deadline onto it. `Any`, so the app's remote-driven navigation tests can read
 /// the screen in front through its own accessors.
 pub trait Screen: std::any::Any {
+    /// The section this page is, as the home page opens it; dialogs and panels have none.
+    fn navigation_target(&self) -> Option<Navigate> {
+        None
+    }
+
+    /// Back in the current state has nothing left to unwind inside the page, though it does
+    /// not leave it (the guide's groups panel folds back into the grid while nothing plays):
+    /// with the home navigation, it goes back to the home page instead. A Back the page turns
+    /// into leaving goes back there without this.
+    fn back_opens_navigation(&self) -> bool {
+        false
+    }
+
+    /// The screen draws nothing while another one is open over it (the opaque home page, which
+    /// would hide the picture of a section's preview).
+    fn hidden_when_covered(&self) -> bool {
+        false
+    }
+
     /// How the input layer treats `key` held down in the current state.
     fn hold(&self, key: Key) -> Hold;
 
@@ -831,6 +873,7 @@ pub mod fake {
                     Group::All => true,
                     Group::Favorites => self.favorites.contains(&c.key),
                     Group::History => self.history.iter().any(|h| h.channel == c.key),
+                    Group::Search => false,
                     Group::Playlist(name) => c.groups.contains(name),
                     Group::Custom(name) => self
                         .custom_groups

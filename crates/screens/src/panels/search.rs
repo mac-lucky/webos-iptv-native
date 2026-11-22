@@ -12,13 +12,17 @@ use std::rc::Rc;
 
 use iptv::catchup::in_archive;
 use iptv::model::{fold, Channel, ChannelKey, Timestamp};
+use iptv::vod::VodKind;
 use tv_machine::machine::Measure;
 use tv_platform::i18n::msg;
 use tv_ui::{Painter, Rect};
 
 use super::side::line;
 use super::{style, PanelKey, TextField};
-use crate::data::{Command, GridProgramme, Group, Logos, Navigate, Output, Screen, Stream, TvData};
+use crate::data::{
+    Command, GridProgramme, Group, Logos, Navigate, Output, Screen, SearchScope, Stream, TvData,
+    VodSection,
+};
 use crate::draw::cstr;
 use crate::icons::{self, Icon};
 use crate::input::{Action, Hold, Key, Press};
@@ -27,6 +31,8 @@ use crate::point::{Spot, Spots};
 use crate::time::{self, hhmm, weekday, When};
 
 const MAX_CHANNEL_HITS: usize = 50;
+/// The most movies and series listed.
+const MAX_VOD_HITS: usize = 50;
 /// Programme titles are searched from this many folded characters on; one letter matches most
 /// of a guide.
 const MIN_PROGRAMME_QUERY: usize = 2;
@@ -46,19 +52,28 @@ pub enum Hit {
         programme: GridProgramme,
         detail: String,
     },
+    /// A movie, or a series by one of its episodes.
+    Vod {
+        section: VodSection,
+        item: ChannelKey,
+        title: String,
+        detail: String,
+    },
 }
 
 impl Hit {
     pub fn title(&self) -> &str {
         match self {
-            Hit::Channel { title, .. } => title,
+            Hit::Channel { title, .. } | Hit::Vod { title, .. } => title,
             Hit::Programme { programme, .. } => &programme.title,
         }
     }
 
     pub fn detail(&self) -> &str {
         match self {
-            Hit::Channel { detail, .. } | Hit::Programme { detail, .. } => detail,
+            Hit::Channel { detail, .. } | Hit::Programme { detail, .. } | Hit::Vod { detail, .. } => {
+                detail
+            }
         }
     }
 }
@@ -67,9 +82,14 @@ pub struct Search {
     field: TextField,
     /// What the field draws: the draft, or the hint while it is empty.
     shown: CString,
+    /// The section looked in; `None` for every one.
+    scope: Option<SearchScope>,
     /// Every channel with its folded name.
     channels: Vec<(String, Rc<Channel>)>,
+    /// Every movie and series the PIN does not hide, with its folded title.
+    vod: Vec<(String, Hit)>,
     channel_hits: Vec<Hit>,
+    vod_hits: Vec<Hit>,
     programme_hits: Vec<Hit>,
     /// The folded query the channel hits answer.
     query: String,
@@ -86,15 +106,23 @@ pub struct Search {
 }
 
 impl Search {
-    /// Open with the keyboard up.
+    /// Open with the keyboard up, looking in every section.
     pub fn new(data: &dyn TvData) -> Self {
+        Self::scoped(data, None)
+    }
+
+    /// Open with the keyboard up, looking in `scope` only (`None`: everywhere).
+    pub fn scoped(data: &dyn TvData, scope: Option<SearchScope>) -> Self {
         let mut field = TextField::new("");
         field.set_editing(true);
         let mut search = Self {
             field,
             shown: CString::default(),
+            scope,
             channels: Vec::new(),
+            vod: Vec::new(),
             channel_hits: Vec::new(),
+            vod_hits: Vec::new(),
             programme_hits: Vec::new(),
             query: String::new(),
             pending: None,
@@ -118,7 +146,7 @@ impl Search {
     }
 
     pub fn len(&self) -> usize {
-        self.channel_hits.len() + self.programme_hits.len()
+        self.channel_hits.len() + self.vod_hits.len() + self.programme_hits.len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -126,14 +154,14 @@ impl Search {
     }
 
     pub fn hit(&self, i: usize) -> Option<&Hit> {
-        match i.checked_sub(self.channel_hits.len()) {
-            None => self.channel_hits.get(i),
-            Some(j) => self.programme_hits.get(j),
-        }
+        self.hits().nth(i)
     }
 
     pub fn hits(&self) -> impl Iterator<Item = &Hit> {
-        self.channel_hits.iter().chain(&self.programme_hits)
+        self.channel_hits
+            .iter()
+            .chain(&self.vod_hits)
+            .chain(&self.programme_hits)
     }
 
     fn handle(&mut self, key: PanelKey, data: &dyn TvData) -> Output {
@@ -183,6 +211,7 @@ impl Search {
         };
         match self.hit(i) {
             Some(Hit::Channel { key, .. }) => play(Stream::Live(*key)),
+            Some(Hit::Vod { section, item, .. }) => Output::navigate(Navigate::VodAt(*section, *item)),
             Some(Hit::Programme {
                 channel, programme, ..
             }) => match time::when(programme.start, programme.stop, now) {
@@ -210,12 +239,34 @@ impl Search {
         }
     }
 
-    /// Every channel, folded for matching.
+    /// Looks in the channels and their programmes.
+    fn in_channels(&self) -> bool {
+        matches!(self.scope, None | Some(SearchScope::Channels))
+    }
+
+    /// Looks in the VOD section `section`.
+    fn in_vod(&self, section: VodSection) -> bool {
+        match self.scope {
+            None => true,
+            Some(SearchScope::Movies) => section == VodSection::Movies,
+            Some(SearchScope::Shows) => section == VodSection::Shows,
+            Some(SearchScope::Channels) => false,
+        }
+    }
+
+    /// Every channel and VOD title in scope, folded for matching.
     fn index(&mut self, data: &dyn TvData) {
-        self.channels = data
-            .channels(&Group::All)
-            .iter()
-            .map(|c| (fold(&c.name), Rc::clone(c)))
+        self.channels = if self.in_channels() {
+            data.channels(&Group::All)
+                .iter()
+                .map(|c| (fold(&c.name), Rc::clone(c)))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        self.vod = vod_index(data)
+            .into_iter()
+            .filter(|(_, hit)| matches!(hit, Hit::Vod { section, .. } if self.in_vod(*section)))
             .collect();
     }
 
@@ -233,7 +284,8 @@ impl Search {
     /// Look the query up: the channels here, the programmes through the store.
     fn find(&mut self, data: &dyn TvData) {
         self.channel_hits = self.channel_hits_for(&self.query);
-        if self.query.chars().count() >= MIN_PROGRAMME_QUERY {
+        self.vod_hits = self.vod_hits_for(&self.query);
+        if self.in_channels() && self.query.chars().count() >= MIN_PROGRAMME_QUERY {
             self.pending = Some(self.field.text().to_owned());
             self.poll(data);
         } else {
@@ -273,6 +325,24 @@ impl Search {
         true
     }
 
+    /// The movies and series whose title has `query`, those it starts first.
+    fn vod_hits_for(&self, query: &str) -> Vec<Hit> {
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let mut found: Vec<(bool, &Hit)> = self
+            .vod
+            .iter()
+            .filter_map(|(folded, hit)| folded.find(query).map(|at| (at != 0, hit)))
+            .collect();
+        found.sort_by_key(|(inner, _)| *inner);
+        found
+            .into_iter()
+            .take(MAX_VOD_HITS)
+            .map(|(_, hit)| hit.clone())
+            .collect()
+    }
+
     fn channel_hits_for(&self, query: &str) -> Vec<Hit> {
         if query.is_empty() {
             return Vec::new();
@@ -304,7 +374,12 @@ impl Search {
 
     fn show_field(&mut self) {
         let text = if self.field.text().is_empty() {
-            msg::search_hint()
+            match self.scope {
+                None if !self.vod.is_empty() => msg::search_hint_all(),
+                None | Some(SearchScope::Channels) => msg::search_hint(),
+                Some(SearchScope::Movies) => msg::search_hint_movies(),
+                Some(SearchScope::Shows) => msg::search_hint_shows(),
+            }
         } else {
             self.field.text()
         };
@@ -507,6 +582,35 @@ impl Screen for Search {
 }
 
 /// Play `stream` with every screen closed: the full-screen player in front.
+/// Every movie, and every series by its first episode, that `data` lists and the PIN does not
+/// hide, with its folded title.
+fn vod_index(data: &dyn TvData) -> Vec<(String, Hit)> {
+    let mut out: Vec<(String, Hit)> = Vec::new();
+    let mut series: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for v in data.vod().iter().filter(|v| !data.vod_locked(v)) {
+        let (section, title, detail) = match v.kind {
+            VodKind::Movie => (VodSection::Movies, v.title.clone(), msg::vod_movies()),
+            VodKind::Episode => {
+                let name = v.series.clone().unwrap_or_else(|| v.title.clone());
+                if !series.insert(name.to_lowercase()) {
+                    continue;
+                }
+                (VodSection::Shows, name, msg::vod_shows())
+            }
+        };
+        out.push((
+            fold(&title),
+            Hit::Vod {
+                section,
+                item: v.key,
+                title,
+                detail: detail.to_owned(),
+            },
+        ));
+    }
+    out
+}
+
 fn play(stream: Stream) -> Output {
     Output::command(Command::Play {
         stream,
@@ -623,6 +727,45 @@ mod tests {
 
     fn keys(search: &mut Search, data: &dyn TvData, keys: &[Key]) -> Output {
         press(search, data, keys)
+    }
+
+    /// The fake channels and the fake VOD catalog: movies and series.
+    fn with_vod() -> FakeData {
+        tv_platform::i18n::initialize(tv_platform::i18n::Preference::En, true);
+        let mut data = FakeData::new(1_700_000_000, 3);
+        data.vod = crate::vod::fake::items("");
+        data
+    }
+
+    #[test]
+    fn movies_and_series_are_found_and_open_their_section() {
+        let data = with_vod();
+        let mut search = open(&data);
+        type_text(&mut search, &data, "harbour");
+        assert_eq!(titles(&search), ["Harbour City", "Harbour Watch"]);
+        let details: Vec<_> = search.hits().map(Hit::detail).collect();
+        assert_eq!(details, ["Movies", "Shows"]);
+        let city = data.vod.iter().find(|v| v.title == "Harbour City").unwrap().key;
+        let out = keys(&mut search, &data, &[Key::Down, Key::Ok]);
+        assert_eq!(
+            out.navigate,
+            [Navigate::VodAt(VodSection::Movies, city)]
+        );
+    }
+
+    #[test]
+    fn a_scoped_search_looks_in_its_section_only() {
+        let data = with_vod();
+        let mut movies = Search::scoped(&data, Some(SearchScope::Movies));
+        type_text(&mut movies, &data, "harbour");
+        assert_eq!(titles(&movies), ["Harbour City"]);
+        let mut shows = Search::scoped(&data, Some(SearchScope::Shows));
+        type_text(&mut shows, &data, "harbour");
+        assert_eq!(titles(&shows), ["Harbour Watch"]);
+        let mut channels = Search::scoped(&data, Some(SearchScope::Channels));
+        type_text(&mut channels, &data, "harbour");
+        assert!(titles(&channels).is_empty(), "no movie in the channels");
+        type_text(&mut channels, &data, "");
     }
 
     #[test]

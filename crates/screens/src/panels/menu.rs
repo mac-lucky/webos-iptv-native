@@ -658,7 +658,7 @@ impl Menu {
                 keys::GROUPS_HIDDEN,
                 self.settings.hidden_groups_toggled(name),
             ),
-            Group::Custom(_) => return Output::default(),
+            Group::Custom(_) | Group::Search => return Output::default(),
         };
         let Some(command) = self.settings.change(key, value) else {
             return Output::close();
@@ -708,7 +708,7 @@ pub fn group_hidden(group: &Group, settings: &Settings) -> bool {
         Group::All => !settings.flag(keys::GROUPS_SHOW_ALL),
         Group::History => !settings.flag(keys::GROUPS_SHOW_HISTORY),
         Group::Playlist(name) => settings.hidden_groups().any(|n| n == name),
-        Group::Custom(_) => false,
+        Group::Custom(_) | Group::Search => false,
     }
 }
 

@@ -27,12 +27,13 @@ mod tests;
 
 use std::rc::Rc;
 
+use iptv::model::ChannelKey;
 use iptv::vod::VodItem;
 use tv_machine::machine::Measure;
 use tv_platform::i18n::msg;
 use tv_ui::Painter;
 
-use crate::data::{Command, Logos, Navigate, Output, Screen, TvData, VodSection};
+use crate::data::{Command, Logos, Navigate, Output, Screen, SearchScope, TvData, VodSection};
 use crate::draw::Cached;
 use crate::input::{Action, Hold, Key, Press};
 use crate::lists::Cursor;
@@ -121,6 +122,30 @@ impl VodScreen {
 
     pub fn section(&self) -> VodSection {
         self.section
+    }
+
+    /// Focus the movie of `item`, or open the series it is an episode of, in the All category:
+    /// a search result. Nothing moves when no entry has it.
+    pub fn reveal(&mut self, item: ChannelKey) {
+        let Some(all) = all_index(&self.catalog) else {
+            return;
+        };
+        let Some(at) = self.catalog.list(all).position(|e| match e {
+            Entry::Movie(m) => m.key == item,
+            Entry::Series(s) => s.episodes().any(|e| e.key == item),
+        }) else {
+            return;
+        };
+        let len = self.catalog.list_len(all);
+        self.categories
+            .set(all, self.catalog.categories.len(), CATEGORY_ROWS);
+        self.items.set(at, len, ITEM_ROWS);
+        self.focus = Focus::Items;
+        if let Some(Entry::Series(s)) = self.catalog.entry(all, at) {
+            let s = Rc::clone(s);
+            self.open_series(s);
+        }
+        self.generation += 1;
     }
 
     pub fn catalog(&self) -> &Catalog {
@@ -249,7 +274,12 @@ impl VodScreen {
 
     fn key_categories(&mut self, key: Key) -> Output {
         let len = self.catalog.categories.len();
+        let on_search = self.catalog.categories.get(self.categories.index) == Some(&Category::Search);
         match key {
+            Key::Right | Key::Ok if on_search => Output::navigate(Navigate::SearchIn(match self.section {
+                VodSection::Movies => SearchScope::Movies,
+                VodSection::Shows => SearchScope::Shows,
+            })),
             Key::Up | Key::Down => {
                 if !step_column(&mut self.categories, key, len) {
                     return Output::default();
@@ -432,6 +462,14 @@ fn item_step(key: Key) -> isize {
 }
 
 impl Screen for VodScreen {
+    fn navigation_target(&self) -> Option<Navigate> {
+        if self.player.is_none() && self.prompt().is_none() {
+            Some(Navigate::Vod(self.section))
+        } else {
+            None
+        }
+    }
+
     fn hold(&self, key: Key) -> Hold {
         if let Some(player) = &self.player {
             return player.hold(key);

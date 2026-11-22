@@ -187,7 +187,7 @@ fn visibility(group: &Group, settings: &Settings) -> Option<(&'static str, Strin
         Group::All => (keys::GROUPS_SHOW_ALL, hidden.to_string()),
         Group::History => (keys::GROUPS_SHOW_HISTORY, hidden.to_string()),
         Group::Playlist(name) => (keys::GROUPS_HIDDEN, settings.hidden_groups_toggled(name)),
-        Group::Custom(_) => return None,
+        Group::Custom(_) | Group::Search => return None,
     })
 }
 

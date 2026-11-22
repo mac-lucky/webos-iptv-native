@@ -21,14 +21,14 @@
 use tv_machine::machine::Measure;
 use tv_ui::{Painter, Rect};
 
-use crate::data::{Group, Logos, Navigate};
+use crate::data::{Group, Logos, Navigate, SearchScope};
 use crate::draw::{self, HAlign, Piece, Run};
 use crate::input::{Hold, Key};
 use crate::lists::{Cursor, Rows};
 use crate::point::{Spot, Spots};
 use crate::theme::{self, radius, size, space};
 
-const SCREEN_H: f32 = 1080.0;
+pub const SCREEN_H: f32 = 1080.0;
 /// Every panel's pills are this wide, so a group name fits the same in each.
 pub const PILL_W: f32 = 440.0;
 pub const PILL_H: f32 = 72.0;
@@ -77,16 +77,25 @@ pub enum Act {
     Back,
 }
 
-/// Display order: the three built-in groups first (Favorites always leads), playlist groups
-/// after them in the order the data gives.
+/// Display order: Search, then the three built-in groups (Favorites leads them), playlist
+/// groups after them in the order the data gives.
 pub fn ordered(mut groups: Vec<Group>) -> Vec<Group> {
     groups.sort_by_key(|g| match g {
-        Group::Favorites => 0,
-        Group::All => 1,
-        Group::History => 2,
-        Group::Playlist(_) | Group::Custom(_) => 3,
+        Group::Search => 0,
+        Group::Favorites => 1,
+        Group::All => 2,
+        Group::History => 3,
+        Group::Playlist(_) | Group::Custom(_) => 4,
     });
     groups
+}
+
+/// The groups a panel lists: Search first, then `groups`.
+pub fn with_search(groups: Vec<Group>) -> Vec<Group> {
+    let mut out = Vec::with_capacity(groups.len() + 1);
+    out.push(Group::Search);
+    out.extend(groups.into_iter().filter(|g| *g != Group::Search));
+    out
 }
 
 pub struct GroupsPanel {
@@ -134,7 +143,7 @@ impl GroupsPanel {
         let at = |group: &Group| self.list.iter().position(|g| g == group);
         let focus = at(current)
             .or_else(|| at(&Group::All))
-            .or_else(|| self.list.iter().position(|g| *g != Group::History))
+            .or_else(|| self.list.iter().position(|g| !g.opens_screen()))
             .unwrap_or(0);
         self.shown = None;
         self.cursor = Cursor::default();
@@ -154,6 +163,14 @@ impl GroupsPanel {
 
     pub fn cursor(&self) -> Cursor {
         self.cursor
+    }
+
+    /// The first group that lists channels (Search and History open screens of their own).
+    fn first_listing(&self) -> usize {
+        self.list
+            .iter()
+            .position(|g| !g.opens_screen())
+            .unwrap_or(0)
     }
 
     pub fn focused(&self) -> Option<&Group> {
@@ -183,14 +200,18 @@ impl GroupsPanel {
             (Key::Down, _) => self.step(1),
             (Key::ChannelUp, _) => self.step(-page),
             (Key::ChannelDown, _) => self.step(page),
-            (Key::Left, true) => self.go(0),
+            (Key::Left, true) => self.go(self.first_listing()),
             (Key::Left, false) => return Act::Go(Navigate::MainMenu),
+            (Key::Ok, true) if self.focused() == Some(&Group::Search) => return Act::None,
             (Key::Ok, true) => {
                 let menu = |g: &Group| Act::Go(Navigate::GroupMenu(g.clone()));
                 return self.focused().map_or(Act::None, menu);
             }
             (Key::Ok | Key::Right, _) if self.focused() == Some(&Group::History) => {
                 return Act::Go(Navigate::History)
+            }
+            (Key::Ok | Key::Right, _) if self.focused() == Some(&Group::Search) => {
+                return Act::Go(Navigate::SearchIn(SearchScope::Channels))
             }
             (Key::Ok | Key::Right, _) => return Act::Enter,
             (Key::Back, _) => return Act::Back,
@@ -238,7 +259,7 @@ impl GroupsPanel {
 
     fn focus(&mut self, focus: usize) {
         self.cursor.set(focus, self.list.len(), LIST);
-        if self.list.get(focus).is_some_and(|g| *g != Group::History) {
+        if self.list.get(focus).is_some_and(|g| !g.opens_screen()) {
             self.shown = Some(focus);
         }
         self.stale = true;
@@ -306,8 +327,66 @@ impl GroupsPanel {
     }
 }
 
+/// The width of the closed panel's handle at the screen's left edge: it fits the margin left of
+/// the channel numbers and logos.
+pub const HANDLE_W: f32 = 26.0;
+/// The accent tab in the middle of the handle.
+const TAB_H: f32 = 180.0;
+/// The chevron's box; the glyph is about half of it.
+const CHEVRON: f32 = 44.0;
+
+/// The groups panel, closed, as a handle along the left edge from `top` to `bottom`: a raised
+/// strip with an accent tab and a left chevron in its middle, so the viewer sees that Left opens
+/// the groups.
+pub fn handle(top: f32, bottom: f32) -> [Piece; 3] {
+    let middle = top + (bottom - top) * 0.5;
+    // Wider than shown and pushed off screen: only the right corners are rounded.
+    let off = radius::PILL;
+    let strip = Rect::new(-off, top, HANDLE_W + off, bottom - top);
+    let tab = Rect::new(-off, middle - TAB_H * 0.5, HANDLE_W + off, TAB_H);
+    let chevron = Rect::new(
+        HANDLE_W * 0.5 - CHEVRON * 0.5,
+        middle - CHEVRON * 0.5,
+        CHEVRON,
+        CHEVRON,
+    );
+    [
+        Piece::solid(strip, radius::PILL, theme::PANEL_RAISED),
+        Piece::solid(tab, radius::PILL, theme::ink(theme::ACCENT)),
+        Piece::Icon {
+            icon: crate::icons::Icon::ChevronLeft,
+            r: chevron,
+            tint: theme::TEXT,
+        },
+    ]
+}
+
 #[cfg(test)]
 mod tests {
+
+    /// The closed panel's handle stays in the left margin and points left.
+    #[test]
+    fn the_handle_sits_in_the_left_margin_with_a_left_chevron() {
+        let [strip, tab, chevron] = handle(466.0, 1080.0);
+        let Piece::Fill { r, .. } = strip else {
+            panic!("a strip");
+        };
+        assert!(r.x + r.w <= HANDLE_W + 0.01 && r.y == 466.0 && r.y + r.h == 1080.0);
+        let Piece::Fill { r: t, .. } = tab else {
+            panic!("a tab");
+        };
+        assert!(t.x + t.w <= HANDLE_W + 0.01 && t.y > r.y && t.y + t.h < r.y + r.h);
+        let Piece::Icon { icon, r: c, .. } = chevron else {
+            panic!("an icon");
+        };
+        assert_eq!(icon, crate::icons::Icon::ChevronLeft);
+        assert!(
+            ((c.x + c.w * 0.5) - HANDLE_W * 0.5).abs() < 0.01,
+            "centred on the strip"
+        );
+        assert!(c.y > t.y && c.y + c.h < t.y + t.h, "on the tab");
+    }
+
     use super::*;
     use crate::data::fake::Mono;
 

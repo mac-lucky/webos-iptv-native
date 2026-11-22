@@ -59,6 +59,8 @@ pub mod keys {
     /// set from the player menu ([`crate::playback::with_channel_offset`]).
     pub const CHANNEL_AUDIO_OFFSETS: &str = "playback.channel_audio_offsets";
     pub const LONG_PRESS_MS: &str = "remote.long_press_ms";
+    /// `home` (a page of section tiles first, Back returns to it) or `classic` (the guide).
+    pub const NAVIGATION: &str = "appearance.navigation";
     /// A [`crate::theme::Accent`] key; the shell paints the accent roles in it.
     pub const ACCENT_COLOR: &str = "appearance.accent_color";
     /// The parental PIN's salted verifier ([`crate::parental::hash_pin`]); empty is 0000.
@@ -124,6 +126,10 @@ pub struct Spec {
     pub kind: Kind,
 }
 
+const NAVIGATION_MODES: &[(&str, Label)] = &[
+    ("classic", Label::Text(msg::settings_navigation_classic)),
+    ("home", Label::Text(msg::settings_navigation_home)),
+];
 const HOURS: &[(&str, Label)] = &[
     ("6", Hours(6)),
     ("12", Hours(12)),
@@ -369,6 +375,12 @@ pub const SPECS: &[Spec] = &[
         label: msg::settings_long_press,
         default: "500",
         kind: Kind::Choice(LONG_PRESS),
+    },
+    Spec {
+        key: keys::NAVIGATION,
+        label: msg::settings_navigation,
+        default: "classic",
+        kind: Kind::Choice(NAVIGATION_MODES),
     },
     Spec {
         key: keys::ACCENT_COLOR,
@@ -692,6 +704,7 @@ impl Section {
             ],
             Section::Appearance => &[
                 Setting(keys::ACCENT_COLOR),
+                Setting(keys::NAVIGATION),
                 Open(Section::Player),
                 Open(Section::Groups),
             ],
@@ -1245,7 +1258,7 @@ mod tests {
         let mut panel = panel;
         open(&mut panel, "Appearance");
         let subs: Vec<_> = labels(&panel).into_iter().map(|(l, _)| l).collect();
-        assert_eq!(subs, ["Accent color", "Player", "Groups"]);
+        assert_eq!(subs, ["Accent color", "Navigation", "Player", "Groups"]);
         open(&mut panel, "Groups");
         assert_eq!(
             labels(&panel)[0],
