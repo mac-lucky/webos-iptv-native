@@ -150,5 +150,17 @@
   "settings.updating_playlist": {
     "value": "Actualisation de la playlist",
     "description": "Toast after Update playlist now"
+  },
+  "settings.navigation": {
+    "value": "Navigation",
+    "description": "Appearance setting: how the app is navigated"
+  },
+  "settings.navigation_home": {
+    "value": "Page d'accueil",
+    "description": "Navigation choice: a home page of section tiles opens first, Back returns to it"
+  },
+  "settings.navigation_classic": {
+    "value": "Classique",
+    "description": "Navigation choice: the original navigation, from the TV guide"
   }
 }

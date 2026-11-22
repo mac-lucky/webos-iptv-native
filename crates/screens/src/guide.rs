@@ -50,7 +50,7 @@ use tv_platform::i18n::msg;
 
 use crate::data::{self, Command, Group, Logos, Navigate, Output, Screen, ScreenMessage, TvData};
 use crate::draw;
-use crate::groups::{Act, GroupsPanel};
+use crate::groups::{self, Act, GroupsPanel};
 use crate::input::{Hold, Key, Press};
 use crate::number::{self, Interrupt, NumberEntry};
 use crate::point::Spots;
@@ -99,7 +99,7 @@ impl GuideScreen {
     pub fn new(data: &dyn TvData, group: Group) -> Self {
         let mut s = GuideScreen {
             grid: Grid::new(data.channels(&group)),
-            groups: GroupsPanel::new(data.groups(), &group, geom::GROUPS),
+            groups: GroupsPanel::new(groups::with_search(data.groups()), &group, geom::GROUPS),
             zap: group.clone(),
             group,
             panel: false,
@@ -261,6 +261,15 @@ impl GuideScreen {
 }
 
 impl Screen for GuideScreen {
+    fn navigation_target(&self) -> Option<Navigate> {
+        Some(Navigate::Guide)
+    }
+
+    /// The groups panel is the guide's first column: Back from it goes to the menu.
+    fn back_opens_navigation(&self) -> bool {
+        self.panel
+    }
+
     fn hold(&self, key: Key) -> Hold {
         if self.panel {
             return GroupsPanel::hold(key);
@@ -389,7 +398,8 @@ impl Screen for GuideScreen {
     }
 
     fn refresh(&mut self, data: &dyn TvData) {
-        self.groups.set(data.groups(), &self.group);
+        self.groups
+            .set(groups::with_search(data.groups()), &self.group);
         if let Some(g) = self.groups.shown() {
             self.group = g.clone();
         }
@@ -421,6 +431,8 @@ impl Screen for GuideScreen {
         if self.panel {
             self.groups.prepare(m);
             self.groups.paint(p, logos);
+        } else {
+            draw::paint(&groups::handle(geom::ROWS_Y, geom::SCREEN_H), p, logos);
         }
         // Laid out per frame, but only for the second or two while digits are typed.
         if let Some(n) = &self.number {

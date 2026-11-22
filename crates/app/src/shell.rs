@@ -46,6 +46,7 @@ use crate::store::Store;
 
 mod backup;
 mod gate;
+mod home;
 mod pointer;
 mod remind;
 mod sleep;
@@ -109,6 +110,8 @@ pub struct Shell {
     refreshed: u64,
     settings: Settings,
     remote: Remote,
+    /// What the home navigation remembers ([`home`]).
+    home: home::Home,
     /// The full-screen player, under every other screen.
     bottom: Layer<PlayerScreen>,
     /// Bottom up.
@@ -168,6 +171,7 @@ impl Shell {
             logos,
             settings,
             remote: Remote::default(),
+            home: home::Home::default(),
             stack: Vec::new(),
             group: None,
             rect: None,
@@ -196,6 +200,12 @@ impl Shell {
     /// The first screen: the last channel when the setting asks for it, otherwise the guide.
     pub fn start(&mut self, now: u64) {
         self.reminders.observe(now, self.store.now());
+        // The home navigation opens on the home page, nothing playing.
+        if self.home_mode() {
+            self.go_home();
+            self.settle(now);
+            return;
+        }
         if self.settings.flag(keys::LAST_CHANNEL_ON_START) {
             if let Some(&key) = self.store.recent_channels().first() {
                 // A locked channel waits for the PIN: the guide opens instead.
@@ -480,10 +490,14 @@ impl Shell {
         tv_gfx::gfx::frame_clear_through();
         // Over the video, under the HUD and every panel.
         self.subtitles.paint(p, self.rect.is_none());
-        if self.top().is_none() {
+        let top = self.top();
+        if top.is_none() {
             self.bottom.screen.draw(p, &m, &self.logos);
         }
-        for layer in &mut self.stack {
+        for (i, layer) in self.stack.iter_mut().enumerate() {
+            if layer.screen.hidden_when_covered() && Some(i) != top {
+                continue;
+            }
             layer.screen.draw(p, &m, &self.logos);
         }
         if let Some(t) = &mut self.toast {
@@ -531,9 +545,26 @@ impl Shell {
         self.dirty = true;
         self.player.on_key();
         let from = self.top();
-        let (screen, data) = self.screen(from);
-        let out = screen.key(action.key, action.press, data, now);
+        let home = self.home_mode();
+        let section = self.section(from);
+        // With the home navigation, Back that leaves a section goes back to the home page.
+        let back = home && action.key == Key::Back;
+        let out = if back && self.section_root(from) {
+            Output::close()
+        } else {
+            let (screen, data) = self.screen(from);
+            let mut out = screen.key(action.key, action.press, data, now);
+            if back && section.is_some() {
+                out = home::leave_section(out);
+            } else if back && from.is_none() {
+                self.player_back(&mut out);
+            }
+            out
+        };
         self.apply(out, from, now);
+        if home {
+            self.after_home_action(back, section);
+        }
         self.settle(now);
     }
 
@@ -655,6 +686,9 @@ impl Shell {
 
     fn navigate(&mut self, nav: Navigate, from: Option<usize>) {
         let screen: Box<dyn Screen> = match nav {
+            Navigate::Home => return self.go_home(),
+            // The home page stands for TiviMate's main menu.
+            Navigate::MainMenu if self.home_mode() => return self.go_home(),
             Navigate::Close => {
                 if let Some(i) = from.filter(|&i| i < self.stack.len()) {
                     if !self.stack[i].sliding_out() {
@@ -678,7 +712,7 @@ impl Shell {
                 }
                 // The video follows the guide's rectangle: the corner window while PiP is on.
                 guide.set_pip(nav == Navigate::Pip);
-                return self.replace(Box::new(guide));
+                return self.place_section(Box::new(guide));
             }
             Navigate::ChannelList { preview } => {
                 let mode = if preview {
@@ -687,18 +721,25 @@ impl Shell {
                     Mode::Overlay
                 };
                 let list = ChannelList::new(mode, self.shown_group(), &*self.store);
-                return self.replace(Box::new(list));
+                return self.place_section(Box::new(list));
             }
             Navigate::Vod(section) => {
                 let settings = PlayerSettings::from_settings(&self.settings);
                 let vod = VodScreen::new(section, &*self.store, settings);
-                return self.replace(Box::new(vod));
+                return self.place_section(Box::new(vod));
             }
             Navigate::History => Box::new(History::open(&*self.store)),
             Navigate::Settings => {
                 Box::new(SettingsPanel::new(self.settings.clone(), &crate::VERSION))
             }
             Navigate::Search => Box::new(Search::new(&*self.store)),
+            Navigate::SearchIn(scope) => Box::new(Search::scoped(&*self.store, Some(scope))),
+            Navigate::VodAt(section, item) => {
+                let settings = PlayerSettings::from_settings(&self.settings);
+                let mut vod = VodScreen::new(section, &*self.store, settings);
+                vod.reveal(item);
+                return self.place_section(Box::new(vod));
+            }
             Navigate::Pin(task) => {
                 Box::new(PinDialog::new(task, self.settings.get(keys::PARENTAL_PIN)))
             }
@@ -743,6 +784,16 @@ impl Shell {
     /// Close every screen: the player is in front. Screens already animating out go on doing so.
     fn clear(&mut self) {
         self.stack.retain(Layer::sliding_out);
+    }
+
+    /// Open the guide, the channel list or a VOD section: over the home page with the home
+    /// navigation, else in place of every screen ([`replace`](Self::replace)).
+    fn place_section(&mut self, screen: Box<dyn Screen>) {
+        if self.home_mode() {
+            self.open_section(screen);
+        } else {
+            self.replace(screen);
+        }
     }
 
     /// Close every screen and open `screen` over the player, under the ones animating out.
@@ -1038,6 +1089,9 @@ impl Shell {
         }
         self.store.save_setting(key, &self.settings);
         self.follow_settings();
+        if key == keys::NAVIGATION {
+            self.follow_navigation();
+        }
         self.reconfigure(before);
         self.refresh_screens();
     }

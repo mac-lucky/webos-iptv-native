@@ -2,5 +2,9 @@
   "nav.epg": {
     "value": "Guide TV",
     "description": "Menu entry, tile and settings section: the programme guide"
+  },
+  "nav.home": {
+    "value": "Accueil",
+    "description": "Title of the home page, the grid of section tiles"
   }
 }

@@ -39,6 +39,10 @@ pub enum Icon {
     ChevronDown,
     /// A programme reminder: the mark on a guide cell and the reminder prompt.
     Bell,
+    /// The Movies tile of the home page.
+    Film,
+    /// The Series tile of the home page.
+    Show,
 }
 
 impl Icon {
@@ -67,6 +71,8 @@ impl Icon {
             Icon::ChevronUp => include_str!("../../../assets/icons/chevron-up.svg"),
             Icon::ChevronDown => include_str!("../../../assets/icons/chevron-down.svg"),
             Icon::Bell => include_str!("../../../assets/icons/tv/bell.svg"),
+            Icon::Film => include_str!("../../../assets/icons/film.svg"),
+            Icon::Show => include_str!("../../../assets/icons/show.svg"),
         }
     }
 }
@@ -130,7 +136,7 @@ fn mask(icon: Icon, size: i32) -> Option<Vec<u8>> {
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 22] = [
+    const ALL: [Icon; 24] = [
         Icon::CatchUp,
         Icon::Star,
         Icon::StarFilled,
@@ -153,6 +159,8 @@ mod tests {
         Icon::ChevronRight,
         Icon::ChevronUp,
         Icon::ChevronDown,
+        Icon::Film,
+        Icon::Show,
     ];
 
     #[test]

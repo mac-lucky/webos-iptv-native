@@ -61,13 +61,17 @@ fn movies_list_all_then_their_groups_in_order() {
     let d = data();
     let c = Catalog::build(&d, VodSection::Movies);
     let names: Vec<_> = c.categories.iter().map(|c| c.name().to_owned()).collect();
-    assert_eq!(names, ["All", "Drama", "Action", "Comedy", "Romance"]);
-    assert_eq!(c.list_len(0), 8);
     assert_eq!(
-        titles(&c, 1),
+        names,
+        ["Search", "All", "Drama", "Action", "Comedy", "Romance"]
+    );
+    assert_eq!(c.list_len(0), 0, "Search lists nothing");
+    assert_eq!(c.list_len(1), 8);
+    assert_eq!(
+        titles(&c, 2),
         ["Northern Lights", "Quiet Hours", "Last Train Home"]
     );
-    let Some(Entry::Movie(m)) = c.entry(2, 0) else {
+    let Some(Entry::Movie(m)) = c.entry(3, 0) else {
         panic!("a movie");
     };
     assert_eq!((m.title.as_str(), m.year), ("Harbour City", Some(2011)));
@@ -91,9 +95,9 @@ fn locked_groups_and_keys_leave_their_movies_out() {
     d.vod_progress = vec![VodProgress::new(harbour, 600, 5_400, NOW)];
     let c = Catalog::build(&d, VodSection::Movies);
     let names: Vec<_> = c.categories.iter().map(|c| c.name().to_owned()).collect();
-    assert_eq!(names, ["All", "Drama", "Romance", "Comedy"]);
+    assert_eq!(names, ["Search", "All", "Drama", "Romance", "Comedy"]);
     assert_eq!(
-        titles(&c, 0),
+        titles(&c, 1),
         [
             "Northern Lights",
             "Summer Rain",
@@ -105,10 +109,10 @@ fn locked_groups_and_keys_leave_their_movies_out() {
     // The PIN opened Action for the session: its movies are back, the started one first.
     d.parental.open(crate::data::Lock::Group("Action".into()));
     let c = Catalog::build(&d, VodSection::Movies);
-    assert_eq!(c.categories[0], Category::Continue);
-    assert_eq!(titles(&c, 0), ["Harbour City"]);
-    assert!(titles(&c, 1).contains(&"Iron Valley".to_owned()));
-    assert!(!titles(&c, 1).contains(&"Quiet Hours".to_owned()));
+    assert_eq!(c.categories[1], Category::Continue);
+    assert_eq!(titles(&c, 1), ["Harbour City"]);
+    assert!(titles(&c, 2).contains(&"Iron Valley".to_owned()));
+    assert!(!titles(&c, 2).contains(&"Quiet Hours".to_owned()));
 }
 
 #[test]
@@ -123,9 +127,10 @@ fn continue_watching_comes_first_latest_first_and_skips_the_watched() {
         VodProgress::new(road, 5_390, 5_400, NOW),
     ];
     let c = Catalog::build(&d, VodSection::Movies);
-    assert_eq!(c.categories[0], Category::Continue);
-    assert_eq!(titles(&c, 0), ["Paper Moons", "Quiet Hours"]);
-    assert_eq!(c.categories[1], Category::All);
+    assert_eq!(c.categories[0], Category::Search);
+    assert_eq!(c.categories[1], Category::Continue);
+    assert_eq!(titles(&c, 1), ["Paper Moons", "Quiet Hours"]);
+    assert_eq!(c.categories[2], Category::All);
     assert_eq!(Mark::of(c.progress(road)), Mark::Watched);
     let Mark::Started(frac, left) = Mark::of(c.progress(quiet)) else {
         panic!("started");
@@ -142,12 +147,12 @@ fn shows_are_series_by_season_and_episode() {
     d.vod.swap(8, 9);
     let c = Catalog::build(&d, VodSection::Shows);
     let names: Vec<_> = c.categories.iter().map(|c| c.name().to_owned()).collect();
-    assert_eq!(names, ["All", "Crime", "Documentary", "Lifestyle"]);
+    assert_eq!(names, ["Search", "All", "Crime", "Documentary", "Lifestyle"]);
     assert_eq!(
-        titles(&c, 0),
+        titles(&c, 1),
         ["Harbour Watch", "The Archive", "Kitchen Stories"]
     );
-    let Some(Entry::Series(s)) = c.entry(0, 0) else {
+    let Some(Entry::Series(s)) = c.entry(1, 0) else {
         panic!("a series");
     };
     assert_eq!(s.len(), 5);
@@ -155,7 +160,7 @@ fn shows_are_series_by_season_and_episode() {
     assert_eq!(seasons, ["Season 1", "Season 2"]);
     let first: Vec<_> = s.seasons[0].episodes.iter().map(|e| e.label()).collect();
     assert_eq!(first, ["S01 E01 Pilot", "S01 E02 Low Tide", "S01 E03 Fog"]);
-    let Some(Entry::Series(k)) = c.entry(0, 1) else {
+    let Some(Entry::Series(k)) = c.entry(1, 1) else {
         panic!("a series");
     };
     assert_eq!(k.name, "The Archive");
@@ -185,7 +190,7 @@ fn unnumbered_episodes_are_a_last_season() {
         (*ep("a", Some(1), Some(1))).clone(),
     ];
     let c = Catalog::build(&d, VodSection::Shows);
-    let Some(Entry::Series(s)) = c.entry(0, 0) else {
+    let Some(Entry::Series(s)) = c.entry(1, 0) else {
         panic!("a series");
     };
     let seasons: Vec<_> = s.seasons.iter().map(Season::name).collect();
@@ -196,7 +201,7 @@ fn unnumbered_episodes_are_a_last_season() {
 fn ok_on_a_new_movie_plays_it_and_puts_its_player_in_front() {
     let d = data();
     let mut s = VodScreen::new(VodSection::Movies, &d, settings());
-    assert_eq!((s.focus(), s.category()), (Focus::Categories, 0));
+    assert_eq!((s.focus(), s.category()), (Focus::Categories, 1), "on All, under Search");
     assert_eq!(s.title(), "Movies");
     let out = press(&mut s, &d, &[Key::Right, Key::Down, Key::Ok]);
     let key = key_of(&d, "Harbour City");
@@ -275,7 +280,7 @@ fn back_walks_out_to_the_guide() {
     press(&mut s, &d, &[Key::Down]);
     assert_eq!(
         (s.category(), s.item()),
-        (1, 0),
+        (2, 0),
         "a new category starts at its top"
     );
     assert_eq!(
@@ -517,15 +522,50 @@ fn the_pointer_focuses_rows_in_both_columns() {
     assert_eq!((s.focus(), s.item()), (Focus::Items, 2));
     assert_eq!(s.point(x, y + 1.0, &d, 0), Output::default());
     // A category on the left shows its movies from the first.
-    let (x, y) = spot_point(&mut s, view::LEFT, 1);
+    let (x, y) = spot_point(&mut s, view::LEFT, 2);
     assert_eq!(s.point(x, y, &d, 0), Output::redraw());
     assert_eq!(
         (s.focus(), s.category(), s.item()),
-        (Focus::Categories, 1, 0)
+        (Focus::Categories, 2, 0)
     );
     // The keys carry on from there.
     press(&mut s, &d, &[Key::Down, Key::Right]);
-    assert_eq!((s.focus(), s.category(), s.item()), (Focus::Items, 2, 0));
+    assert_eq!((s.focus(), s.category(), s.item()), (Focus::Items, 3, 0));
     // Nowhere near a row.
     assert_eq!(s.point(10.0, 10.0, &d, 0), Output::default());
+}
+
+#[test]
+fn search_heads_the_categories_and_opens_the_sections_search() {
+    let d = data();
+    let mut s = VodScreen::new(VodSection::Movies, &d, settings());
+    assert_eq!(s.catalog().categories[0], Category::Search);
+    let out = press(&mut s, &d, &[Key::Up, Key::Ok]);
+    assert_eq!(
+        out.navigate,
+        [Navigate::SearchIn(crate::data::SearchScope::Movies)]
+    );
+    let mut s = VodScreen::new(VodSection::Shows, &d, settings());
+    let out = press(&mut s, &d, &[Key::Up, Key::Right]);
+    assert_eq!(
+        out.navigate,
+        [Navigate::SearchIn(crate::data::SearchScope::Shows)]
+    );
+}
+
+#[test]
+fn a_search_result_opens_on_its_movie_or_its_series() {
+    let d = data();
+    let mut s = VodScreen::new(VodSection::Movies, &d, settings());
+    s.reveal(key_of(&d, "Harbour City"));
+    assert_eq!(s.catalog().categories[s.category()], Category::All);
+    assert_eq!(s.focus(), Focus::Items);
+    let Some(Entry::Movie(m)) = s.catalog().entry(s.category(), s.item()) else {
+        panic!("a movie");
+    };
+    assert_eq!(m.title, "Harbour City");
+    let mut s = VodScreen::new(VodSection::Shows, &d, settings());
+    s.reveal(key_of(&d, "S02 E01 Return"));
+    assert_eq!(s.series().map(|x| x.name.as_str()), Some("Harbour Watch"));
+    assert_eq!(s.focus(), Focus::Episodes);
 }

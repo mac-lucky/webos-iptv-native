@@ -16,5 +16,17 @@
       "weekday": "str"
     },
     "description": "Search result line of a programme"
+  },
+  "search.hint_all": {
+    "value": "Chaîne, programme, film ou série",
+    "description": "Empty search field of the search in every section"
+  },
+  "search.hint_movies": {
+    "value": "Titre du film",
+    "description": "Empty search field of the search in Movies"
+  },
+  "search.hint_shows": {
+    "value": "Titre de la série",
+    "description": "Empty search field of the search in Series"
   }
 }

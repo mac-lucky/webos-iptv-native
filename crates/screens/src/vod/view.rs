@@ -12,7 +12,7 @@ use tv_platform::i18n::msg;
 use tv_ui::consts::{SCR_H, SCR_W};
 use tv_ui::Rect;
 
-use super::catalog::{Entry, Mark};
+use super::catalog::{Category, Entry, Mark};
 use super::player::VodPlayer;
 use super::{Focus, VodScreen, CATEGORY_ROWS, ITEM_ROWS};
 use crate::data::VodSection;
@@ -116,7 +116,14 @@ pub fn build(s: &VodScreen, m: &dyn Measure, out: &mut Vec<Piece>) {
                 .categories
                 .iter()
                 .enumerate()
-                .map(|(i, c)| (c.name().to_owned(), s.catalog.list_len(i).to_string()))
+                .map(|(i, c)| {
+                    // Search lists nothing of its own: no count beside it.
+                    let count = match c {
+                        Category::Search => String::new(),
+                        _ => s.catalog.list_len(i).to_string(),
+                    };
+                    (c.name().to_owned(), count)
+                })
                 .collect();
             column(
                 out,

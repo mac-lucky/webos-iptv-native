@@ -28,6 +28,8 @@ pub fn locked(parental: &Parental, item: &VodItem) -> bool {
 /// A category of the left column.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Category {
+    /// Search in the section, first in the column: it lists nothing and opens Search.
+    Search,
     /// Items started and not finished, the latest watched first.
     Continue,
     All,
@@ -38,6 +40,7 @@ pub enum Category {
 impl Category {
     pub fn name(&self) -> &str {
         match self {
+            Category::Search => msg::common_search(),
             Category::Continue => msg::vod_continue(),
             Category::All => msg::vod_all(),
             Category::Group(name) => name,
@@ -181,6 +184,10 @@ impl Catalog {
         }
         let mut categories = Vec::new();
         let mut lists = Vec::new();
+        if !entries.is_empty() {
+            categories.push(Category::Search);
+            lists.push(Vec::new());
+        }
         let mut cont: Vec<usize> = (0..entries.len())
             .filter(|&i| started[i].is_some())
             .collect();

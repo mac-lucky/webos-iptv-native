@@ -36,5 +36,8 @@
   "settings.update_on_start": "Aktualizuj przy starcie",
   "settings.update_playlist": "Aktualizuj playlistę teraz",
   "settings.updating_epg": "Aktualizowanie EPG",
-  "settings.updating_playlist": "Aktualizowanie playlisty"
+  "settings.updating_playlist": "Aktualizowanie playlisty",
+  "settings.navigation": "Nawigacja",
+  "settings.navigation_home": "Strona główna",
+  "settings.navigation_classic": "Klasyczna"
 }
