@@ -14,7 +14,7 @@ The app ships no channels or playlists. Add an M3U playlist from a provider you 
 - catch-up from the guide, following the M3U conventions of Kodi's pvr.iptvsimple (`catchup`,
   `catchup-source`, `catchup-days`, and SIPTV `timeshift`): shift, Flussonic and template sources
 - movies and series sections for playlists that carry VOD
-- DVB and WebVTT subtitles, audio track selection, picture in picture
+- DVB, Blu-ray (PGS) and WebVTT subtitles, audio track selection, picture in picture
 - programme reminders, channel renaming, a parental PIN, settings backup, accent colours
 - English, Polish and French
 

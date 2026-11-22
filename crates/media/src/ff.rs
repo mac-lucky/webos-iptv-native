@@ -1490,7 +1490,7 @@ pub fn boot() {
     // Whether the software decode -> PCM path bound. Latched before any playback decides its
     // audio feed.
     adec::detect();
-    // Whether the subtitle decoder bound; without it no subtitle track is listed.
+    // Which subtitle decoders bound (DVB, PGS); a codec without one lists no track.
     subdec::detect();
     // Phase A dev trigger: /tmp/webosiptv-ffprobe holds a media URL to open + dump streams,
     // confirming the FFmpeg-3.3 struct offsets against known media before we build on them.
@@ -1613,7 +1613,8 @@ pub mod probe;
 /// a PCM-only pipeline) decoded on the CPU over the bundled libavcodec and fed as PCM.
 #[path = "ff_adec.rs"]
 pub mod adec;
-/// DVB subtitles: the streams listed and their packets decoded into `crate::subtitles` cues.
+/// Bitmap subtitles (DVB, PGS): the streams listed and their packets decoded into
+/// `crate::subtitles` cues.
 #[path = "ff_subdec.rs"]
 pub mod subdec;
 
@@ -4019,6 +4020,7 @@ pub fn demux(
                 if is_hls {
                     cap_hls_probe(fmt);
                 }
+                subdec::guard_stream_info(fmt);
                 let r = avformat_open_input(
                     &mut fmt,
                     std::ptr::null(),

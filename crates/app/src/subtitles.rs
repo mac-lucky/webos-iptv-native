@@ -3,10 +3,12 @@
 //!
 //! Each rect of a cue is one texture, uploaded when the cue changes (a DVB display set comes every
 //! second or two) and deleted with it, so a frame between changes only draws. The cue's canvas
-//! (720x576 for DVB unless the stream defines another) is mapped onto the picture where the aspect
-//! mode puts it, the size setting scales the cue about its bottom centre, and the result is moved
-//! inside the screen's title-safe area. Shown only while the video is full screen: the guide's
-//! preview is too small to read.
+//! (720x576 for DVB unless the stream defines another, the authored video size for PGS) is mapped
+//! onto the picture where the aspect mode puts it: stretched over it, or for a square-pixel
+//! canvas ([`Cue::square`]) scaled to cover it about its centre, so the subtitles of a film whose
+//! black bars were cropped off stay under the picture, the size setting scales the cue about its
+//! bottom centre, and the result is moved inside the screen's title-safe area. Shown only while
+//! the video is full screen: the guide's preview is too small to read.
 
 use std::sync::Arc;
 
@@ -96,7 +98,7 @@ impl Overlay {
         for (tex, r) in self
             .textures
             .iter()
-            .zip(place(cue.canvas, rects, picture, self.scale))
+            .zip(place(cue.canvas, cue.square, rects, picture, self.scale))
         {
             p.tex(*tex, r, 0.0, [1.0; 4]);
         }
@@ -128,24 +130,36 @@ fn size_scale(value: &str) -> f32 {
 }
 
 /// Where each rect `(x, y, w, h)` of a cue on `canvas` goes on the screen: the canvas stretched
-/// over `picture`, the whole cue scaled by `scale` about its bottom centre, then moved (never
-/// shrunk) to lie inside the title-safe area, bottom and left edges first when it is larger.
+/// over `picture`, or when `square` scaled alike both ways to cover it about its centre (the
+/// frame the picture was cropped from), the whole cue scaled by `scale` about its bottom centre,
+/// then moved (never shrunk) to lie inside the title-safe area, bottom and left edges first when
+/// it is larger.
 fn place(
     canvas: (u32, u32),
+    square: bool,
     rects: impl IntoIterator<Item = (i32, i32, u32, u32)>,
     picture: Rect,
     scale: f32,
 ) -> Vec<Rect> {
-    let (sx, sy) = (
-        picture.w / canvas.0.max(1) as f32,
-        picture.h / canvas.1.max(1) as f32,
-    );
+    let (cw, ch) = (canvas.0.max(1) as f32, canvas.1.max(1) as f32);
+    let (sx, sy) = (picture.w / cw, picture.h / ch);
+    let (sx, sy, ox, oy) = if square {
+        let s = sx.max(sy);
+        (
+            s,
+            s,
+            picture.x + (picture.w - cw * s) * 0.5,
+            picture.y + (picture.h - ch * s) * 0.5,
+        )
+    } else {
+        (sx, sy, picture.x, picture.y)
+    };
     let mapped: Vec<Rect> = rects
         .into_iter()
         .map(|(x, y, w, h)| {
             Rect::new(
-                picture.x + x as f32 * sx,
-                picture.y + y as f32 * sy,
+                ox + x as f32 * sx,
+                oy + y as f32 * sy,
                 w as f32 * sx,
                 h as f32 * sy,
             )
@@ -210,18 +224,45 @@ mod tests {
     #[test]
     fn the_canvas_is_stretched_over_the_picture() {
         // A DVB 720x576 canvas over a full-screen 16:9 picture: x by 8/3, y by 15/8.
-        let r = place((720, 576), [(180, 480, 360, 48)], FULL, 1.0);
+        let r = place((720, 576), false, [(180, 480, 360, 48)], FULL, 1.0);
         assert_eq!(xywh(r[0]), (480.0, 900.0, 960.0, 90.0));
         // The same cue over a 4:3 picture pillarboxed in the middle.
         let picture = Rect::new(240.0, 0.0, 1440.0, 1080.0);
-        let r = place((720, 576), [(180, 480, 360, 48)], picture, 1.0);
+        let r = place((720, 576), false, [(180, 480, 360, 48)], picture, 1.0);
         assert_eq!(xywh(r[0]), (600.0, 900.0, 720.0, 90.0));
+    }
+
+    /// A Blu-ray film cropped to 2.40:1 (1920x800) keeps its 1920x1080 PGS canvas: its line at
+    /// the bottom of the disc's frame stays under the picture, unsquashed, rather than being
+    /// stretched into it. A 4:3 one cropped to 1440x1080 keeps the canvas's sides off the picture.
+    #[test]
+    fn a_square_canvas_covers_a_cropped_picture_about_its_centre() {
+        let line = [(460, 920, 1000, 80)];
+        let scope = Rect::new(0.0, 140.0, 1920.0, 800.0);
+        let r = place((1920, 1080), true, line, scope, 1.0);
+        assert_eq!(
+            xywh(r[0]),
+            (460.0, 920.0, 1000.0, 80.0),
+            "where the disc put it"
+        );
+        let stretched = place((1920, 1080), false, line, scope, 1.0);
+        assert!(
+            stretched[0].h < 60.0,
+            "stretching squashes it: {:?}",
+            xywh(stretched[0])
+        );
+        let academy = Rect::new(240.0, 0.0, 1440.0, 1080.0);
+        let r = place((1920, 1080), true, line, academy, 1.0);
+        assert_eq!(xywh(r[0]), (460.0, 920.0, 1000.0, 80.0));
+        // A 720p rip with its own 1280x720 graphics, shown full screen: scaled by 1.5 both ways.
+        let r = place((1280, 720), true, [(320, 640, 640, 40)], FULL, 1.0);
+        assert_eq!(xywh(r[0]), (480.0, 960.0, 960.0, 60.0));
     }
 
     #[test]
     fn the_size_scales_about_the_bottom_centre_and_keeps_the_layout() {
         let rects = [(180, 400, 360, 48), (280, 480, 160, 48)];
-        let r = place((720, 576), rects, FULL, 1.3);
+        let r = place((720, 576), false, rects, FULL, 1.3);
         let bottom = r[1].y + r[1].h;
         assert!(
             (bottom - 990.0).abs() < 0.01,
@@ -239,15 +280,15 @@ mod tests {
     #[test]
     fn a_cue_off_the_safe_area_is_moved_into_it() {
         // At the very bottom of the canvas, and grown past the right edge.
-        let r = place((720, 576), [(600, 540, 120, 36)], FULL, 1.3);
+        let r = place((720, 576), false, [(600, 540, 120, 36)], FULL, 1.3);
         let (right, bottom) = (r[0].x + r[0].w, r[0].y + r[0].h);
         assert!(right <= SCR_W - SAFE_X + 0.01, "{right}");
         assert!(bottom <= SCR_H - SAFE_Y + 0.01, "{bottom}");
         // A zoomed picture larger than the screen pushes the cue below it; it comes back up.
         let zoomed = Rect::new(-240.0, -135.0, 2400.0, 1350.0);
-        let r = place((720, 576), [(180, 520, 360, 48)], zoomed, 1.0);
+        let r = place((720, 576), false, [(180, 520, 360, 48)], zoomed, 1.0);
         assert!(r[0].y + r[0].h <= SCR_H - SAFE_Y + 0.01);
-        assert_eq!(place((720, 576), [], FULL, 1.0), Vec::<Rect>::new());
+        assert_eq!(place((720, 576), false, [], FULL, 1.0), Vec::<Rect>::new());
     }
 
     #[test]

@@ -10,8 +10,9 @@
 //! **Every track is decoded, the pick only chooses what shows.** The demuxer reads ahead of the
 //! picture (a live playlist's buffer, tens of seconds of a recording), and a track it skipped has
 //! nothing for that stretch: decoding only the picked one would leave a new pick blank until the
-//! read-ahead ran out. A DVB display set is a few kilobytes every second or two, so decoding them
-//! all costs little, and the caps below bound what is kept whatever the stream sends.
+//! read-ahead ran out. A DVB display set is a few kilobytes every second or two, a film's PGS one
+//! a few tens per line of dialogue, so decoding them all costs little, and the caps below bound
+//! what is kept whatever the stream sends.
 //!
 //! **Timing.** A cue is stamped with its packet's demux time (the stream's PTS in ns, the clock the
 //! video access units carry). The engine feeds video at `pts + pts_shift` and the sink reports
@@ -29,12 +30,14 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Most subtitle tracks listed (and decoded) for one stream.
 pub const MAX_TRACKS: usize = 8;
-/// Most rects (DVB regions) one picture may carry; a broadcast uses one to four.
+/// Most rects (DVB regions, PGS objects) one picture may carry; a broadcast uses one to four, a
+/// Blu-ray at most two.
 pub const MAX_RECTS: usize = 8;
 /// Longest side of a rect or of the canvas it is placed on (a DVB display definition tops out at
 /// 4096).
 pub const MAX_SIDE: u32 = 4096;
-/// Most pixels in one picture, all rects together: a full HD screen.
+/// Most pixels in one picture, all rects together: a full HD screen, a Blu-ray's whole graphics
+/// plane. A PGS stream authored on a larger video is refused by its decoder (`max_pixels`).
 pub const MAX_CUE_PIXELS: usize = 1920 * 1080;
 /// Most cues held at once, all tracks together. The demuxer runs ahead of the picture, and a
 /// broadcast sends a display set every second or two per track.
@@ -47,10 +50,13 @@ pub const MAX_STORE_BYTES: usize = 8 << 20;
 pub struct Track {
     /// The `language` tag (`pol`, `eng`), empty when the stream has none.
     pub language: String,
-    /// FFmpeg's codec name (`dvb_subtitle`).
+    /// FFmpeg's codec name (`dvb_subtitle`, `hdmv_pgs_subtitle`).
     pub codec: String,
     /// Subtitles for the deaf and hard of hearing (the stream says so).
     pub hearing_impaired: bool,
+    /// Forced subtitles: only what the dialogue does not say itself, a sign or a line in another
+    /// language (a Matroska film's flag). Beside a full track of the same language.
+    pub forced: bool,
 }
 
 /// One rect of a picture, as palette indices, on the stream's canvas.
@@ -93,8 +99,14 @@ pub struct Cue {
     pub start_ns: i64,
     /// Demux time it is gone by; `i64::MAX` until the next cue replaces it.
     pub end_ns: i64,
-    /// The canvas the rects are placed on (DVB: 720x576 unless the stream defines another).
+    /// The canvas the rects are placed on (DVB: 720x576 unless the stream defines another; PGS:
+    /// the video size the graphics were authored on, 1920x1080 for a Blu-ray).
     pub canvas: (u32, u32),
+    /// The canvas has square pixels and stands for the whole frame the video was cut from (PGS
+    /// in HD): it keeps its shape, scaled to cover the picture about its centre, so a film whose
+    /// black bars were cropped off keeps its subtitles where the disc put them, under the
+    /// picture. Otherwise (DVB, SD graphics, anamorphic) it is stretched over the picture.
+    pub square: bool,
     pub rects: Vec<Rect>,
     /// Unique per cue for the process, so a renderer knows when to upload again.
     pub serial: u64,
@@ -254,15 +266,17 @@ pub(crate) fn opened(tracks: Vec<Track>) -> Option<usize> {
     pick
 }
 
-/// The track in `language` (a non-hearing-impaired one first), else the first one.
+/// The track in `language`: a full one before one for the hard of hearing, either before a forced
+/// one (which leaves most of the film blank); else the first full track, else the first one.
 pub fn preferred_track(tracks: &[Track], language: &str) -> usize {
-    let Some(want) = tv_base::tracks::language_index(language) else { return 0 };
-    let find = |hi: bool| {
-        tracks
-            .iter()
-            .position(|t| t.hearing_impaired == hi && tv_base::tracks::language_index(&t.language) == Some(want))
-    };
-    find(false).or_else(|| find(true)).unwrap_or(0)
+    let want = tv_base::tracks::language_index(language);
+    let speaks = |t: &Track| want.is_some() && tv_base::tracks::language_index(&t.language) == want;
+    let find = |hit: &dyn Fn(&Track) -> bool| tracks.iter().position(hit);
+    find(&|t| speaks(t) && !t.forced && !t.hearing_impaired)
+        .or_else(|| find(&|t| speaks(t) && !t.forced))
+        .or_else(|| find(&|t| speaks(t)))
+        .or_else(|| find(&|t| !t.forced))
+        .unwrap_or(0)
 }
 
 /// A decoded display set of one track.
@@ -308,6 +322,7 @@ mod tests {
             start_ns: start_s * S,
             end_ns: end_s.map_or(i64::MAX, |e| e * S),
             canvas: (720, 576),
+            square: false,
             rects,
             serial: (track as u64) * 1000 + start_s as u64,
         }
@@ -389,7 +404,12 @@ mod tests {
 
     #[test]
     fn the_preferred_track_is_the_language_match_then_the_first() {
-        let t = |lang: &str, hi: bool| Track { language: lang.into(), codec: "dvb_subtitle".into(), hearing_impaired: hi };
+        let t = |lang: &str, hi: bool| Track {
+            language: lang.into(),
+            codec: "dvb_subtitle".into(),
+            hearing_impaired: hi,
+            ..Track::default()
+        };
         let tracks = [t("eng", false), t("pol", true), t("pol", false)];
         assert_eq!(preferred_track(&tracks, "pl"), 2, "the plain Polish one before the SDH one");
         assert_eq!(preferred_track(&tracks, "pol"), 2);
@@ -398,10 +418,29 @@ mod tests {
         assert_eq!(preferred_track(&tracks[..2], "pl"), 1, "only an SDH one: that one");
     }
 
+    /// A Matroska film often carries a forced track (signs, foreign lines) beside the full one of
+    /// the same language, forced first: the full one is what turning subtitles on means.
+    #[test]
+    fn a_forced_track_is_picked_only_when_nothing_fuller_matches() {
+        let t = |lang: &str, hi: bool, forced: bool| Track {
+            language: lang.into(),
+            codec: "hdmv_pgs_subtitle".into(),
+            hearing_impaired: hi,
+            forced,
+        };
+        let film = [t("fre", false, true), t("fre", true, false), t("fre", false, false), t("eng", false, false)];
+        assert_eq!(preferred_track(&film, "fr"), 2, "the full French one");
+        assert_eq!(preferred_track(&film[..2], "fr"), 1, "an SDH one before a forced one");
+        assert_eq!(preferred_track(&film[..1], "fr"), 0, "a forced one when it is all there is");
+        assert_eq!(preferred_track(&film, "de"), 1, "no match: the first full track");
+        assert_eq!(preferred_track(&[t("eng", false, true), t("fre", false, true)], "de"), 0, "else the first");
+        assert_eq!(preferred_track(&[], "fr"), 0);
+    }
+
     #[test]
     fn a_pick_follows_the_tracks_and_auto_resolves_once_they_are_known() {
         let _g = tv_base::testlock::serial();
-        let t = |lang: &str| Track { language: lang.into(), codec: "dvb_subtitle".into(), hearing_impaired: false };
+        let t = |lang: &str| Track { language: lang.into(), codec: "dvb_subtitle".into(), ..Track::default() };
         set_auto(false, "");
         begin();
         assert_eq!(selected(), None);

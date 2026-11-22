@@ -125,11 +125,14 @@ impl MediaPlayer {
 }
 
 /// How subtitle track `i` reads in the player menu: its language in its own name, else its
-/// number, marked when it is for the hard of hearing.
+/// number, marked when it is forced or for the hard of hearing (a forced one beside the full one
+/// of the same language would read the same).
 fn subtitle_name(i: usize, t: &tv_media::subtitles::Track) -> String {
     let name = tv_base::tracks::language_name(&t.language)
         .unwrap_or_else(|| msg::subtitles_track(i64::try_from(i + 1).unwrap_or(i64::MAX)));
-    if t.hearing_impaired {
+    if t.forced {
+        msg::subtitles_forced(&name)
+    } else if t.hearing_impaired {
         msg::subtitles_hearing_impaired(&name)
     } else {
         name
