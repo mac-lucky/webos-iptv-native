@@ -1,14 +1,19 @@
-//! DVB subtitles through the FFmpeg the app ships (`cargo xtask ffmpeg --host` stages it in
+//! Bitmap subtitles through the FFmpeg the app ships (`cargo xtask ffmpeg --host` stages it in
 //! `pkg/`; `WEBOSIPTV_FFMPEG_DIR` names another directory). Each fixture's cues are written here
-//! as a PGS file and converted to DVB subtitles beside H.264 by the `ffmpeg` command line, so the
-//! bitmaps, their times and their colours are known. The tests skip, loudly, without the staged
-//! FFmpeg, without its `dvbsub` decoder or without the command line tool. Run alone with
+//! as a PGS file and, beside H.264 by the `ffmpeg` command line, converted to DVB subtitles in an
+//! MPEG-TS or copied as they are into a Matroska film, so the bitmaps, their times and their
+//! colours are known. The tests skip, loudly, without the staged FFmpeg, without the decoder they
+//! need (`dvbsub`, `pgssub`) or without the command line tool. Run alone with
 //! `cargo test -p tv_media --lib ff::subdec_tests -- --nocapture`.
 //!
-//! [`picture`]'s caps need no FFmpeg: they are driven with display sets built in this file.
+//! [`picture`]'s caps and what each decoder is let keep need no FFmpeg: they are driven with
+//! display sets and segments built in this file.
 
 use super::late_audio_tests::{tool_present, FileServer, Scratch};
-use super::subdec::{self, picture, span, AVSubtitle, AVSubtitleRect, RegionBudget, DISPLAY_COST, REGION_BUDGET};
+use super::subdec::{
+    self, picture, pgs_segments, span, AVSubtitle, AVSubtitleRect, Kind, ObjectBudget, RegionBudget, DISPLAY_COST,
+    REGION_BUDGET,
+};
 use super::test_support::{bind_host_ffmpeg, host_ffmpeg_dir, HostFfmpeg};
 use super::*;
 use crate::subtitles::{self, Cue, Track, MAX_CUE_PIXELS, MAX_RECTS};
@@ -19,15 +24,15 @@ use std::time::{Duration, Instant};
 
 const NS: i64 = 1_000_000_000;
 
-/// The host FFmpeg and the subtitle decoder bound; undone however the test leaves.
-struct Bound {
+/// The host FFmpeg and the subtitle decoders bound; undone however the test leaves.
+pub(super) struct Bound {
     _ffmpeg: HostFfmpeg,
 }
 
 impl Bound {
-    /// `None`, after a SKIP line, when the staged FFmpeg, its `dvbsub` decoder or the `ffmpeg`
-    /// tool is missing.
-    fn new() -> Option<Bound> {
+    /// `None`, after a SKIP line, when the staged FFmpeg, its decoder for `need` or the `ffmpeg`
+    /// tool is missing. Every decoder the build has is listed, as the app would.
+    pub(super) fn new(need: Kind) -> Option<Bound> {
         let dir = host_ffmpeg_dir();
         if !avcodec::CANDIDATES.iter().any(|n| dir.join(n).is_file()) {
             eprintln!("SKIP: no host FFmpeg in {} - run `cargo xtask ffmpeg --host`", dir.display());
@@ -39,34 +44,42 @@ impl Bound {
         }
         let ffmpeg = bind_host_ffmpeg();
         assert!(subdec::load_from(&dir), "the subtitle decoder did not bind from {}", dir.display());
-        if !subdec::decoders_present() {
-            eprintln!("SKIP: the FFmpeg in {} has no dvbsub decoder - run `cargo xtask ffmpeg --host`", dir.display());
+        let present = subdec::decoders_present();
+        if present & need.bit() == 0 {
+            eprintln!("SKIP: the FFmpeg in {} has no {need:?} decoder - run `cargo xtask ffmpeg --host`", dir.display());
             return None;
         }
-        subdec::AVAILABLE.store(true, Ordering::Release);
+        subdec::PRESENT.store(present, Ordering::Release);
         Some(Bound { _ffmpeg: ffmpeg })
     }
 }
 
 impl Drop for Bound {
     fn drop(&mut self) {
-        subdec::AVAILABLE.store(false, Ordering::Release);
+        subdec::PRESENT.store(0, Ordering::Release);
     }
 }
 
 /// One cue of a fixture: shown from `from` to `to` seconds, a `w`x`h` bitmap at (`x`, `y`) of a
 /// 1920x1080 canvas, its left half white (palette index 1) and its right half red (index 2).
-struct PgsCue {
-    from: f64,
-    to: f64,
-    x: u16,
-    y: u16,
-    w: u16,
-    h: u16,
+pub(super) struct PgsCue {
+    pub(super) from: f64,
+    pub(super) to: f64,
+    pub(super) x: u16,
+    pub(super) y: u16,
+    pub(super) w: u16,
+    pub(super) h: u16,
 }
 
 /// A PGS (`.sup`) file of `cues`, an empty composition at 0 first so its timeline starts there.
-fn pgs(cues: &[PgsCue]) -> Vec<u8> {
+pub(super) fn pgs(cues: &[PgsCue]) -> Vec<u8> {
+    pgs_lagged(cues, 0.0)
+}
+
+/// [`pgs`] with every segment after each presentation segment stamped `lag` seconds later, so a
+/// demuxer that hands over one segment per packet puts the display set's end at another time
+/// than its start.
+fn pgs_lagged(cues: &[PgsCue], lag: f64) -> Vec<u8> {
     fn seg(out: &mut Vec<u8>, t: f64, kind: u8, body: &[u8]) {
         let pts = (t * 90_000.0) as u32;
         out.extend_from_slice(b"PG");
@@ -80,8 +93,8 @@ fn pgs(cues: &[PgsCue]) -> Vec<u8> {
     let clear = |out: &mut Vec<u8>, t: f64, n: u16| {
         let pcs = [&be(1920)[..], &be(1080), &[0x10], &be(n), &[0x00, 0, 0, 0]].concat();
         seg(out, t, 0x16, &pcs);
-        seg(out, t, 0x17, &[&[1, 0][..], &be(0), &be(0), &be(1), &be(1)].concat());
-        seg(out, t, 0x80, &[]);
+        seg(out, t + lag, 0x17, &[&[1, 0][..], &be(0), &be(0), &be(1), &be(1)].concat());
+        seg(out, t + lag, 0x80, &[]);
     };
     let mut out = Vec::new();
     clear(&mut out, 0.0, 0);
@@ -89,9 +102,10 @@ fn pgs(cues: &[PgsCue]) -> Vec<u8> {
         let n = 1 + 2 * i as u16;
         let pcs = [&be(1920)[..], &be(1080), &[0x10], &be(n), &[0x80, 0, 0, 1], &be(0), &[0, 0], &be(c.x), &be(c.y)].concat();
         seg(&mut out, c.from, 0x16, &pcs);
-        seg(&mut out, c.from, 0x17, &[&[1, 0][..], &be(c.x), &be(c.y), &be(c.w), &be(c.h)].concat());
+        let later = c.from + lag;
+        seg(&mut out, later, 0x17, &[&[1, 0][..], &be(c.x), &be(c.y), &be(c.w), &be(c.h)].concat());
         // Y, Cr, Cb, alpha: white, then a saturated red.
-        seg(&mut out, c.from, 0x14, &[0, 0, 1, 235, 128, 128, 255, 2, 81, 240, 90, 255]);
+        seg(&mut out, later, 0x14, &[0, 0, 1, 235, 128, 128, 255, 2, 81, 240, 90, 255]);
         let half = c.w / 2;
         let mut rle = Vec::new();
         for _ in 0..c.h {
@@ -103,8 +117,8 @@ fn pgs(cues: &[PgsCue]) -> Vec<u8> {
         let data = [&be(c.w)[..], &be(c.h), &rle].concat();
         let len = data.len() as u32;
         let ods = [&be(0)[..], &[0, 0xC0], &len.to_be_bytes()[1..], &data].concat();
-        seg(&mut out, c.from, 0x15, &ods);
-        seg(&mut out, c.from, 0x80, &[]);
+        seg(&mut out, later, 0x15, &ods);
+        seg(&mut out, later, 0x80, &[]);
         clear(&mut out, c.to, n + 1);
     }
     out
@@ -147,6 +161,60 @@ fn fixture(scratch: &Scratch) -> PathBuf {
     generate(&scratch.0, &pol, &eng)
 }
 
+/// One subtitle track of a Matroska fixture: its PGS file, how it is written (`copy`: PGS as it
+/// is; `dvbsub`: converted) and its stream flags.
+struct FilmTrack<'a> {
+    sup: Vec<u8>,
+    codec: &'a str,
+    language: &'a str,
+    forced: bool,
+}
+
+/// A 6 s Matroska film: 640x360 H.264, AAC, and `tracks` in order.
+fn film(dir: &Path, tracks: &[FilmTrack]) -> PathBuf {
+    container(dir, tracks, "film.mkv", &["-f", "matroska"])
+}
+
+/// [`film`] in the container `format` names, written to `name`.
+fn container(dir: &Path, tracks: &[FilmTrack], name: &str, format: &[&str]) -> PathBuf {
+    let out = dir.join(name);
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args(["-nostdin", "-v", "error", "-y"])
+        .args(["-f", "lavfi", "-i", "testsrc=s=640x360:r=25:d=6"])
+        .args(["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=6"]);
+    for (i, t) in tracks.iter().enumerate() {
+        let sup = dir.join(format!("track{i}.sup"));
+        std::fs::write(&sup, &t.sup).unwrap();
+        if t.codec == "dvbsub" {
+            cmd.arg("-fix_sub_duration");
+        }
+        cmd.args(["-f", "sup", "-i"]).arg(sup);
+    }
+    cmd.args(["-map", "0:v", "-map", "1:a"]);
+    for i in 0..tracks.len() {
+        cmd.args(["-map", &format!("{}:s", i + 2)]);
+    }
+    cmd.args(["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-g", "25", "-c:a", "aac"]);
+    for (i, t) in tracks.iter().enumerate() {
+        cmd.args([format!("-c:s:{i}"), t.codec.to_owned()]);
+        cmd.args([format!("-metadata:s:s:{i}"), format!("language={}", t.language)]);
+        cmd.args([format!("-disposition:s:{i}"), (if t.forced { "forced" } else { "0" }).to_owned()]);
+    }
+    let status = cmd.args(format).arg(&out).status().expect("run ffmpeg");
+    assert!(status.success(), "ffmpeg could not write the {name} fixture");
+    out
+}
+
+/// The PGS film both Matroska tests read: a forced French track, cues 300 px wide, then the full
+/// one, 500 px wide. (FFmpeg's Matroska muxer, like mkvmerge, puts each display set in one block
+/// at its presentation segment's time.)
+fn pgs_film(scratch: &Scratch) -> PathBuf {
+    let forced = [cue(1.0, 2.0, 300), cue(3.0, 4.5, 300)];
+    let full = [cue(1.0, 2.0, 500), cue(3.0, 4.5, 500)];
+    let track = |sup, forced| FilmTrack { sup, codec: "copy", language: "fre", forced };
+    film(&scratch.0, &[track(pgs(&forced), true), track(pgs(&full), false)])
+}
+
 /// Every cue in the store, without disturbing it.
 fn stored() -> Vec<Arc<Cue>> {
     subtitles::cues_for_test()
@@ -169,7 +237,8 @@ fn demux_cues(file: &Path) -> (Vec<Arc<Cue>>, i64) {
         SendPtr(&mut *audio as *mut AuQueue),
         SendPtr(&mut *hs as *mut HttpStream),
     );
-    let url = format!("http://127.0.0.1:{}/media/subs.ts", server.port);
+    let name = file.file_name().unwrap().to_string_lossy();
+    let url = format!("http://127.0.0.1:{}/media/{name}", server.port);
     let th = std::thread::spawn(move || {
         let off = tv_base::task::OffFrame::for_test();
         demux(&off, url, crate::headers::RequestHeaders::none(), "aac".into(), vp, ap, hp)
@@ -208,7 +277,7 @@ fn rgba_at(cue: &Cue, x: usize, y: usize) -> [u8; 4] {
 #[test]
 fn the_picked_dvb_track_decodes_on_the_video_clock() {
     let _g = tv_base::testlock::serial();
-    let Some(_b) = Bound::new() else { return };
+    let Some(_b) = Bound::new(Kind::Dvb) else { return };
     let scratch = Scratch::new("dvbsub");
     let file = fixture(&scratch);
     subtitles::set_auto(false, "");
@@ -232,6 +301,7 @@ fn the_picked_dvb_track_decodes_on_the_video_clock() {
     }
     let first = shown[0];
     assert_eq!(first.canvas, (1920, 1080), "the stream's display definition names its canvas");
+    assert!(!first.square, "a DVB display is stretched over the picture");
     assert_eq!(first.rects.len(), 1);
     let r = &first.rects[0];
     assert_eq!((r.x, r.y, r.w, r.h), (400, 900, 500, 60), "the English bitmap, where it was put");
@@ -259,13 +329,13 @@ fn the_picked_dvb_track_decodes_on_the_video_clock() {
 #[test]
 fn the_tracks_are_listed_and_auto_picks_the_ui_language() {
     let _g = tv_base::testlock::serial();
-    let Some(_b) = Bound::new() else { return };
+    let Some(_b) = Bound::new(Kind::Dvb) else { return };
     let scratch = Scratch::new("dvbsub-auto");
     let file = fixture(&scratch);
     subtitles::set_auto(false, "");
     subtitles::begin();
     let (cues, _) = demux_cues(&file);
-    let track = |lang: &str| Track { language: lang.into(), codec: "dvb_subtitle".into(), hearing_impaired: false };
+    let track = |lang: &str| Track { language: lang.into(), codec: "dvb_subtitle".into(), ..Track::default() };
     assert_eq!(subtitles::tracks(), vec![track("pol"), track("eng")]);
     assert_eq!(subtitles::selected(), None);
     assert_eq!(cues.iter().filter(|c| !c.rects.is_empty()).count(), 4, "off: decoded, not shown");
@@ -283,7 +353,7 @@ fn the_tracks_are_listed_and_auto_picks_the_ui_language() {
 #[test]
 fn a_pick_shows_the_other_track_at_once() {
     let _g = tv_base::testlock::serial();
-    let Some(_b) = Bound::new() else { return };
+    let Some(_b) = Bound::new(Kind::Dvb) else { return };
     let scratch = Scratch::new("dvbsub-pick");
     let file = fixture(&scratch);
     subtitles::set_auto(false, "");
@@ -302,6 +372,223 @@ fn a_pick_shows_the_other_track_at_once() {
     assert_eq!(width(), None, "off");
     SHARED.playpos_ns.store(playpos, Ordering::Relaxed);
     SHARED.disp_base.store(base, Ordering::Relaxed);
+    subtitles::begin();
+}
+
+/// A Matroska film's PGS track decodes on the video's clock like a DVB one: each picture shown
+/// until the clear that follows it (PGS gives no end time), as the bitmap that was written, on
+/// the 1920x1080 canvas its presentation names, which keeps its shape.
+#[test]
+fn a_matroska_pgs_track_decodes_from_its_presentation_on_the_video_clock() {
+    let _g = tv_base::testlock::serial();
+    let Some(_b) = Bound::new(Kind::Pgs) else { return };
+    let scratch = Scratch::new("pgssub");
+    let file = pgs_film(&scratch);
+    subtitles::set_auto(false, "");
+    subtitles::begin();
+    subtitles::select(Some(1));
+    let (cues, video_start) = demux_cues(&file);
+    subtitles::begin();
+
+    let at = |c: &Cue| (c.start_ns - video_start) as f64 / NS as f64;
+    let full: Vec<_> = cues.iter().filter(|c| c.track == 1).collect();
+    eprintln!("full French cues at {:?}", full.iter().map(|c| (at(c), c.rects.len())).collect::<Vec<_>>());
+    let shown: Vec<_> = full.iter().filter(|c| !c.rects.is_empty()).collect();
+    let clears: Vec<_> = full.iter().filter(|c| c.rects.is_empty() && at(c) > 0.5).collect();
+    assert_eq!(shown.len(), 2, "two pictures on the full track");
+    assert_eq!(clears.len(), 2, "each cleared by the next display set");
+    for (c, want) in shown.iter().zip([1.0, 3.0]) {
+        assert!((at(c) - want).abs() < 0.05, "a picture at {want} s, got {} s", at(c));
+        assert_eq!(c.end_ns, i64::MAX, "no end of its own: the clear ends it");
+    }
+    for (c, want) in clears.iter().zip([2.0, 4.5]) {
+        assert!((at(c) - want).abs() < 0.05, "a clear at {want} s, got {} s", at(c));
+    }
+    let first = shown[0];
+    assert_eq!(first.canvas, (1920, 1080), "the presentation's video size");
+    assert!(first.square, "a Blu-ray HD canvas keeps its shape over the picture");
+    assert_eq!(first.rects.len(), 1);
+    let r = &first.rects[0];
+    assert_eq!((r.x, r.y, r.w, r.h), (400, 900, 500, 60), "the full track's bitmap, where it was put");
+    let (white, red) = (rgba_at(first, 10, 30), rgba_at(first, 490, 30));
+    assert!(white.iter().all(|&v| v > 220), "left half white: {white:?}");
+    assert!(red[0] > 180 && red[1] < 90 && red[2] < 90 && red[3] == 255, "right half red: {red:?}");
+
+    let forced: Vec<_> = cues.iter().filter(|c| c.track == 0 && !c.rects.is_empty()).collect();
+    assert_eq!(forced.len(), 2, "the track not picked is decoded too");
+    assert!(forced.iter().all(|c| c.rects[0].w == 300));
+
+    let mut store = subtitles::Store::default();
+    for c in &cues {
+        store.push(Cue::clone(c));
+    }
+    assert!(store.active(video_start + NS / 2, 1).is_none());
+    assert_eq!(store.active(video_start + 3 * NS / 2, 1).map(|c| c.rects[0].w), Some(500));
+    assert!(store.active(video_start + 5 * NS / 2, 1).is_none(), "cleared at 2 s");
+    assert_eq!(store.active(video_start + 7 * NS / 2, 1).map(|c| c.rects[0].w), Some(500));
+    assert!(store.active(video_start + 5 * NS, 1).is_none(), "cleared at 4.5 s");
+}
+
+/// A Blu-ray transport stream (M2TS) carries each PGS segment in a PES of its own, stamped with
+/// its own time: a display set shows from its presentation segment, not from its end, here a
+/// quarter second later.
+#[test]
+fn an_m2ts_pgs_display_set_shows_from_its_presentation_segment() {
+    let _g = tv_base::testlock::serial();
+    let Some(_b) = Bound::new(Kind::Pgs) else { return };
+    let scratch = Scratch::new("pgssub-m2ts");
+    let track = FilmTrack { sup: pgs_lagged(&[cue(1.0, 2.0, 500), cue(3.0, 4.5, 500)], 0.25), codec: "copy", language: "eng", forced: false };
+    let file = container(&scratch.0, &[track], "film.m2ts", &["-f", "mpegts", "-mpegts_m2ts_mode", "1"]);
+    subtitles::set_auto(false, "");
+    subtitles::begin();
+    let (cues, video_start) = demux_cues(&file);
+    assert_eq!(subtitles::tracks().len(), 1, "the PGS track of the M2TS is listed");
+    subtitles::begin();
+    let at = |c: &Cue| (c.start_ns - video_start) as f64 / NS as f64;
+    let times: Vec<_> = cues.iter().map(|c| (at(c), c.rects.len())).collect();
+    eprintln!("M2TS cues at {times:?}");
+    let shown: Vec<_> = cues.iter().filter(|c| !c.rects.is_empty()).map(|c| at(c)).collect();
+    assert_eq!(shown.len(), 2, "two pictures: {times:?}");
+    for (t, want) in shown.iter().zip([1.0, 3.0]) {
+        assert!((t - want).abs() < 0.05, "a picture at {want} s, got {t} s");
+    }
+}
+
+/// The video size `avformat_find_stream_info` left on the first PGS stream of `file`, opened by
+/// path with the stream-info guard or without it: 0 when it never decoded the stream.
+fn stream_info_pgs_width(file: &Path, guarded: bool) -> i32 {
+    let path = std::ffi::CString::new(file.to_str().unwrap()).unwrap();
+    unsafe {
+        let mut fmt = avformat_alloc_context();
+        assert!(!fmt.is_null());
+        if guarded {
+            subdec::guard_stream_info(fmt);
+        }
+        assert!(avformat_open_input(&mut fmt, path.as_ptr(), std::ptr::null_mut(), std::ptr::null_mut()) >= 0);
+        assert!(avformat_find_stream_info(fmt, std::ptr::null_mut()) >= 0);
+        let width = (0..(*fmt).nb_streams as usize)
+            .map(|i| stream_codecpar(*(*fmt).streams.add(i)))
+            .find(|&cp| (*cp).codec_type == 3)
+            .map(|cp| (*cp).width)
+            .expect("a PGS stream");
+        avformat_close_input(&mut fmt);
+        width
+    }
+}
+
+/// `avformat_find_stream_info` decodes a PGS stream with a decoder of its own, out of the
+/// budget's sight, until a display set names its size; guarded, it never opens one, and the
+/// app's own decoder still reads every picture.
+#[test]
+fn the_stream_info_search_never_decodes_pgs() {
+    let _g = tv_base::testlock::serial();
+    let Some(_b) = Bound::new(Kind::Pgs) else { return };
+    let scratch = Scratch::new("pgssub-stream-info");
+    let file = pgs_film(&scratch);
+    assert_eq!(stream_info_pgs_width(&file, false), 1920, "unguarded, the search decodes the stream");
+    assert_eq!(stream_info_pgs_width(&file, true), 0, "guarded, it does not");
+    subtitles::set_auto(false, "");
+    subtitles::begin();
+    let (cues, _) = demux_cues(&file);
+    assert_eq!(cues.iter().filter(|c| !c.rects.is_empty()).count(), 4, "the demuxer's own decoders still do");
+    subtitles::begin();
+}
+
+/// A first display set of 64 objects, each declaring a 16 MiB RLE for a 16x16 bitmap: what would
+/// have the decoder zero 1.1 GB.
+fn pgs_bomb() -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut seg = |kind: u8, body: &[u8]| {
+        out.extend_from_slice(b"PG");
+        out.extend_from_slice(&45_000u32.to_be_bytes());
+        out.extend_from_slice(&45_000u32.to_be_bytes());
+        out.push(kind);
+        out.extend_from_slice(&(body.len() as u16).to_be_bytes());
+        out.extend_from_slice(body);
+    };
+    seg(0x16, &[0x07, 0x80, 0x04, 0x38, 0x10, 0, 0, 0x80, 0, 0, 0]);
+    for id in 0..64u16 {
+        seg(0x15, &[&id.to_be_bytes()[..], &[0, 0xC0, 0xFF, 0xFF, 0xFF, 0, 16, 0, 16], &[0; 8]].concat());
+    }
+    seg(0x80, &[]);
+    out
+}
+
+/// That display set through the demuxer: the search does not decode it, and the app's decoder is
+/// never given it (the budget refuses it, a fresh decoder too), so nothing shows and the film
+/// plays on.
+#[test]
+fn a_pgs_display_set_past_the_budget_is_never_decoded() {
+    let _g = tv_base::testlock::serial();
+    let Some(_b) = Bound::new(Kind::Pgs) else { return };
+    let scratch = Scratch::new("pgssub-bomb");
+    let film = film(&scratch.0, &[FilmTrack { sup: pgs_bomb(), codec: "copy", language: "eng", forced: false }]);
+    assert_eq!(stream_info_pgs_width(&film, true), 0);
+    let mut budget = ObjectBudget::default();
+    let sup = pgs_bomb();
+    let mut set = Vec::new();
+    let mut rest = &sup[..];
+    while rest.len() >= 13 {
+        let len = usize::from(u16::from_be_bytes([rest[11], rest[12]]));
+        set.extend_from_slice(&rest[10..13 + len]);
+        rest = &rest[13 + len..];
+    }
+    assert!(!budget.admit(&set), "the display set, as the Matroska block carries it, is refused");
+    subtitles::set_auto(false, "");
+    subtitles::begin();
+    let (cues, _) = demux_cues(&film);
+    assert_eq!(subtitles::tracks().len(), 1);
+    assert!(cues.iter().all(|c| c.rects.is_empty()), "nothing decoded from it");
+    subtitles::begin();
+}
+
+/// The menu lists both French tracks by language, the forced one marked, and with subtitles on a
+/// new playback starts on the full one, whatever their order.
+#[test]
+fn matroska_pgs_tracks_are_listed_and_auto_skips_the_forced_one() {
+    let _g = tv_base::testlock::serial();
+    let Some(_b) = Bound::new(Kind::Pgs) else { return };
+    let scratch = Scratch::new("pgssub-auto");
+    let file = pgs_film(&scratch);
+    subtitles::set_auto(true, "fr");
+    subtitles::begin();
+    demux_cues(&file);
+    let track = |forced| Track { language: "fre".into(), codec: "hdmv_pgs_subtitle".into(), forced, ..Track::default() };
+    assert_eq!(subtitles::tracks(), vec![track(true), track(false)]);
+    assert_eq!(subtitles::selected(), Some(1), "the full French track");
+    subtitles::set_auto(false, "");
+    subtitles::begin();
+}
+
+/// A bundled FFmpeg without `pgssub` (any release before it was added) still lists and decodes
+/// a film's DVB track, and lists none of its PGS ones: each codec stands on its own decoder.
+#[test]
+fn a_build_without_one_decoder_still_lists_the_other_codecs_tracks() {
+    let _g = tv_base::testlock::serial();
+    let Some(_b) = Bound::new(Kind::Dvb) else { return };
+    let present = subdec::PRESENT.load(Ordering::Acquire);
+    let scratch = Scratch::new("subdec-mixed");
+    let cues = [cue(1.0, 2.0, 500), cue(3.0, 4.5, 500)];
+    let dvb = FilmTrack { sup: pgs(&cues), codec: "dvbsub", language: "pol", forced: false };
+    let pgs = FilmTrack { sup: pgs(&cues), codec: "copy", language: "fre", forced: false };
+    let file = film(&scratch.0, &[dvb, pgs]);
+    let track = |language: &str, codec: &str| Track { language: language.into(), codec: codec.into(), ..Track::default() };
+    subtitles::set_auto(false, "");
+
+    subdec::PRESENT.store(Kind::Dvb.bit(), Ordering::Release);
+    subtitles::begin();
+    let (stored, _) = demux_cues(&file);
+    assert_eq!(subtitles::tracks(), vec![track("pol", "dvb_subtitle")], "the DVB track alone");
+    assert!(stored.iter().all(|c| c.track == 0));
+
+    if present & Kind::Pgs.bit() != 0 {
+        subdec::PRESENT.store(present, Ordering::Release);
+        subtitles::begin();
+        demux_cues(&file);
+        assert_eq!(subtitles::tracks(), vec![track("pol", "dvb_subtitle"), track("fre", "hdmv_pgs_subtitle")]);
+    } else {
+        eprintln!("SKIP (second half): the FFmpeg in {} has no pgssub decoder", host_ffmpeg_dir().display());
+    }
     subtitles::begin();
 }
 
@@ -464,4 +751,129 @@ fn the_region_budget_counts_what_the_decoder_would_keep() {
     // The largest region a segment can declare is refused, and the sum does not wrap.
     assert!(!b.admit(&region(2, u16::MAX, u16::MAX)));
     assert!(b.admit(&region(2, 16, 16)), "and nothing of it was counted");
+}
+
+#[test]
+fn a_pgs_display_set_has_no_end_of_its_own() {
+    assert_eq!(span(10 * NS, 0, u32::MAX), (10 * NS, i64::MAX), "pgssubdec's UINT32_MAX: until the next cue");
+    assert_eq!(span(10 * NS, 0, u32::MAX - 1).1, 10 * NS + i64::from(u32::MAX - 1) * 1_000_000);
+}
+
+#[test]
+fn each_rendered_codec_has_its_kind_bit_and_canvas_rule() {
+    assert_eq!(Kind::of("dvb_subtitle"), Some(Kind::Dvb));
+    assert_eq!(Kind::of("hdmv_pgs_subtitle"), Some(Kind::Pgs));
+    assert_eq!(Kind::of("subrip"), None, "text subtitles are not drawn");
+    assert_eq!(Kind::of("dvd_subtitle"), None);
+    assert_ne!(Kind::Dvb.bit(), Kind::Pgs.bit());
+    assert!(Kind::Pgs.square((1920, 1080)) && Kind::Pgs.square((1280, 720)));
+    assert!(!Kind::Pgs.square((720, 480)), "SD graphics are anamorphic");
+    assert!(!Kind::Dvb.square((1920, 1080)), "a DVB display covers the picture");
+}
+
+/// A PGS segment: type, length, payload.
+fn pgs_seg(kind: u8, body: &[u8]) -> Vec<u8> {
+    [&[kind][..], &(body.len() as u16).to_be_bytes(), body].concat()
+}
+
+/// A presentation segment of a `w`x`h` video in composition `state` (0: normal, 0x40: an
+/// acquisition point, 0x80: an epoch start), naming no object.
+fn pcs(w: u16, h: u16, state: u8) -> Vec<u8> {
+    pgs_seg(0x16, &[&w.to_be_bytes()[..], &h.to_be_bytes(), &[0x10, 0, 1, state, 0, 0, 0]].concat())
+}
+
+/// An object segment for object `id`: the first of its RLE (declaring `declared` bytes, width and
+/// height included) or one that appends to it.
+fn ods(id: u16, declared: u32, first: bool) -> Vec<u8> {
+    let head = [&id.to_be_bytes()[..], &[0, if first { 0xC0 } else { 0x40 }]].concat();
+    if first {
+        pgs_seg(0x15, &[&head[..], &declared.to_be_bytes()[1..], &[0, 16, 0, 16], &[0; 8]].concat())
+    } else {
+        pgs_seg(0x15, &[&head[..], &[0; 8]].concat())
+    }
+}
+
+/// The segments are read the way the decoder steps through them: a segment running past the
+/// packet ends the walk unless it ends the display set, which the decoder still reads.
+#[test]
+fn pgs_segments_are_walked_as_the_decoder_does() {
+    let kinds = |p: &[u8]| pgs_segments(p).map(|(k, b)| (k, b.len())).collect::<Vec<_>>();
+    let set = [pcs(1920, 1080, 0x80), pgs_seg(0x17, &[0; 10]), pgs_seg(0x80, &[])].concat();
+    assert_eq!(kinds(&set), [(0x16, 11), (0x17, 10), (0x80, 0)]);
+    let mut cut = pcs(1920, 1080, 0x80);
+    cut.truncate(8);
+    assert_eq!(kinds(&[&pgs_seg(0x14, &[1, 2])[..], &cut].concat()), [(0x14, 2)], "a cut segment ends the walk");
+    assert_eq!(kinds(&[0x80, 0, 9, 1, 2]), [(0x80, 2)], "an end segment is read even cut short");
+    assert_eq!(kinds(&[0x80]), [(0x80, 0)], "its header read from the padding");
+    assert_eq!(kinds(&[0x16, 0]), [], "any other is not");
+    assert_eq!(kinds(&[]), []);
+}
+
+/// What the PGS decoder would keep is counted before it is given a packet: each object's largest
+/// declared RLE length, by id, across packets, until a packet opening with an epoch start or an
+/// acquisition point of a size the decoder takes, which frees them all.
+#[test]
+fn the_object_budget_counts_what_the_pgs_decoder_would_keep() {
+    // Counted with the allocator's slack, two of these fit the budget and three do not.
+    let big = 1_500_000;
+    let mut b = ObjectBudget::default();
+    assert!(b.admit(&[pcs(1920, 1080, 0x80), ods(0, big, true)].concat()), "one large object");
+    assert!(b.admit(&ods(0, big, true)), "the same id again: its buffer is reused");
+    assert!(b.admit(&ods(0, 64, true)), "and kept at its largest when declared smaller");
+    assert!(b.admit(&ods(1, big, true)), "a second one fits");
+    assert!(b.admit(&ods(2, 64, false)), "appended RLE allocates nothing");
+    assert!(!b.admit(&ods(2, big, true)), "a third does not");
+    assert!(!b.admit(&[pcs(1920, 1080, 0), ods(2, big, true)].concat()), "a normal composition frees nothing");
+    assert!(!b.admit(&[ods(3, 16, true), pcs(1920, 1080, 0x80), ods(2, big, true)].concat()), "nor one not opening its packet");
+    assert!(!b.admit(&[pcs(3840, 2160, 0x80), ods(2, big, true)].concat()), "nor one of a size past max_pixels");
+    assert!(!b.admit(&[pcs(0, 1080, 0x80), ods(2, big, true)].concat()), "nor one of no size");
+    assert!(b.admit(&[pcs(1920, 1080, 0x80), ods(2, big, true)].concat()), "an epoch start does");
+    assert!(b.admit(&[pcs(1920, 1080, 0x40), ods(3, big, true)].concat()), "and so does an acquisition point");
+    assert!(b.admit(&ods(0, big, true)), "after which two objects fit again");
+    assert!(!b.admit(&ods(1, big, true)));
+
+    // The decoder's own allocation for a length it reads past 16 MiB, or that wraps below the 4
+    // bytes of width and height, never fits.
+    let mut b = ObjectBudget::default();
+    assert!(!b.admit(&ods(0, 0xFF_FFFF, true)));
+    assert!(!b.admit(&ods(0, 3, true)), "a length that wraps");
+    assert!(b.admit(&ods(0, 4, true)), "an empty RLE costs only the padding");
+
+    // Many ids of small objects add up whatever each packet holds alone.
+    let mut b = ObjectBudget::default();
+    let each = 100_000u32;
+    let rle = each as usize - 4;
+    let fits = REGION_BUDGET / (rle + rle / 16 + 100);
+    for id in 0..fits as u16 {
+        assert!(b.admit(&ods(id, each, true)), "object {id}");
+    }
+    assert!(!b.admit(&ods(fits as u16, each, true)), "the next one is past the budget");
+
+    // The fixtures' display sets, segment by segment, never run into it.
+    let mut b = ObjectBudget::default();
+    let sup = pgs(&[cue(1.0, 2.0, 1800), cue(3.0, 4.5, 1800)]);
+    let mut rest = &sup[..];
+    let mut n = 0;
+    while rest.len() >= 13 {
+        let len = usize::from(u16::from_be_bytes([rest[11], rest[12]]));
+        assert!(b.admit(&rest[10..13 + len]));
+        rest = &rest[13 + len..];
+        n += 1;
+    }
+    assert_eq!(n, 3 + 2 * (5 + 3), "every segment of the file was read");
+}
+
+/// The stream-info search may open every decoder the app bundles but `pgssub`: the list follows
+/// xtask's `--enable-decoder`.
+#[test]
+fn the_stream_info_decoders_are_the_bundled_ones_but_pgs() {
+    let xtask = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../xtask/src/ffmpeg.rs")).unwrap();
+    let line = xtask.lines().find_map(|l| l.trim().strip_prefix("\"--enable-decoder=")).expect("xtask's decoder list");
+    let line = line.trim_end_matches("\",");
+    let mut bundled: Vec<&str> = line.split(',').filter(|d| *d != "pgssub").collect();
+    let mut allowed: Vec<&str> = subdec::STREAM_INFO_DECODERS.to_str().unwrap().split(',').collect();
+    bundled.sort_unstable();
+    allowed.sort_unstable();
+    assert_eq!(allowed, bundled);
+    assert!(line.split(',').any(|d| d == "pgssub"), "and the build has pgssub: {line}");
 }

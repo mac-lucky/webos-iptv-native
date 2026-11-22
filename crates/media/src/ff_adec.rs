@@ -4,9 +4,11 @@
 //! decoder for - MPEG-1 Layer II (a DVB restream's usual audio, which the C1 does not present when
 //! declared `"MP3"`), MP3 where the set's table has no MPEG audio row, and on webOS 10+, whose
 //! feed takes no compressed audio (`tv_platform::devcaps` drops every row there), every track -
-//! AAC, AAC-LATM, AC-3 and E-AC-3 included - is decoded here by the bundled libavcodec and resampled with libswresample to S16LE 48 kHz stereo (any layout:
-//! 5.1 and 7.1 are downmixed with swr's default matrix, LFE dropped, mono is upmixed), and the Load
-//! declares `"PCM"` with a `pcmInfo` node of exactly that shape. The decode loop is
+//! AAC, AAC-LATM, AC-3 and E-AC-3 included - and the film audio the feed has no name for, often a
+//! Matroska file's only track (DTS, core and DTS-HD, FLAC, Opus, Vorbis; not TrueHD), is decoded
+//! here by the bundled libavcodec and resampled with libswresample to S16LE 48 kHz stereo (any
+//! layout: 5.1 and 7.1 are downmixed with swr's default matrix, LFE dropped, mono is upmixed), and
+//! the Load declares `"PCM"` with a `pcmInfo` node of exactly that shape. The decode loop is
 //! StremioNative's `native/adec.c` (a C shim upstream) in Rust, calling the same
 //! libraries as the demuxer by the same absolute paths. Everything goes through FFmpeg calls and
 //! AVOptions except the decoded frame's fields, read from the [`AVFrame`] model below, whose
@@ -163,9 +165,10 @@ fn stereo_layout() -> AVChannelLayout {
     AVChannelLayout { order: AV_CHANNEL_ORDER_NATIVE, nb_channels: PCM_CHANNELS as c_int, u_mask: AV_CH_LAYOUT_STEREO, opaque: null_mut() }
 }
 
-/// The codecs this path decodes, in FFmpeg's names (`avcodec_get_name`). The bundled build must
-/// carry their decoders; `ff_adec_tests` proves each one is there.
-pub const SOFT_CODECS: &[&str] = &["mp2", "mp3", "aac", "aac_latm", "ac3", "eac3"];
+/// The codecs this path decodes, in FFmpeg's names (`avcodec_get_name`, which names DTS `dts`
+/// and its decoder `dca`). The bundled build must carry their decoders; `ff_adec_tests` proves
+/// each one is there.
+pub const SOFT_CODECS: &[&str] = &["mp2", "mp3", "aac", "aac_latm", "ac3", "eac3", "dts", "flac", "opus", "vorbis"];
 
 /// PURE: does this path decode `codec` (FFmpeg's name, any case)?
 pub fn is_soft(codec: &str) -> bool {
@@ -185,9 +188,9 @@ pub const PCM_BATCH_MS: u32 = 20;
 pub const REANCHOR_NS: i64 = 100_000_000;
 
 /// PURE: the channels the sink is told for a source of `_src` channels: always [`PCM_CHANNELS`].
-/// [`PcmFeed`] downmixes every wider layout (5.1 AC-3, E-AC-3 and AAC) and upmixes mono, and the
-/// probed count is no promise anyway: a broadcast switches layout mid-stream (stereo adverts
-/// around a 5.1 film).
+/// [`PcmFeed`] downmixes every wider layout (5.1 AC-3, E-AC-3 and AAC, a film's 5.1 or 7.1 DTS,
+/// FLAC or Opus) and upmixes mono, and the probed count is no promise anyway: a broadcast
+/// switches layout mid-stream (stereo adverts around a 5.1 film).
 pub fn sink_channels(_src: i64) -> u32 {
     PCM_CHANNELS
 }
@@ -663,12 +666,12 @@ mod tests {
     #[test]
     fn the_sink_shape_and_the_codec_list() {
         assert!([-1, 0, 1, 2, 6, 8, 24].iter().all(|&n| sink_channels(n) == 2), "always stereo");
-        for name in ["mp2", "MP3", "aac", "AAC", "aac_latm", "ac3", "eac3", "EAC3"] {
+        for name in ["mp2", "MP3", "aac", "AAC", "aac_latm", "ac3", "eac3", "EAC3", "dts", "DTS", "flac", "opus", "vorbis"] {
             assert!(is_soft(name), "{name}");
         }
-        // Not FFmpeg codec names (LG's "AC3 PLUS", decoder names), or codecs the build has no
-        // decoder for.
-        for name in ["", "flac", "dts", "truehd", "ac4", "opus", "aac_fixed", "AC3 PLUS", "latm", "mp2float"] {
+        // Not FFmpeg codec names (LG's "AC3 PLUS", decoder names: `dca` is DTS's), or codecs the
+        // build has no decoder for.
+        for name in ["", "truehd", "mlp", "ac4", "aac_fixed", "AC3 PLUS", "latm", "mp2float", "dca", "libopus", "alac"] {
             assert!(!is_soft(name), "{name}");
         }
     }

@@ -305,6 +305,52 @@ fn avi_vod_is_recognized_with_video_and_audio() {
     assert!(run.video_pts.len() >= 25, "AVI must deliver video packets");
 }
 
+/// A Matroska film's PGS track (Blu-ray subtitles, the usual bitmap track of a VOD) through the
+/// bundled build: listed by its language, each picture decoded at the time it was written, and
+/// after an in-place seek the decoder starts over at the landing (no cue from before it is kept)
+/// and the next picture still shows. Skips when the build has no `pgssub` decoder.
+#[test]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+fn a_matroska_pgs_track_decodes_and_starts_over_at_an_in_place_seek() {
+    use super::subdec_tests::{pgs, Bound, PgsCue};
+    use crate::subtitles;
+    let _g = tv_base::testlock::serial();
+    let Some((scratch, _)) = fixture("vod-pgs") else { return };
+    let Some(_subs) = Bound::new(super::subdec::Kind::Pgs) else { return };
+    let cue = |from, to, w| PgsCue { from, to, x: 400, y: 900, w, h: 60 };
+    let sup = scratch.0.join("film.sup");
+    std::fs::write(&sup, pgs(&[cue(1.0, 2.0, 300), cue(4.0, 5.0, 400), cue(7.5, 8.5, 500)])).unwrap();
+    let out = scratch.0.join("film-pgs.mkv");
+    let status = Command::new("ffmpeg")
+        .args(["-nostdin", "-v", "error", "-y", "-i"])
+        .arg(scratch.0.join("film.mkv"))
+        .arg("-i")
+        .arg(&sup)
+        .args(["-map", "0", "-map", "1", "-c", "copy", "-metadata:s:s:0", "language=fre"])
+        .arg(&out)
+        .status()
+        .expect("add the PGS track to the fixture");
+    assert!(status.success(), "ffmpeg could not write the PGS fixture");
+    let server = Debrid::start(Arc::new(std::fs::read(out).unwrap()), |_| Answer::File);
+    let pictures = || -> Vec<(i64, u32)> {
+        subtitles::cues_for_test().iter().filter(|c| !c.rects.is_empty()).map(|c| (c.start_ns / 1_000_000, c.rects[0].w)).collect()
+    };
+    subtitles::set_auto(false, "");
+
+    subtitles::begin();
+    let run = demux_run(server.url(), &[], usize::MAX);
+    assert!(!run.demux_failed);
+    let track = subtitles::Track { language: "fre".into(), codec: "hdmv_pgs_subtitle".into(), ..Default::default() };
+    assert_eq!(subtitles::tracks(), vec![track]);
+    assert_eq!(pictures(), [(1000, 300), (4000, 400), (7500, 500)], "every picture, at its time (ms)");
+
+    subtitles::begin();
+    let run = demux_run(server.url(), &[7_000_000_000], 25);
+    assert!(run.video_pts.iter().any(|&p| (p - 7_000_000_000).abs() < 1_000_000_000), "the seek landed");
+    assert_eq!(pictures(), [(7500, 500)], "only what was read after the landing");
+    subtitles::begin();
+}
+
 #[test]
 #[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
 fn a_probe_whose_first_hop_serves_an_error_page_retries_once_and_opens() {

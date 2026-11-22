@@ -5177,6 +5177,15 @@ mod sink_envelope_tests {
         for codec in ["dts", "truehd", "flac", "mp2", "", "unknown"] {
             assert_eq!(payload(codec), None, "{codec}");
         }
+        // With the software decoder, the codecs it decodes are declared PCM; the rest stays refused.
+        let pcm = crate::stream::SoftwareAudio { pcm: true };
+        let payload = |codec: &str| crate::stream::AudioFeed::decide(codec, 6, &c, pcm).payload();
+        for codec in ["dts", "flac", "opus", "vorbis", "mp2"] {
+            assert_eq!(payload(codec), Some(("PCM", 6)), "{codec}");
+        }
+        for codec in ["truehd", "", "unknown"] {
+            assert_eq!(payload(codec), None, "{codec}");
+        }
         let decl = crate::stream::StreamDeclaration::default();
         let payload = build_av_payload(&decl, crate::stream::DvPresentation::NotDv, "H264", "AAC", ENVELOPE_FHD60);
         assert!(payload.contains(r#""audio":"AAC""#));

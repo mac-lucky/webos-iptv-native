@@ -48,17 +48,19 @@ fn the_bundled_build_decodes_every_soft_codec() {
     let missing: Vec<_> = adec::SOFT_CODECS.iter().filter(|c| !adec::decoder_present(c)).collect();
     assert!(missing.is_empty(), "no decoder for {missing:?}");
     assert!(!adec::decoder_present("cook"), "and the check is not vacuous");
+    assert!(!adec::decoder_present("truehd"), "TrueHD is left out of the build");
 }
 
 /// The 440 Hz test tone (1/8 of full scale, -21.1 dBFS RMS) in both channels of a stereo layout,
-/// as a mono track, and in all six channels of a 5.1 layout (LFE included; the encoders low-pass
-/// it away).
+/// as a mono track, and in all six channels of a 5.1 layout or all eight of a 7.1 one (LFE
+/// included; the encoders low-pass it away).
 const STEREO: &str = "pan=stereo|c0=c0|c1=c0";
 const MONO: &str = "aformat=channel_layouts=mono";
 const SURROUND: &str = "pan=5.1|c0=c0|c1=c0|c2=c0|c3=c0|c4=c0|c5=c0";
+const SURROUND_7_1: &str = "pan=7.1|c0=c0|c1=c0|c2=c0|c3=c0|c4=c0|c5=c0|c6=c0|c7=c0";
 /// The tone's RMS in S16. Stereo plays it as it is; swr's 5.1 downmix (FL + -3 dB C + -3 dB SL,
-/// LFE dropped, normalized so it cannot clip) adds three copies back to the same level; mono is
-/// upmixed at -3 dB a side.
+/// LFE dropped, normalized so it cannot clip) adds three copies back to the same level, and its
+/// 7.1 one (the backs at -3 dB too) four; mono is upmixed at -3 dB a side.
 const TONE_RMS: f64 = 4096.0 * std::f64::consts::FRAC_1_SQRT_2;
 
 /// Write a 2 s file (its container from `name`'s extension): 640x360 H.264 at 25 fps plus one
@@ -275,6 +277,68 @@ fn demux_downmixes_eac3_5_1_to_stereo_pcm() {
     let _g = tv_base::testlock::serial();
     let Some(_b) = fixtures() else { return };
     soft_decode("eac3.ts", SURROUND, &["-c:a", "eac3"], &[], "eac3", 1536, TONE_RMS);
+}
+
+/// The probe of `file`, served over HTTP as the app reads it.
+fn probe_file(file: &Path) -> crate::stream::ProbedStreams {
+    let server = FileServer::start(file);
+    let name = file.file_name().unwrap().to_string_lossy().into_owned();
+    let url = format!("http://127.0.0.1:{}/media/{name}", server.port);
+    let io = super::probe::ProbeIo::new();
+    super::probe::probe(&url, &crate::headers::RequestHeaders::none(), &io).expect("probe")
+}
+
+/// **A Blu-ray rip whose only audio is DTS** (the field case: a French film playlist's MKVs,
+/// silent or refused before): H.264 + DTS 5.1 in Matroska. The probe names the track `dts` (its
+/// decoder is `dca`), six channels, and on the C1's table the feed decision is stereo PCM;
+/// `ff::demux` decodes it and downmixes it at the tone's level, not clipped. FFmpeg's DTS encoder
+/// writes no more than 5.1 (and no DTS-HD): 7.1 is FLAC's test below, through the same resampler.
+#[test]
+fn demux_downmixes_a_matroska_films_only_dts_5_1_track_to_stereo_pcm() {
+    let _g = tv_base::testlock::serial();
+    let Some(_b) = fixtures() else { return };
+    let scratch = Scratch::new("adec-dts");
+    let file = generate(&scratch.0, "dts.mkv", SURROUND, &["-c:a", "dca"], &[]);
+    let probed = probe_file(&file);
+    assert_eq!(probed.audio.len(), 1, "DTS is the file's only audio track");
+    let a = &probed.audio[0];
+    assert_eq!((a.codec.as_str(), a.channels, a.sample_rate), ("dts", 6, 48_000));
+    let caps = tv_platform::devcaps::Caps::assumed();
+    let feed = crate::stream::AudioFeed::decide(&a.codec, a.channels, &caps, crate::stream::SoftwareAudio { pcm: true });
+    assert_eq!(feed, crate::stream::AudioFeed::SoftPcm { source: "dts".into(), channels: 2 });
+    let (aus, start_ns) = demux_pcm(&file, 2, "dts");
+    assert_continuous_pcm(&aus, start_ns, 512, duration(2, 512, 1));
+    assert_level(&aus, TONE_RMS);
+}
+
+/// FLAC 7.1 in Matroska, downmixed by swr's 7.1 matrix: the path a DTS-HD MA 7.1 track's decode
+/// takes too.
+#[test]
+fn demux_downmixes_flac_7_1_from_matroska_to_stereo_pcm() {
+    let _g = tv_base::testlock::serial();
+    let Some(_b) = fixtures() else { return };
+    soft_decode("flac.mkv", SURROUND_7_1, &["-c:a", "flac"], &[], "flac", 4608, TONE_RMS);
+}
+
+/// Opus 5.1 in Matroska (WebM's audio: channel mapping family 1, the pre-skip in its header).
+/// Needs libopus in the `ffmpeg` command line tool: FFmpeg's own encoder writes stereo at most.
+#[test]
+fn demux_downmixes_opus_5_1_from_matroska_to_stereo_pcm() {
+    let _g = tv_base::testlock::serial();
+    if !encoder_present("libopus") {
+        eprintln!("SKIP: the ffmpeg command line tool has no libopus encoder (Opus 5.1)");
+        return;
+    }
+    let Some(_b) = fixtures() else { return };
+    soft_decode("opus.mkv", SURROUND, &["-c:a", "libopus", "-b:a", "256k"], &[], "opus", 960, TONE_RMS);
+}
+
+/// Vorbis stereo in Matroska, configured from the three Xiph headers in its CodecPrivate.
+#[test]
+fn demux_feeds_vorbis_from_matroska_as_stereo_pcm() {
+    let _g = tv_base::testlock::serial();
+    let Some(_b) = fixtures() else { return };
+    soft_decode("vorbis.mkv", STEREO, &["-c:a", "vorbis", "-ac", "2"], &[], "vorbis", 2048, TONE_RMS);
 }
 
 /// HE-AAC v2 in ADTS: the headers say 24 kHz mono, and only the first decoded frame finds SBR

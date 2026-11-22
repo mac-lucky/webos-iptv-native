@@ -386,6 +386,7 @@ unsafe fn read_streams(
     if matches!(state.src, Src::Hls(_)) {
         super::cap_hls_probe(fmt);
     }
+    super::subdec::guard_stream_info(fmt);
     let r = avformat_open_input(&mut fmt, std::ptr::null(), std::ptr::null_mut(), std::ptr::null_mut());
     if r < 0 || fmt.is_null() {
         crate::player::log(&format!("probe: open_input failed r={r}"));

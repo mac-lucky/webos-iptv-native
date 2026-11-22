@@ -210,10 +210,11 @@ pub enum AudioFeed {
     /// is LG's name for it in the Load (`"AC3 PLUS"` for E-AC3, never `"EAC3"`: the wrong
     /// string leaves the audio ES unconfigured and, through `audioSync`, stalls the video).
     Native { payload: &'static str, diag: u8 },
-    /// **Decoded on the CPU and fed as PCM** (`ff::adec`, ported from PlxNative): MPEG-1 Layer II,
-    /// which the buffer feed has no name for, MP3 on a set without an MPEG audio row, any track
-    /// past its codec's channel ceiling, and on webOS 10+, whose table devcaps empties, every
-    /// track the build decodes (AAC, AAC-LATM, AC-3, E-AC-3 too); decoded by the bundled libavcodec and resampled to S16LE 48 kHz, `channels` of them
+    /// **Decoded on the CPU and fed as PCM** (`ff::adec`, ported from PlxNative): MPEG-1 Layer II
+    /// and a film's DTS, FLAC, Opus or Vorbis, which the buffer feed has no name for, MP3 on a set
+    /// without an MPEG audio row, any track past its codec's channel ceiling, and on webOS 10+,
+    /// whose table devcaps empties, every track the build decodes (AAC, AAC-LATM, AC-3, E-AC-3
+    /// too); decoded by the bundled libavcodec and resampled to S16LE 48 kHz, `channels` of them
     /// (`ff::adec::sink_channels`: stereo); the Load declares `"PCM"` with that `pcmInfo`. Chosen
     /// when the decoder bound at boot (`ff::adec::available`).
     SoftPcm { source: String, channels: u32 },
@@ -265,7 +266,8 @@ impl AudioFeed {
             // AC-4 has no table row (and no channel count without a decoder): the firmware rule.
             Some((payload, diag)) if codec == "ac4" && caps.ac4 => AudioFeed::Native { payload, diag },
             Some((payload, diag)) if caps.audio_supports(&codec, channels) => AudioFeed::Native { payload, diag },
-            // A codec the pipeline has no name for (MP2), one the set's table does not list (MP3
+            // A codec the pipeline has no name for (MP2, DTS, FLAC, Opus, Vorbis; TrueHD has no
+            // decoder in the build and stays refused), one the set's table does not list (MP3
             // without the MPEG row, everything on webOS 10+) or lists below the track's channels,
             // decoded here and fed as PCM.
             _ if sw.pcm && crate::ff::adec::is_soft(&codec) => {
@@ -524,11 +526,11 @@ mod tests {
         c.audio.clear();
         c.ac4 = false;
         let es = PCM;
-        for (codec, ch) in [("aac", 2), ("AC3", 6), ("eac3", 6), ("mp2", 2), ("mp3", 2), ("aac_latm", 2)] {
+        for (codec, ch) in [("aac", 2), ("AC3", 6), ("eac3", 6), ("mp2", 2), ("mp3", 2), ("aac_latm", 2), ("dts", 6), ("flac", 2), ("opus", 6), ("vorbis", 2)] {
             let want = AudioFeed::SoftPcm { source: codec.to_ascii_lowercase(), channels: 2 };
             assert_eq!(AudioFeed::decide(codec, ch, &c, es), want, "{codec}");
         }
-        for codec in ["dts", "ac4", "truehd", "opus"] {
+        for codec in ["ac4", "truehd"] {
             assert!(matches!(AudioFeed::decide(codec, 2, &c, es), AudioFeed::NeedsSoftwareDecode { .. }), "{codec}");
         }
         let no_decoder = SoftwareAudio::NONE;
@@ -551,7 +553,7 @@ mod tests {
         for (codec, native) in [("aac", "AAC"), ("ac3", "AC3"), ("eac3", "AC3 PLUS")] {
             assert_eq!(AudioFeed::decide(codec, 6, &caps, PCM).payload().map(|p| p.0), Some(native), "{codec} stays native");
         }
-        assert!(matches!(AudioFeed::decide("flac", 2, &caps, PCM), AudioFeed::NeedsSoftwareDecode { .. }), "a codec this path does not take");
+        assert!(matches!(AudioFeed::decide("truehd", 8, &caps, PCM), AudioFeed::NeedsSoftwareDecode { .. }), "a codec this path does not take");
         assert_eq!((AudioFeed::Native { payload: "AAC", diag: 3 }.rank(), AudioFeed::NeedsSoftwareDecode { codec: "x".into(), channels: 2 }.rank()), (0, 2));
     }
 
@@ -716,5 +718,25 @@ mod tests {
         assert_eq!((t, d.acodec.as_str()), (Some(1), "ac3"));
         let (d, t) = derive_declaration(&dvb, Some(0), &TrackPrefs::default(), feed(PCM)).unwrap();
         assert_eq!((t, d.acodec.as_str(), d.audio_channels), (Some(0), "mp2", 2), "the viewer may still pick the MP2");
+    }
+
+    /// **A Blu-ray rip whose only audio is DTS** (a 5.1 core, or DTS-HD MA 7.1), silent or refused
+    /// before: decoded to stereo PCM, as FLAC, Opus and Vorbis are; TrueHD stays refused. An AC-3
+    /// track beside the DTS, which the TV decodes, is still the one fed.
+    #[test]
+    fn a_film_whose_only_audio_is_dts_plays_as_pcm() {
+        let c = Caps::assumed();
+        for (codec, ch) in [("dts", 6), ("dts", 8), ("DTS", 2), ("flac", 6), ("opus", 8), ("vorbis", 2)] {
+            let want = AudioFeed::SoftPcm { source: codec.to_ascii_lowercase(), channels: 2 };
+            assert_eq!(AudioFeed::decide(codec, ch, &c, PCM), want, "{codec} {ch}ch");
+        }
+        assert!(matches!(AudioFeed::decide("truehd", 8, &c, PCM), AudioFeed::NeedsSoftwareDecode { .. }));
+        let rip = probed(Some("hevc"), &[("dts", 6, true)]);
+        let (d, t) = derive_declaration(&rip, None, &TrackPrefs::default(), feed(PCM)).unwrap();
+        assert_eq!((t, d.acodec.as_str(), d.audio_channels), (Some(0), "dts", 6));
+        assert_eq!(feed(PCM)(&rip.audio[0]).payload(), Some(("PCM", 6)), "the Load declares PCM");
+        assert_eq!(feed(SoftwareAudio::NONE)(&rip.audio[0]).payload(), None, "refused without the decoder");
+        let both = probed(Some("hevc"), &[("dts", 6, true), ("ac3", 6, false)]);
+        assert_eq!(derive_declaration(&both, None, &TrackPrefs::default(), feed(PCM)).unwrap().1, Some(1), "the AC-3 the TV decodes wins");
     }
 }

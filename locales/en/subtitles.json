@@ -21,6 +21,13 @@
     },
     "description": "Subtitles page row for a track for the deaf and hard of hearing; name is the language"
   },
+  "subtitles.forced": {
+    "value": "{name} (Forced)",
+    "args": {
+      "name": "str"
+    },
+    "description": "Subtitles page row for a forced track, which shows only signs and lines in another language; name is the language"
+  },
   "subtitles.show": {
     "value": "Show subtitles",
     "description": "Setting: a channel starts with subtitles on when it has any"

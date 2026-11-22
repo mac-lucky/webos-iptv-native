@@ -3,6 +3,7 @@
   "subtitles.off": "Wyłączone",
   "subtitles.track": "Ścieżka {number}",
   "subtitles.hearing_impaired": "{name} (dla niesłyszących)",
+  "subtitles.forced": "{name} (wymuszone)",
   "subtitles.show": "Pokazuj napisy",
   "subtitles.size": "Rozmiar napisów",
   "subtitles.size_small": "Małe",
