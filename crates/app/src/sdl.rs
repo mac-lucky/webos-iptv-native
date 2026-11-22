@@ -42,7 +42,9 @@ const WINDOW: (c_int, c_int, u32) = (0, 1, SDL_WINDOW_OPENGL | 0x1 /* FULLSCREEN
 #[cfg(feature = "hostsim")]
 const WINDOW: (c_int, c_int, u32) = (
     0x2FFF_0000, /* CENTERED */
-    2,
+    // Start at full canvas size on Linux: SDL2-compat can retain the initial
+    // half-size backing buffer after the resize below. Retina keeps its 2x path.
+    if cfg!(target_os = "linux") { 1 } else { 2 },
     SDL_WINDOW_OPENGL | 0x2000, /* ALLOW_HIGHDPI */
 );
 
@@ -400,8 +402,16 @@ impl Video {
         unsafe {
             if on {
                 let focus = SDL_GetWindowFlags(self.win) & SDL_WINDOW_INPUT_FOCUS != 0;
-                crate::logs::log(&format!("keyboard: show focus={}", u8::from(focus)));
-                SDL_StartTextInput();
+                let calls = DisplayCalls::find();
+                crate::logs::log(&format!(
+                    "keyboard: show focus={} roundtrip={}",
+                    u8::from(focus),
+                    u8::from(calls.is_some())
+                ));
+                match calls {
+                    Some(calls) => calls.with_roundtrip(|| SDL_StartTextInput()),
+                    None => SDL_StartTextInput(),
+                }
             } else {
                 crate::logs::log("keyboard: hide");
                 SDL_StopTextInput();
@@ -506,9 +516,92 @@ fn wayland_surface(ok: c_int, info: &[u8; 512]) -> *mut c_void {
     }
 }
 
+/// libwayland's `int (*)(struct wl_display *)`: the type of SDL's `WAYLAND_wl_display_*`
+/// pointers.
+type DisplayCall = Option<unsafe extern "C" fn(*mut c_void) -> c_int>;
+
+/// Two of the pointers through which LG's SDL calls libwayland, which it loads at run time and
+/// exports as `WAYLAND_<function>` data symbols.
+///
+/// LG's SDL 2.0.14 (webOS 25, Rockhopper 10.3) raises the keyboard in `WebOSShowScreenKeyboard`.
+/// It makes a new Wayland registry and expects the compositor's `text_model_factory` from a
+/// single `wl_display_dispatch`. That call reads nothing new while events are already queued,
+/// and only dispatches those. On the TV another thread (LG's `liblsm-connector`, behind the
+/// video) keeps reading the connection, so the queue is rarely empty. The factory then never
+/// arrives, and SDL uses the fields it should have filled: SIGSEGV in `wl_proxy_get_user_data`,
+/// each time Search raised the keyboard. The compositor does announce the factory; a
+/// `wl_display_roundtrip` waits for it.
+struct DisplayCalls {
+    dispatch: *mut DisplayCall,
+    roundtrip: *const DisplayCall,
+}
+
+impl DisplayCalls {
+    /// SDL's two pointers, when this SDL exports them and the roundtrip one is loaded.
+    fn find() -> Option<Self> {
+        // SAFETY: NUL-terminated names; RTLD_DEFAULT searches the libraries already loaded.
+        let (dispatch, roundtrip) = unsafe {
+            (
+                libc::dlsym(libc::RTLD_DEFAULT, c"WAYLAND_wl_display_dispatch".as_ptr()),
+                libc::dlsym(libc::RTLD_DEFAULT, c"WAYLAND_wl_display_roundtrip".as_ptr()),
+            )
+        };
+        let calls = Self {
+            dispatch: dispatch.cast(),
+            roundtrip: roundtrip.cast(),
+        };
+        // SAFETY: a non-null answer is the address of SDL's pointer variable of that name.
+        let loaded =
+            !dispatch.is_null() && !roundtrip.is_null() && unsafe { *calls.roundtrip }.is_some();
+        loaded.then_some(calls)
+    }
+
+    /// Run `f` with SDL's `wl_display_dispatch` pointing at `wl_display_roundtrip`, then put the
+    /// pointer back. Only the main thread calls into SDL's video code, so nothing else reads it
+    /// meanwhile.
+    ///
+    /// # Safety
+    /// `dispatch` and `roundtrip` point at live `DisplayCall` variables.
+    unsafe fn with_roundtrip(&self, f: impl FnOnce()) {
+        let saved = *self.dispatch;
+        *self.dispatch = *self.roundtrip;
+        f();
+        *self.dispatch = saved;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    unsafe extern "C" fn dispatch(_: *mut c_void) -> c_int {
+        1
+    }
+
+    unsafe extern "C" fn roundtrip(_: *mut c_void) -> c_int {
+        2
+    }
+
+    fn address(call: DisplayCall) -> Option<usize> {
+        call.map(|f| f as usize)
+    }
+
+    /// The keyboard is raised with the roundtrip in SDL's dispatch pointer, and the pointer is
+    /// SDL's own again afterwards.
+    #[test]
+    fn the_keyboard_is_raised_through_a_roundtrip_then_dispatch_is_restored() {
+        let mut slot: DisplayCall = Some(dispatch);
+        let other: DisplayCall = Some(roundtrip);
+        let calls = DisplayCalls {
+            dispatch: &mut slot,
+            roundtrip: &other,
+        };
+        let mut during = None;
+        // SAFETY: both pointers name the locals above, alive for the call.
+        unsafe { calls.with_roundtrip(|| during = address(*calls.dispatch)) };
+        assert_eq!(during, address(Some(roundtrip)));
+        assert_eq!(address(slot), address(Some(dispatch)));
+    }
 
     fn info(ok_subsystem: u32, display: usize, surface: usize) -> [u8; 512] {
         let mut info = [0u8; 512];
