@@ -97,28 +97,28 @@
     "description": "Shared display formatter: time_left_minutes"
   },
   "core.unit_b": {
-    "value": "{value} o",
+    "value": "{value}\u00a0o",
     "args": {
       "value": "str"
     },
     "description": "A size in bytes, abbreviated (B), for compact technical read-outs."
   },
   "core.unit_gb": {
-    "value": "{value} Go",
+    "value": "{value}\u00a0Go",
     "args": {
       "value": "str"
     },
     "description": "A size in gigabytes."
   },
   "core.unit_kb": {
-    "value": "{value} ko",
+    "value": "{value}\u00a0ko",
     "args": {
       "value": "str"
     },
     "description": "A size in kilobytes."
   },
   "core.unit_mb": {
-    "value": "{value} Mo",
+    "value": "{value}\u00a0Mo",
     "args": {
       "value": "str"
     },
