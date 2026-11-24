@@ -645,6 +645,7 @@ mod tests {
     use crate::panels::testing::{draw, press};
     use crate::time::DAY;
     use iptv::model::{Catchup, CatchupMode, Programme};
+    use iptv::vod::VodItem;
 
     const NOW: Timestamp = 1_700_000_000;
     const WIADOMOSCI: &str = "Wiadomo\u{15b}ci";
@@ -974,11 +975,13 @@ mod tests {
         assert_eq!(titles(&search), ["2  TVN"]);
     }
 
-    /// [`FakeData`] whose programme search is still running for its first `slow` asks.
+    /// [`FakeData`] whose programme search is still running for its first `slow` asks, counting
+    /// the reads of its VOD catalog.
     struct Slow {
         data: FakeData,
         slow: Cell<usize>,
         asked: RefCell<Vec<String>>,
+        vod_reads: Cell<usize>,
     }
 
     impl TvData for Slow {
@@ -1019,6 +1022,28 @@ mod tests {
             }
             self.data.search(query)
         }
+        fn vod(&self) -> Rc<[Rc<VodItem>]> {
+            self.vod_reads.set(self.vod_reads.get() + 1);
+            self.data.vod()
+        }
+    }
+
+    #[test]
+    fn a_channels_search_never_reads_the_vod_catalog() {
+        let data = Slow {
+            data: with_vod(),
+            slow: Cell::new(0),
+            asked: RefCell::default(),
+            vod_reads: Cell::new(0),
+        };
+        let mut channels = Search::scoped(&data, Some(SearchScope::Channels));
+        type_text(&mut channels, &data, "harbour");
+        channels.refresh(&data);
+        assert_eq!(data.vod_reads.get(), 0);
+        let mut movies = Search::scoped(&data, Some(SearchScope::Movies));
+        type_text(&mut movies, &data, "harbour");
+        assert_eq!(titles(&movies), ["Harbour City"]);
+        assert!(data.vod_reads.get() > 0, "a movies search reads it");
     }
 
     #[test]
@@ -1027,6 +1052,7 @@ mod tests {
             data: guide(),
             slow: Cell::new(2),
             asked: RefCell::default(),
+            vod_reads: Cell::new(0),
         };
         let mut search = open(&data);
         assert_eq!(search.next_wake(1_000), None);
@@ -1054,6 +1080,7 @@ mod tests {
             data: guide(),
             slow: Cell::new(0),
             asked: RefCell::default(),
+            vod_reads: Cell::new(0),
         };
         let mut search = open(&data);
         type_text(&mut search, &data, "wiadomosci");
