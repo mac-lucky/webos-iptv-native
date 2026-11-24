@@ -170,6 +170,13 @@ pub trait TvData {
         7
     }
 
+    /// The home navigation is on (Settings > Appearance > Navigation): Search heads the groups
+    /// panels and the VOD categories, and the closed groups panel shows a handle. The classic
+    /// navigation has none of them.
+    fn home_navigation(&self) -> bool {
+        false
+    }
+
     /// The stored playlists in order, for Settings.
     fn playlists(&self) -> Vec<crate::library::PlaylistEntry> {
         Vec::new()
@@ -697,6 +704,8 @@ pub mod fake {
         pub utc_offset: i32,
         /// [`TvData::past_days`].
         pub past_days: u32,
+        /// [`TvData::home_navigation`].
+        pub home_navigation: bool,
         /// Replaces the generated guide.
         pub schedule: Option<Schedule>,
         /// [`TvData::locked`] and [`TvData::group_locked`].
@@ -758,6 +767,7 @@ pub mod fake {
                 playback: Playback::default(),
                 utc_offset: 0,
                 past_days: 7,
+                home_navigation: false,
                 schedule: None,
                 parental: Default::default(),
                 names: Default::default(),
@@ -925,6 +935,10 @@ pub mod fake {
 
         fn past_days(&self) -> u32 {
             self.past_days
+        }
+
+        fn home_navigation(&self) -> bool {
+            self.home_navigation
         }
 
         fn playlists(&self) -> Vec<crate::library::PlaylistEntry> {

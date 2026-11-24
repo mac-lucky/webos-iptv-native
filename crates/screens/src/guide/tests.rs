@@ -666,10 +666,7 @@ fn groups_panel_filters_as_it_moves() {
     press(&mut s, &data, Key::Back);
     assert!(s.panel);
     let list = s.groups.list().to_vec();
-    assert_eq!(
-        &list[..4],
-        &[Group::Search, Group::Favorites, Group::All, Group::History]
-    );
+    assert_eq!(&list[..3], &[Group::Favorites, Group::All, Group::History]);
     assert_eq!(s.group, Group::All);
 
     // History is a screen of its own: focusing it keeps the guide, OK opens it.
@@ -1067,8 +1064,8 @@ fn the_pointer_in_the_groups_panel_shows_the_group_it_rests_on() {
     press(&mut s, &data, Key::Back);
     assert!(s.panel);
     draw(&mut s);
-    // Search, Favorites, All, History, then News on the fifth row.
-    let pill = geom::GROUPS.pill(4);
+    // Favorites, All, History, then News on the fourth row.
+    let pill = geom::GROUPS.pill(3);
     let out = point(&mut s, &data, (pill.x + 20.0, pill.y + 20.0));
     assert!(out.redraw);
     assert_eq!(
@@ -1191,12 +1188,16 @@ fn no_channel_by_that_number_and_digits_in_the_groups_panel_change_nothing() {
     assert!(!held.redraw && s.number.is_none());
 }
 
+/// The home navigation's Search group and handle.
 #[test]
 fn search_heads_the_groups_panel_and_opens_the_channels_search() {
     let mut data = data(9);
+    data.home_navigation = true;
     let mut s = opened(&mut data, 0);
+    assert!(s.handle().is_some(), "the closed panel's handle");
     press(&mut s, &data, Key::Back);
     assert!(s.panel);
+    assert!(s.handle().is_none(), "none beside the open panel");
     assert_eq!(s.groups.list()[0], Group::Search);
     press(&mut s, &data, Key::Up);
     press(&mut s, &data, Key::Up);

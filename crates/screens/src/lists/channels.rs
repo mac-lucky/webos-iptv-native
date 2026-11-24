@@ -294,6 +294,8 @@ pub struct ChannelList {
     /// Bumped on every visible change; the view lays out again when it moves.
     generation: u64,
     view: ChannelListView,
+    /// [`TvData::home_navigation`].
+    home: bool,
 }
 
 impl ChannelList {
@@ -317,9 +319,16 @@ impl ChannelList {
             groups: None,
             generation: 0,
             view: ChannelListView::default(),
+            home: data.home_navigation(),
         };
         list.set_group(group, data);
         list
+    }
+
+    /// The closed groups panel's handle at the left edge, which the home navigation draws.
+    pub fn handle(&self) -> Option<[draw::Piece; 3]> {
+        (self.home && self.groups.is_none())
+            .then(|| groups::handle(view::HEADER_H, groups::SCREEN_H))
     }
 
     /// Show `group` in the channel column, which takes the focus.
@@ -577,7 +586,7 @@ impl ChannelList {
             Nav::Top => self.move_channel(-(self.cursor.index as isize), false, None),
             Nav::Left => {
                 self.groups = Some(GroupsPanel::new(
-                    groups::with_search(data.groups()),
+                    groups::listed(data),
                     &self.group,
                     view::GROUPS,
                 ));
@@ -914,8 +923,9 @@ impl Screen for ChannelList {
             .epg
             .as_ref()
             .map(|e| (e.window, e.day, e.focused().map(|p| p.start)));
+        self.home = data.home_navigation();
         if let Some(panel) = self.groups.as_mut() {
-            panel.set(groups::with_search(data.groups()), &self.group);
+            panel.set(groups::listed(data), &self.group);
             // A group the playlist lost: the one the panel falls back to.
             if let Some(g) = panel.shown().filter(|g| **g != self.group) {
                 self.group = g.clone();
@@ -958,12 +968,11 @@ impl Screen for ChannelList {
         view.prepare(self, m);
         view.draw(p, logos);
         self.view = view;
-        match self.groups.as_mut() {
-            Some(panel) => {
-                panel.prepare(m);
-                panel.paint(p, logos);
-            }
-            None => draw::paint(&groups::handle(view::HEADER_H, groups::SCREEN_H), p, logos),
+        if let Some(panel) = self.groups.as_mut() {
+            panel.prepare(m);
+            panel.paint(p, logos);
+        } else if let Some(handle) = self.handle() {
+            draw::paint(&handle, p, logos);
         }
     }
 }

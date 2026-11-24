@@ -28,7 +28,8 @@ pub fn locked(parental: &Parental, item: &VodItem) -> bool {
 /// A category of the left column.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Category {
-    /// Search in the section, first in the column: it lists nothing and opens Search.
+    /// Search in the section, first in the column under the home navigation: it lists nothing
+    /// and opens Search.
     Search,
     /// Items started and not finished, the latest watched first.
     Continue,
@@ -184,7 +185,7 @@ impl Catalog {
         }
         let mut categories = Vec::new();
         let mut lists = Vec::new();
-        if !entries.is_empty() {
+        if !entries.is_empty() && data.home_navigation() {
             categories.push(Category::Search);
             lists.push(Vec::new());
         }

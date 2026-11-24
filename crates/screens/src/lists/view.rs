@@ -1217,9 +1217,9 @@ mod tests {
         let (_, x, ..) = *find(&texts(l.pieces()), "1 Channel 1").unwrap();
         assert_eq!(x, GROUPS.w + geom::TEXT_X);
         let g = texts(l.groups().unwrap().pieces());
-        assert_eq!(g[2].0, "All channels");
+        assert_eq!(g[1].0, "All channels");
         assert_eq!(
-            g[2].3,
+            g[1].3,
             theme::TEXT_ON_FOCUS,
             "the focused group on the white pill"
         );
@@ -1515,7 +1515,7 @@ mod tests {
         let d = Fixture::new(NOW, 9);
         let mut l = list(&d, Mode::Overlay, &[Nav::Left]);
         assert_eq!(l.column(), Column::Groups);
-        let pill = GROUPS.pill(4);
+        let pill = GROUPS.pill(3);
         let out = point(&mut l, &d, pill.x + 20.0, pill.y + 20.0, 0);
         let news = Group::Playlist("News".into());
         assert_eq!(

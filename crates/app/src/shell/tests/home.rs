@@ -10,6 +10,11 @@ use tv_screens::vod::Focus;
 /// A shell set to the home navigation before it starts, over the fake data (with the fake VOD
 /// catalog when `vod`).
 fn home_sim(vod: bool) -> Sim {
+    sim("home", vod)
+}
+
+/// A shell set to `navigation` before it starts, as [`home_sim`].
+fn sim(navigation: &str, vod: bool) -> Sim {
     locale();
     let calls = Calls::default();
     let mut data = FakeData::new(NOW, 12);
@@ -22,7 +27,7 @@ fn home_sim(vod: bool) -> Sim {
         None,
         LogoCache::new(None),
     );
-    shell.set_setting(keys::NAVIGATION, "home".to_owned());
+    shell.set_setting(keys::NAVIGATION, navigation.to_owned());
     shell.start(0);
     calls.take();
     Sim {
@@ -274,4 +279,73 @@ fn back_from_a_section_finds_the_home_page_on_its_tile() {
         home.tiles()[home.focus()].open,
         Navigate::Vod(VodSection::Shows)
     );
+}
+
+/// The classic navigation is the UI without the home page: no Search in the guide's or the
+/// channel list's groups panel or at the head of Movies and Shows, and no handle at the left
+/// edge of the guide or the channel list. The home navigation has all of them, and the main
+/// Search finds movies and series with either.
+#[test]
+fn search_entries_and_the_groups_handle_come_with_the_home_navigation() {
+    use tv_screens::panels::Hit;
+    use tv_screens::vod::catalog::Category;
+    for navigation in ["classic", "home"] {
+        let home = navigation == "home";
+        let mut s = sim(navigation, true);
+
+        s.shell.navigate(Navigate::Guide, None);
+        let g: &GuideScreen = front(&s).and_then(|f| f.downcast_ref()).expect("the guide");
+        assert_eq!(
+            g.handle().is_some(),
+            home,
+            "{navigation}: the guide's handle"
+        );
+        s.press("Back");
+        s.press("Up");
+        s.press("Up");
+        let g: &GuideScreen = front(&s).and_then(|f| f.downcast_ref()).expect("the guide");
+        assert_eq!(
+            g.focus().group == Some(&Group::Search),
+            home,
+            "{navigation}: Search tops the guide's groups"
+        );
+
+        s.shell
+            .navigate(Navigate::ChannelList { preview: true }, None);
+        let l: &ChannelList = front(&s).and_then(|f| f.downcast_ref()).expect("the list");
+        assert_eq!(
+            l.handle().is_some(),
+            home,
+            "{navigation}: the list's handle"
+        );
+        s.press("Left");
+        let l: &ChannelList = front(&s).and_then(|f| f.downcast_ref()).expect("the list");
+        let groups = l.groups().expect("the groups panel").list();
+        assert_eq!(
+            groups.first() == Some(&Group::Search),
+            home,
+            "{navigation}: Search tops the list's groups"
+        );
+
+        for section in [VodSection::Movies, VodSection::Shows] {
+            s.shell.navigate(Navigate::Vod(section), None);
+            let v: &VodScreen = front(&s)
+                .and_then(|f| f.downcast_ref())
+                .expect("the section");
+            assert_eq!(
+                v.catalog().categories.first() == Some(&Category::Search),
+                home,
+                "{navigation}: Search heads {section:?}"
+            );
+        }
+
+        s.shell.navigate(Navigate::Search, None);
+        s.shell.text("harbour", s.t);
+        let search: &Search = front(&s).and_then(|f| f.downcast_ref()).expect("Search");
+        let vod = search
+            .hits()
+            .filter(|h| matches!(h, Hit::Vod { .. }))
+            .count();
+        assert_eq!(vod, 2, "{navigation}: the movie and the series");
+    }
 }

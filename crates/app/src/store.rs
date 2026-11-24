@@ -642,6 +642,10 @@ impl TvData for StoreData {
         self.settings.number(keys::EPG_PAST_DAYS)
     }
 
+    fn home_navigation(&self) -> bool {
+        self.settings.get(keys::NAVIGATION) == "home"
+    }
+
     fn vod(&self) -> Rc<[Rc<VodItem>]> {
         Rc::clone(&self.vod)
     }
@@ -918,11 +922,13 @@ impl Store for FakeData {
         Settings::new()
     }
 
-    /// Not stored, but the locks, the name rules and the reminders take effect, as on the TV.
+    /// Not stored, but the locks, the name rules, the reminders and the navigation take effect,
+    /// as on the TV.
     fn save_setting(&mut self, _key: &str, settings: &Settings) {
         self.parental.follow(settings);
         self.names = NameRules::from_settings(settings);
         self.reminders = reminders::reminders(settings);
+        self.home_navigation = settings.get(keys::NAVIGATION) == "home";
     }
 
     fn unlock(&mut self, lock: Lock) {

@@ -21,7 +21,7 @@
 use tv_machine::machine::Measure;
 use tv_ui::{Painter, Rect};
 
-use crate::data::{Group, Logos, Navigate, SearchScope};
+use crate::data::{Group, Logos, Navigate, SearchScope, TvData};
 use crate::draw::{self, HAlign, Piece, Run};
 use crate::input::{Hold, Key};
 use crate::lists::{Cursor, Rows};
@@ -90,12 +90,13 @@ pub fn ordered(mut groups: Vec<Group>) -> Vec<Group> {
     groups
 }
 
-/// The groups a panel lists: Search first, then `groups`.
-pub fn with_search(groups: Vec<Group>) -> Vec<Group> {
-    let mut out = Vec::with_capacity(groups.len() + 1);
-    out.push(Group::Search);
-    out.extend(groups.into_iter().filter(|g| *g != Group::Search));
-    out
+/// The groups a panel lists: `data`'s, with Search first under the home navigation.
+pub fn listed(data: &dyn TvData) -> Vec<Group> {
+    let mut groups = data.groups();
+    if data.home_navigation() {
+        groups.insert(0, Group::Search);
+    }
+    groups
 }
 
 pub struct GroupsPanel {
@@ -165,11 +166,11 @@ impl GroupsPanel {
         self.cursor
     }
 
-    /// The first group that lists channels (Search and History open screens of their own).
+    /// The top of the list under Search, where a long Left goes.
     fn first_listing(&self) -> usize {
         self.list
             .iter()
-            .position(|g| !g.opens_screen())
+            .position(|g| *g != Group::Search)
             .unwrap_or(0)
     }
 

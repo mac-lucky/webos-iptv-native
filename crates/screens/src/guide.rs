@@ -91,6 +91,8 @@ pub struct GuideScreen {
     clock: (Option<i32>, i64),
     /// A channel number being typed.
     number: Option<NumberEntry>,
+    /// [`TvData::home_navigation`].
+    home: bool,
 }
 
 impl GuideScreen {
@@ -99,7 +101,7 @@ impl GuideScreen {
     pub fn new(data: &dyn TvData, group: Group) -> Self {
         let mut s = GuideScreen {
             grid: Grid::new(data.channels(&group)),
-            groups: GroupsPanel::new(groups::with_search(data.groups()), &group, geom::GROUPS),
+            groups: GroupsPanel::new(groups::listed(data), &group, geom::GROUPS),
             zap: group.clone(),
             group,
             panel: false,
@@ -107,10 +109,16 @@ impl GuideScreen {
             spots: Spots::default(),
             clock: (None, 0),
             number: None,
+            home: data.home_navigation(),
         };
         s.grid.open(data);
         s.sync(data);
         s
+    }
+
+    /// The closed groups panel's handle at the left edge, which the home navigation draws.
+    pub fn handle(&self) -> Option<[draw::Piece; 3]> {
+        (self.home && !self.panel).then(|| groups::handle(geom::ROWS_Y, geom::SCREEN_H))
     }
 
     /// Where the focus is, for the app's remote-driven navigation tests.
@@ -398,8 +406,8 @@ impl Screen for GuideScreen {
     }
 
     fn refresh(&mut self, data: &dyn TvData) {
-        self.groups
-            .set(groups::with_search(data.groups()), &self.group);
+        self.home = data.home_navigation();
+        self.groups.set(groups::listed(data), &self.group);
         if let Some(g) = self.groups.shown() {
             self.group = g.clone();
         }
@@ -431,8 +439,8 @@ impl Screen for GuideScreen {
         if self.panel {
             self.groups.prepare(m);
             self.groups.paint(p, logos);
-        } else {
-            draw::paint(&groups::handle(geom::ROWS_Y, geom::SCREEN_H), p, logos);
+        } else if let Some(handle) = self.handle() {
+            draw::paint(&handle, p, logos);
         }
         // Laid out per frame, but only for the second or two while digits are typed.
         if let Some(n) = &self.number {

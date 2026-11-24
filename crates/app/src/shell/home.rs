@@ -12,7 +12,6 @@ use std::any::Any;
 
 use tv_screens::data::{Navigate, Output, Screen};
 use tv_screens::home::HomeScreen;
-use tv_screens::panels::keys;
 
 use super::{Layer, Shell};
 
@@ -56,8 +55,10 @@ pub(super) fn leave_section(out: Output) -> Output {
 }
 
 impl Shell {
+    /// The store answers it, as it does the screens
+    /// ([`home_navigation`](tv_screens::data::TvData::home_navigation)).
     pub(super) fn home_mode(&self) -> bool {
-        self.settings.get(keys::NAVIGATION) == "home"
+        self.store.home_navigation()
     }
 
     /// The home page in front.
