@@ -348,7 +348,10 @@ mod tests {
             .stdout(Stdio::piped())
             .spawn()
             .unwrap();
-        sh.stdin.take().unwrap().write_all(url).unwrap();
+        // A script that refuses exits before reading stdin, so the write may hit EPIPE.
+        if let Err(e) = sh.stdin.take().unwrap().write_all(url) {
+            assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe, "{e}");
+        }
         let out = sh.wait_with_output().unwrap();
         let stdout = String::from_utf8_lossy(&out.stdout).trim().to_owned();
         (out.status.code(), stdout)
