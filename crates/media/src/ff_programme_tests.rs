@@ -105,6 +105,10 @@ fn write_parts(dir: &Path, parts: [Part; 3]) -> Result<Parts, String> {
                 format!("-ac:a:{k}"),
                 ch.to_string(),
             ]);
+            // FFmpeg's SMPTE 302M encoder is experimental.
+            if *codec == "s302m" {
+                args.extend([format!("-strict:a:{k}"), "experimental".into()]);
+            }
             if new_pids {
                 args.extend(["-streamid".into(), format!("{}:{:#x}", k + 1, 0x201 + k)]);
             }
@@ -489,18 +493,19 @@ fn audio_that_starts_late_on_new_pids_does_not_move_the_video_back() {
 }
 
 /// **A break whose only track the television cannot play fails the source**, so the restart refuses
-/// it as undecodable: Opus, after MP2 decoded to PCM, and after MP2 fed as it is, where no other
-/// Load would play it either.
+/// it as undecodable: SMPTE 302M, which the build has no decoder for (Opus, which it now decodes,
+/// would play), after MP2 decoded to PCM, and after MP2 fed as it is, where no other Load would
+/// play it either.
 #[test]
 fn a_break_with_only_a_track_the_television_cannot_play_fails_the_source() {
     let Some((_g, _ffmpeg)) = gate() else { return };
-    let opus: &[Track] = &[("eng", "libopus", "96k", 2, 660)];
+    let s302m: &[Track] = &[("eng", "s302m", "1536k", 2, 660)];
     let parts = [
         Part { name: "a", ..PART },
-        Part { name: "c", offset: PART_S, tracks: opus, new_pids: true, ..PART },
+        Part { name: "c", offset: PART_S, tracks: s302m, new_pids: true, ..PART },
         Part { name: "b", offset: 2 * PART_S, ..PART },
     ];
-    let Some([a, c, _]) = written("opus-only", parts) else { return };
+    let Some([a, c, _]) = written("s302m-only", parts) else { return };
     let o = Origin::spawn();
     let url = archive(&o, &[("a", &a), ("c", &c)]);
     for pcm in [true, false] {
