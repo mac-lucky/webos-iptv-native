@@ -50,7 +50,7 @@
     "description": "Shared display formatter: episode_ordinal"
   },
   "core.percent": {
-    "value": "{value} %",
+    "value": "{value}\u00a0%",
     "args": {
       "value": "str"
     },

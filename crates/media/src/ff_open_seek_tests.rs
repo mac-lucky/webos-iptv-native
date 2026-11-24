@@ -9,7 +9,7 @@
 //! one retry.
 //!
 //! The seek half guards what the pump's fix relies on: libavformat's matroska demuxer reads the
-//! Cues on the FIRST seek of a context (`matroska_read_seek` → `matroska_parse_cues`, FFmpeg 9.0
+//! Cues on the FIRST seek of a context (`matroska_read_seek` -> `matroska_parse_cues`, FFmpeg 9.0
 //! `libavformat/matroskadec.c`) and keeps the index in the `AVStream` for the context's life, so
 //! an in-place seek (`SHARED.seek_to_ns`) after the first never fetches the Cues again. Only a
 //! reload - a fresh `AVFormatContext` - would.
@@ -261,7 +261,7 @@ fn probe(url: &str) -> Result<crate::stream::ProbedStreams, crate::stream::Probe
 /// Real VOD containers must be recognized by the bundled build, not only by the host's full
 /// FFmpeg used to generate the files. The release's IPTV-only component list omitted both.
 #[test]
-#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI - see the module doc"]
 fn matroska_vod_is_recognized_with_video_and_audio() {
     let _g = tv_base::testlock::serial();
     let Some((_s, file)) = fixture("vod-matroska") else { return };
@@ -279,7 +279,7 @@ fn matroska_vod_is_recognized_with_video_and_audio() {
 }
 
 #[test]
-#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI - see the module doc"]
 fn avi_vod_is_recognized_with_video_and_audio() {
     let _g = tv_base::testlock::serial();
     let Some((scratch, _)) = fixture("vod-avi") else { return };
@@ -310,7 +310,7 @@ fn avi_vod_is_recognized_with_video_and_audio() {
 /// after an in-place seek the decoder starts over at the landing (no cue from before it is kept)
 /// and the next picture still shows. Skips when the build has no `pgssub` decoder.
 #[test]
-#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI - see the module doc"]
 fn a_matroska_pgs_track_decodes_and_starts_over_at_an_in_place_seek() {
     use super::subdec_tests::{pgs, Bound, PgsCue};
     use crate::subtitles;
@@ -352,7 +352,7 @@ fn a_matroska_pgs_track_decodes_and_starts_over_at_an_in_place_seek() {
 }
 
 #[test]
-#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI - see the module doc"]
 fn a_probe_whose_first_hop_serves_an_error_page_retries_once_and_opens() {
     let _g = tv_base::testlock::serial();
     let Some((_s, file)) = fixture("probe-html") else { return };
@@ -364,7 +364,7 @@ fn a_probe_whose_first_hop_serves_an_error_page_retries_once_and_opens() {
 }
 
 #[test]
-#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI - see the module doc"]
 fn a_probe_whose_first_transfer_is_cut_inside_the_header_retries_once_and_opens() {
     let _g = tv_base::testlock::serial();
     let Some((_s, file)) = fixture("probe-cut") else { return };
@@ -376,7 +376,7 @@ fn a_probe_whose_first_transfer_is_cut_inside_the_header_retries_once_and_opens(
 }
 
 #[test]
-#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI - see the module doc"]
 fn a_probe_of_a_url_that_never_serves_the_file_fails_after_exactly_two_retries() {
     let _g = tv_base::testlock::serial();
     let Some((_s, file)) = fixture("probe-bad") else { return };
@@ -393,7 +393,7 @@ fn a_probe_of_a_url_that_never_serves_the_file_fails_after_exactly_two_retries()
 /// The field case: the link answers an image (the torrent's HDR10+ test chart). An image will
 /// not turn into the film, so the probe refuses at once, without the ~4.5 s of waiting retries.
 #[test]
-#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI - see the module doc"]
 fn a_probe_whose_link_serves_an_image_fails_at_once_without_retrying() {
     let _g = tv_base::testlock::serial();
     let Some((_s, file)) = fixture("probe-png") else { return };
@@ -411,7 +411,7 @@ fn a_probe_whose_link_serves_an_image_fails_at_once_without_retrying() {
 /// The C1's case: a debrid link answers junk twice while the service prepares it, then serves
 /// the file. The waiting retries reach it.
 #[test]
-#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI - see the module doc"]
 fn a_probe_whose_link_answers_junk_twice_opens_on_the_waited_retry() {
     let _g = tv_base::testlock::serial();
     let Some((_s, file)) = fixture("probe-twice") else { return };
@@ -520,7 +520,7 @@ fn demux_run(url: String, seeks: &[i64], tail: usize) -> Run {
 }
 
 #[test]
-#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI - see the module doc"]
 fn a_demux_whose_first_hop_serves_an_error_page_retries_once_and_plays() {
     let _g = tv_base::testlock::serial();
     let Some((_s, file)) = fixture("demux-html") else { return };
@@ -533,7 +533,7 @@ fn a_demux_whose_first_hop_serves_an_error_page_retries_once_and_plays() {
 }
 
 #[test]
-#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI - see the module doc"]
 fn a_demux_of_a_url_that_never_serves_the_file_fails_after_exactly_one_retry() {
     let _g = tv_base::testlock::serial();
     let Some((_s, file)) = fixture("demux-bad") else { return };
@@ -548,7 +548,7 @@ fn a_demux_of_a_url_that_never_serves_the_file_fails_after_exactly_one_retry() {
 /// Two in-place seeks fetch the Cues once, and both land; the file's chapters are published at
 /// open (start ms on the content timeline, the title tag, empty when the chapter has none).
 #[test]
-#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI - see the module doc"]
 fn two_in_place_seeks_read_the_cues_once_and_the_chapters_are_published() {
     let _g = tv_base::testlock::serial();
     let Some((_s, file)) = fixture("cues") else { return };
@@ -573,7 +573,7 @@ fn two_in_place_seeks_read_the_cues_once_and_the_chapters_are_published() {
 /// probes). An HLS probe reads at most [`super::HLS_PROBE_BYTES`]; the AAC parameters come from
 /// the ADTS headers as before.
 #[test]
-#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI — see the module doc"]
+#[ignore = "needs the host build of the bundled FFmpeg and the ffmpeg CLI - see the module doc"]
 fn an_hls_probe_of_ts_with_aac_stops_at_its_byte_cap() {
     let Some(_c) = crate::hls::loopback_tests::curl_gate() else { return };
     if !tool_present("ffmpeg") {

@@ -8,7 +8,7 @@
     "description": "Channel names row: type a suffix to remove from names"
   },
   "names.added": {
-    "value": "Ajouté",
+    "value": "Ajoutée",
     "description": "Toast after adding a channel name rule"
   },
   "names.count": {
@@ -43,7 +43,7 @@
     "description": "Value on a rule row: OK removes it"
   },
   "names.removed": {
-    "value": "Retiré",
+    "value": "Retirée",
     "description": "Toast after removing a channel name rule"
   },
   "names.suffixes": {
