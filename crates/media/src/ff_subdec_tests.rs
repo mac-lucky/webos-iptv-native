@@ -887,7 +887,11 @@ fn the_object_budget_refuses_an_epoch_of_more_ids_than_the_decoder_keeps() {
     assert!(b.admit(&ods(5, 2000, true)), "an id the epoch has");
     assert!(!b.admit(&ods(max, 16, true)), "one more id");
     assert!(!b.admit(&[ods(0, 16, true), ods(max, 16, true)].concat()), "behind a known one too");
-    assert!(b.admit(&ods(max - 1, 1000, true)), "nothing of the refused packets was counted");
+    // Beside the epoch's small objects one of these fits the budget, two do not.
+    let large = 2_500_000;
+    assert!(!b.admit(&[ods(5, large, true), ods(max, 16, true)].concat()), "behind one it raises");
+    assert!(b.admit(&ods(6, large, true)), "nothing of the refused packet was counted");
+    assert!(!b.admit(&ods(5, large, true)), "and id 5 kept the size it had");
     assert!(b.admit(&[pcs(1920, 1080, 0x80), ods(max, 16, true)].concat()), "a new epoch starts the ids over");
 }
 
