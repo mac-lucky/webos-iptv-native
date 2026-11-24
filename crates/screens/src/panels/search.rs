@@ -266,10 +266,11 @@ impl Search {
         } else {
             Vec::new()
         };
-        self.vod = vod_index(data)
-            .into_iter()
-            .filter(|(_, hit)| matches!(hit, Hit::Vod { section, .. } if self.in_vod(*section)))
-            .collect();
+        self.vod = match self.scope {
+            // The channels alone list no movie or series.
+            Some(SearchScope::Channels) => Vec::new(),
+            _ => vod_index(data, |section| self.in_vod(section)),
+        };
     }
 
     /// The draft changed: typing puts the focus back on the field, and the results follow.
@@ -583,22 +584,24 @@ impl Screen for Search {
     }
 }
 
-/// Play `stream` with every screen closed: the full-screen player in front.
-/// Every movie, and every series by its first episode, that `data` lists and the PIN does not
-/// hide, with its folded title.
-fn vod_index(data: &dyn TvData) -> Vec<(String, Hit)> {
+/// Every movie, and every series by its first episode, that `data` lists in a section `keep`
+/// takes and the PIN does not hide, with its folded title.
+fn vod_index(data: &dyn TvData, keep: impl Fn(VodSection) -> bool) -> Vec<(String, Hit)> {
     let mut out: Vec<(String, Hit)> = Vec::new();
     let mut series: std::collections::HashSet<String> = std::collections::HashSet::new();
     for v in data.vod().iter().filter(|v| !data.vod_locked(v)) {
         let (section, title, detail) = match v.kind {
-            VodKind::Movie => (VodSection::Movies, v.title.clone(), msg::vod_movies()),
-            VodKind::Episode => {
+            VodKind::Movie if keep(VodSection::Movies) => {
+                (VodSection::Movies, v.title.clone(), msg::vod_movies())
+            }
+            VodKind::Episode if keep(VodSection::Shows) => {
                 let name = v.series.clone().unwrap_or_else(|| v.title.clone());
                 if !series.insert(name.to_lowercase()) {
                     continue;
                 }
                 (VodSection::Shows, name, msg::vod_shows())
             }
+            _ => continue,
         };
         out.push((
             fold(&title),
@@ -613,6 +616,7 @@ fn vod_index(data: &dyn TvData) -> Vec<(String, Hit)> {
     out
 }
 
+/// Play `stream` with every screen closed: the full-screen player in front.
 fn play(stream: Stream) -> Output {
     Output::command(Command::Play {
         stream,
@@ -763,10 +767,21 @@ mod tests {
         let mut movies = Search::scoped(&data, Some(SearchScope::Movies));
         type_text(&mut movies, &data, "harbour");
         assert_eq!(titles(&movies), ["Harbour City"]);
+        let only = |s: &Search, section| {
+            s.vod
+                .iter()
+                .all(|(_, h)| matches!(h, Hit::Vod { section: x, .. } if *x == section))
+        };
+        assert!(only(&movies, VodSection::Movies), "no series indexed");
         let mut shows = Search::scoped(&data, Some(SearchScope::Shows));
         type_text(&mut shows, &data, "harbour");
         assert_eq!(titles(&shows), ["Harbour Watch"]);
+        assert!(only(&shows, VodSection::Shows), "no movie indexed");
         let mut channels = Search::scoped(&data, Some(SearchScope::Channels));
+        assert!(
+            channels.vod.is_empty(),
+            "nothing of the VOD catalog indexed"
+        );
         type_text(&mut channels, &data, "harbour");
         assert!(titles(&channels).is_empty(), "no movie in the channels");
         type_text(&mut channels, &data, "");
