@@ -1,0 +1,57 @@
+{
+  "names.add_prefix": {
+    "value": "Ajouter un préfixe",
+    "description": "Channel names row: type a prefix to remove from names"
+  },
+  "names.add_suffix": {
+    "value": "Ajouter un suffixe",
+    "description": "Channel names row: type a suffix to remove from names"
+  },
+  "names.added": {
+    "value": "Ajouté",
+    "description": "Toast after adding a channel name rule"
+  },
+  "names.count": {
+    "value": {
+      "one": "{count} règle",
+      "many": "{count} règles",
+      "other": "{count} règles"
+    },
+    "args": {
+      "count": "i64"
+    },
+    "description": "Channel names row value: how many prefixes or suffixes are set"
+  },
+  "names.exists": {
+    "value": "Déjà dans la liste",
+    "description": "Toast: the typed rule is set already"
+  },
+  "names.full": {
+    "value": "La liste est pleine",
+    "description": "Toast: no room for another rule"
+  },
+  "names.invalid": {
+    "value": "Saisissez de 1 à 32 caractères",
+    "description": "Toast: the typed rule is empty or too long"
+  },
+  "names.prefixes": {
+    "value": "Préfixes à retirer",
+    "description": "Channel names page: country codes and other tags at the start of names"
+  },
+  "names.remove": {
+    "value": "Retirer",
+    "description": "Value on a rule row: OK removes it"
+  },
+  "names.removed": {
+    "value": "Retiré",
+    "description": "Toast after removing a channel name rule"
+  },
+  "names.suffixes": {
+    "value": "Suffixes à retirer",
+    "description": "Channel names page: quality and other tags at the end of names"
+  },
+  "names.title": {
+    "value": "Noms des chaînes",
+    "description": "Settings row and page: prefixes and suffixes removed from channel names"
+  }
+}

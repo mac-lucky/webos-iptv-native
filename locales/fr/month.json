@@ -1,0 +1,50 @@
+{
+  "month.apr": {
+    "value": "avr.",
+    "description": "Short month name in a date"
+  },
+  "month.aug": {
+    "value": "août",
+    "description": "Short month name in a date"
+  },
+  "month.dec": {
+    "value": "déc.",
+    "description": "Short month name in a date"
+  },
+  "month.feb": {
+    "value": "févr.",
+    "description": "Short month name in a date"
+  },
+  "month.jan": {
+    "value": "janv.",
+    "description": "Short month name in a date"
+  },
+  "month.jul": {
+    "value": "juil.",
+    "description": "Short month name in a date"
+  },
+  "month.jun": {
+    "value": "juin",
+    "description": "Short month name in a date"
+  },
+  "month.mar": {
+    "value": "mars",
+    "description": "Short month name in a date"
+  },
+  "month.may": {
+    "value": "mai",
+    "description": "Short month name in a date"
+  },
+  "month.nov": {
+    "value": "nov.",
+    "description": "Short month name in a date"
+  },
+  "month.oct": {
+    "value": "oct.",
+    "description": "Short month name in a date"
+  },
+  "month.sep": {
+    "value": "sept.",
+    "description": "Short month name in a date"
+  }
+}

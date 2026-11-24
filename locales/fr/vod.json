@@ -1,0 +1,81 @@
+{
+  "vod.all": {
+    "value": "Tous",
+    "description": "VOD category: every movie or show of the section"
+  },
+  "vod.continue": {
+    "value": "Reprendre la lecture",
+    "description": "VOD category: items started and not finished"
+  },
+  "vod.episode_count": {
+    "value": {
+      "one": "{count} épisode",
+      "many": "{count} épisodes",
+      "other": "{count} épisodes"
+    },
+    "args": {
+      "count": "i64"
+    },
+    "description": "How many episodes a show or a season has"
+  },
+  "vod.episodes": {
+    "value": "Épisodes",
+    "description": "The season of a show's episodes that name no season"
+  },
+  "vod.from_start": {
+    "value": "Lire depuis le début",
+    "description": "Resume prompt: play the movie or episode from its beginning"
+  },
+  "vod.left": {
+    "value": "Encore {time}",
+    "args": {
+      "time": "str"
+    },
+    "description": "How much of a started movie or episode is left, e.g. 42:10 left"
+  },
+  "vod.movies": {
+    "value": "Films",
+    "description": "Main menu entry and title of the movies section"
+  },
+  "vod.no_movies": {
+    "value": "Cette playlist ne contient aucun film",
+    "description": "The movies section of a playlist without any"
+  },
+  "vod.no_shows": {
+    "value": "Cette playlist ne contient aucune série",
+    "description": "The shows section of a playlist without any"
+  },
+  "vod.resume_from": {
+    "value": "Reprendre à {time}",
+    "args": {
+      "time": "str"
+    },
+    "description": "Resume prompt: play on from the saved position, e.g. Resume from 12:34"
+  },
+  "vod.season": {
+    "value": "Saison {number}",
+    "args": {
+      "number": "i64"
+    },
+    "description": "A season of a show"
+  },
+  "vod.season_count": {
+    "value": {
+      "one": "{count} saison",
+      "many": "{count} saisons",
+      "other": "{count} saisons"
+    },
+    "args": {
+      "count": "i64"
+    },
+    "description": "How many seasons a show has"
+  },
+  "vod.shows": {
+    "value": "Séries",
+    "description": "Main menu entry and title of the shows (series) section"
+  },
+  "vod.watched": {
+    "value": "Vu",
+    "description": "A movie or episode played to its end"
+  }
+}

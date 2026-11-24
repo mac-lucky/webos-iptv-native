@@ -1,0 +1,154 @@
+{
+  "settings.about": {
+    "value": "À propos",
+    "description": "Settings section: version and licences"
+  },
+  "settings.appearance": {
+    "value": "Apparence",
+    "description": "Settings section"
+  },
+  "settings.auto_play": {
+    "value": "Démarrer sur la dernière chaîne",
+    "description": "Setting: play the last channel when the app starts"
+  },
+  "settings.bad_url": {
+    "value": "Saisissez une adresse http ou https",
+    "description": "Toast: the typed URL is not an http(s) URL"
+  },
+  "settings.data.delete_question": {
+    "value": "Supprimer toutes les données locales ?",
+    "description": "Settings: the confirmation question for deleting all local data"
+  },
+  "settings.data.delete_scope": {
+    "value": "Vous déconnecte et supprime la session, les réglages et les caches de cette TV. Les extensions conservent les données déjà reçues.",
+    "description": "Settings: the confirmation body for deleting all local data"
+  },
+  "settings.epg": {
+    "value": "Guide TV",
+    "description": "Settings section: programme guide sources"
+  },
+  "settings.epg_refresh_interval": {
+    "value": "Fréquence de mise à jour",
+    "description": "Setting: how often the guide is reloaded"
+  },
+  "settings.epg_url": {
+    "value": "Source du guide TV",
+    "description": "Setting: a guide URL that replaces the playlist's"
+  },
+  "settings.from_playlist": {
+    "value": "Depuis la playlist",
+    "description": "Value of an empty EPG source: the playlist's own guide"
+  },
+  "settings.general": {
+    "value": "Général",
+    "description": "Settings section"
+  },
+  "settings.hidden_groups": {
+    "value": "Groupes masqués",
+    "description": "Setting: playlist groups hidden from the groups panel"
+  },
+  "settings.history_keep": {
+    "value": "Conserver l’historique pendant",
+    "description": "Setting: how long a History entry is kept after its programme ends"
+  },
+  "settings.history_min": {
+    "value": "Ajouter à l’historique après",
+    "description": "Setting: how long a catch-up programme plays before it is added to History"
+  },
+  "settings.info_on_zap": {
+    "value": "Afficher les infos au changement de chaîne",
+    "description": "Setting: show the info banner after switching channels"
+  },
+  "settings.login.unknown_device": {
+    "value": "TV inconnue",
+    "description": "Settings, consent or sign-in UI: settings.login.unknown_device"
+  },
+  "settings.long_press": {
+    "value": "Appui long",
+    "description": "Setting: how long a press counts as long"
+  },
+  "settings.name": {
+    "value": "Nom",
+    "description": "Channel sorting option"
+  },
+  "settings.not_set": {
+    "value": "Non défini",
+    "description": "Value of an empty URL setting"
+  },
+  "settings.past_days": {
+    "value": "Jours passés à conserver",
+    "description": "Setting: how many days of past guide data are kept"
+  },
+  "settings.playback": {
+    "value": "Lecture",
+    "description": "Settings section"
+  },
+  "settings.player": {
+    "value": "Lecteur",
+    "description": "Settings section, and the player menu title when nothing plays"
+  },
+  "settings.player_osd_timeout": {
+    "value": "Masquer les infos après",
+    "description": "Setting: the info banner hides after this long"
+  },
+  "settings.playlist_url": {
+    "value": "Adresse de la playlist",
+    "description": "Setting: the M3U playlist address"
+  },
+  "settings.playlists": {
+    "value": "Playlists",
+    "description": "Settings section"
+  },
+  "settings.remote": {
+    "value": "Télécommande",
+    "description": "Settings section"
+  },
+  "settings.show_all": {
+    "value": "Groupe Toutes les chaînes",
+    "description": "Setting: show the All channels group"
+  },
+  "settings.show_favorites": {
+    "value": "Groupe Favoris",
+    "description": "Setting: show the Favorites group"
+  },
+  "settings.show_history": {
+    "value": "Groupe Historique",
+    "description": "Setting: show the History group"
+  },
+  "settings.skip_back": {
+    "value": "Pas de retour rapide",
+    "description": "Setting: how far one rewind press jumps"
+  },
+  "settings.skip_forward": {
+    "value": "Pas d’avance rapide",
+    "description": "Setting: how far one fast forward press jumps"
+  },
+  "settings.sort_number": {
+    "value": "Numéro",
+    "description": "Channel sorting option"
+  },
+  "settings.sort_playlist": {
+    "value": "Ordre de la playlist",
+    "description": "Channel sorting option"
+  },
+  "settings.update_epg": {
+    "value": "Actualiser le guide TV",
+    "description": "Settings action"
+  },
+  "settings.update_on_start": {
+    "value": "Actualiser au démarrage",
+    "description": "Setting: reload the playlist when the app starts"
+  },
+  "settings.update_playlist": {
+    "value": "Actualiser la playlist",
+    "description": "Settings action"
+  },
+  "settings.updating_epg": {
+    "value": "Actualisation du guide TV",
+    "description": "Toast after Update EPG now"
+  },
+  "settings.updating_playlist": {
+    "value": "Actualisation de la playlist",
+    "description": "Toast after Update playlist now"
+  }
+}
