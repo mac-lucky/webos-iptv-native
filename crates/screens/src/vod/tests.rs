@@ -147,7 +147,10 @@ fn shows_are_series_by_season_and_episode() {
     d.vod.swap(8, 9);
     let c = Catalog::build(&d, VodSection::Shows);
     let names: Vec<_> = c.categories.iter().map(|c| c.name().to_owned()).collect();
-    assert_eq!(names, ["Search", "All", "Crime", "Documentary", "Lifestyle"]);
+    assert_eq!(
+        names,
+        ["Search", "All", "Crime", "Documentary", "Lifestyle"]
+    );
     assert_eq!(
         titles(&c, 1),
         ["Harbour Watch", "The Archive", "Kitchen Stories"]
@@ -201,7 +204,11 @@ fn unnumbered_episodes_are_a_last_season() {
 fn ok_on_a_new_movie_plays_it_and_puts_its_player_in_front() {
     let d = data();
     let mut s = VodScreen::new(VodSection::Movies, &d, settings());
-    assert_eq!((s.focus(), s.category()), (Focus::Categories, 1), "on All, under Search");
+    assert_eq!(
+        (s.focus(), s.category()),
+        (Focus::Categories, 1),
+        "on All, under Search"
+    );
     assert_eq!(s.title(), "Movies");
     let out = press(&mut s, &d, &[Key::Right, Key::Down, Key::Ok]);
     let key = key_of(&d, "Harbour City");

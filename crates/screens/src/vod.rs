@@ -274,12 +274,15 @@ impl VodScreen {
 
     fn key_categories(&mut self, key: Key) -> Output {
         let len = self.catalog.categories.len();
-        let on_search = self.catalog.categories.get(self.categories.index) == Some(&Category::Search);
+        let on_search =
+            self.catalog.categories.get(self.categories.index) == Some(&Category::Search);
         match key {
-            Key::Right | Key::Ok if on_search => Output::navigate(Navigate::SearchIn(match self.section {
-                VodSection::Movies => SearchScope::Movies,
-                VodSection::Shows => SearchScope::Shows,
-            })),
+            Key::Right | Key::Ok if on_search => {
+                Output::navigate(Navigate::SearchIn(match self.section {
+                    VodSection::Movies => SearchScope::Movies,
+                    VodSection::Shows => SearchScope::Shows,
+                }))
+            }
             Key::Up | Key::Down => {
                 if !step_column(&mut self.categories, key, len) {
                     return Output::default();

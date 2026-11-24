@@ -71,9 +71,9 @@ impl Hit {
 
     pub fn detail(&self) -> &str {
         match self {
-            Hit::Channel { detail, .. } | Hit::Programme { detail, .. } | Hit::Vod { detail, .. } => {
-                detail
-            }
+            Hit::Channel { detail, .. }
+            | Hit::Programme { detail, .. }
+            | Hit::Vod { detail, .. } => detail,
         }
     }
 }
@@ -211,7 +211,9 @@ impl Search {
         };
         match self.hit(i) {
             Some(Hit::Channel { key, .. }) => play(Stream::Live(*key)),
-            Some(Hit::Vod { section, item, .. }) => Output::navigate(Navigate::VodAt(*section, *item)),
+            Some(Hit::Vod { section, item, .. }) => {
+                Output::navigate(Navigate::VodAt(*section, *item))
+            }
             Some(Hit::Programme {
                 channel, programme, ..
             }) => match time::when(programme.start, programme.stop, now) {
@@ -745,12 +747,14 @@ mod tests {
         assert_eq!(titles(&search), ["Harbour City", "Harbour Watch"]);
         let details: Vec<_> = search.hits().map(Hit::detail).collect();
         assert_eq!(details, ["Movies", "Shows"]);
-        let city = data.vod.iter().find(|v| v.title == "Harbour City").unwrap().key;
+        let city = data
+            .vod
+            .iter()
+            .find(|v| v.title == "Harbour City")
+            .unwrap()
+            .key;
         let out = keys(&mut search, &data, &[Key::Down, Key::Ok]);
-        assert_eq!(
-            out.navigate,
-            [Navigate::VodAt(VodSection::Movies, city)]
-        );
+        assert_eq!(out.navigate, [Navigate::VodAt(VodSection::Movies, city)]);
     }
 
     #[test]
