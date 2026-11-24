@@ -12,7 +12,7 @@
 use super::late_audio_tests::{tool_present, FileServer, Scratch};
 use super::subdec::{
     self, picture, pgs_segments, span, AVSubtitle, AVSubtitleRect, Kind, ObjectBudget, RegionBudget, DISPLAY_COST,
-    REGION_BUDGET,
+    MAX_EPOCH_OBJECTS, REGION_BUDGET,
 };
 use super::test_support::{bind_host_ffmpeg, host_ffmpeg_dir, HostFfmpeg};
 use super::*;
@@ -861,6 +861,34 @@ fn the_object_budget_counts_what_the_pgs_decoder_would_keep() {
         n += 1;
     }
     assert_eq!(n, 3 + 2 * (5 + 3), "every segment of the file was read");
+}
+
+/// An epoch holds at most as many objects as the decoder keeps: a packet past that is refused,
+/// one of thousands of tiny object segments too, and counting a packet costs one lookup a
+/// segment whatever it holds.
+#[test]
+fn the_object_budget_refuses_an_epoch_of_more_ids_than_the_decoder_keeps() {
+    let max = MAX_EPOCH_OBJECTS as u16;
+    let many: Vec<u8> = (0..10_000u16).flat_map(|id| ods(id, 4, true)).collect();
+    let repeated: Vec<u8> = (0..10_000u16).flat_map(|i| ods(i % max, 4, true)).collect();
+    assert!(many.len() <= subdec::MAX_PACKET && repeated.len() <= subdec::MAX_PACKET);
+    let started = Instant::now();
+    assert!(!ObjectBudget::default().admit(&many), "10000 object ids in one packet");
+    assert!(ObjectBudget::default().admit(&repeated), "10000 segments over the most ids an epoch holds");
+    let took = started.elapsed();
+    assert!(took < Duration::from_millis(200), "{took:?}");
+
+    // A multi-object epoch, across packets, up to the limit and no further.
+    let mut b = ObjectBudget::default();
+    assert!(b.admit(&[pcs(1920, 1080, 0x80), ods(0, 1000, true), ods(1, 1000, true)].concat()), "two objects");
+    for id in 2..max {
+        assert!(b.admit(&ods(id, 1000, true)), "object {id}");
+    }
+    assert!(b.admit(&ods(5, 2000, true)), "an id the epoch has");
+    assert!(!b.admit(&ods(max, 16, true)), "one more id");
+    assert!(!b.admit(&[ods(0, 16, true), ods(max, 16, true)].concat()), "behind a known one too");
+    assert!(b.admit(&ods(max - 1, 1000, true)), "nothing of the refused packets was counted");
+    assert!(b.admit(&[pcs(1920, 1080, 0x80), ods(max, 16, true)].concat()), "a new epoch starts the ids over");
 }
 
 /// The stream-info search may open every decoder the app bundles but `pgssub`: the list follows

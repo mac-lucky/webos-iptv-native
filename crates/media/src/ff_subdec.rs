@@ -25,6 +25,7 @@
 
 use super::*;
 use crate::subtitles::{self, Cue, Rect, Track, MAX_CUE_PIXELS, MAX_RECTS, MAX_SIDE, MAX_TRACKS};
+use std::collections::HashMap;
 use std::ffi::CStr;
 
 // The entry points the demuxer's tables (ff.rs) do not bind, from the same library by the same
@@ -390,6 +391,8 @@ impl RegionBudget {
 const PGS_OBJECT: u8 = 0x15;
 const PGS_PRESENTATION: u8 = 0x16;
 const PGS_END: u8 = 0x80;
+/// The most objects `pgssubdec` keeps in one epoch (its `MAX_EPOCH_OBJECTS`).
+pub const MAX_EPOCH_OBJECTS: usize = 64;
 
 /// The segments of a PGS packet as the decoder steps through them: type, 16-bit length, payload,
 /// until the packet ends or a segment other than the end of the display set runs past it (the
@@ -425,17 +428,26 @@ pub fn pgs_segments(packet: &[u8]) -> impl Iterator<Item = (u8, &[u8])> {
 /// decoder takes (`ff_set_dimensions` against `max_pixels`, which comes before the flush). A
 /// Blu-ray stream usually starts an epoch with each new subtitle, so a film does not run into the
 /// budget by its length alone; one that does only loses the objects of the epoch under way.
+///
+/// A packet that would give the epoch more than [`MAX_EPOCH_OBJECTS`] ids is refused as well, so
+/// at most that many are ever counted, and each segment costs one lookup by id whatever the
+/// packet holds.
 #[derive(Default)]
 pub struct ObjectBudget {
-    sizes: Vec<(u16, usize)>,
+    /// The epoch's objects: each id's largest declared buffer.
+    sizes: HashMap<u16, usize>,
     total: usize,
+    /// What the packet being counted raises, by id; kept between packets for its capacity only.
+    raised: HashMap<u16, usize>,
 }
 
 impl ObjectBudget {
     /// Count the most `packet` could leave the decoder holding; `false` (nothing counted) when
     /// that is past the budget.
     pub fn admit(&mut self, packet: &[u8]) -> bool {
-        let mut next = (self.sizes.clone(), self.total);
+        self.raised.clear();
+        let (mut fresh, mut total) = (false, self.total);
+        let mut ids = self.sizes.len();
         for (i, (kind, body)) in pgs_segments(packet).enumerate() {
             match kind {
                 // Video width and height, frame rate, composition number, then the state.
@@ -444,7 +456,7 @@ impl ObjectBudget {
                     let h = usize::from(u16::from_be_bytes([body[2], body[3]]));
                     // `av_image_check_size2`'s stride bound always holds within MAX_CUE_PIXELS.
                     if w > 0 && h > 0 && w * h <= MAX_CUE_PIXELS {
-                        next = (Vec::new(), 0);
+                        (fresh, total, ids) = (true, 0, 0);
                     }
                 }
                 // Object id, version, sequence flags (0x80: the first of the object's segments),
@@ -455,25 +467,34 @@ impl ObjectBudget {
                     // `av_fast_mallocz` adds the padding (64), a sixteenth and 32 bytes; a length
                     // that wrapped is past the budget, as the decoder's allocation would fail.
                     let size = rle.saturating_add(rle / 16).saturating_add(100);
-                    match next.0.iter_mut().find(|(i, _)| *i == id) {
-                        Some(slot) if slot.1 >= size => {}
-                        Some(slot) => {
-                            next.1 = (next.1 - slot.1).saturating_add(size);
-                            slot.1 = size;
-                        }
-                        None => {
-                            next.0.push((id, size));
-                            next.1 = next.1.saturating_add(size);
+                    let held = match self.raised.get(&id) {
+                        Some(&raised) => Some(raised),
+                        None if fresh => None,
+                        None => self.sizes.get(&id).copied(),
+                    };
+                    if held.is_none() {
+                        ids += 1;
+                        if ids > MAX_EPOCH_OBJECTS {
+                            return false;
                         }
                     }
-                    if next.1 > REGION_BUDGET {
-                        return false;
+                    let held = held.unwrap_or(0);
+                    if size > held {
+                        total = (total - held).saturating_add(size);
+                        if total > REGION_BUDGET {
+                            return false;
+                        }
+                        self.raised.insert(id, size);
                     }
                 }
                 _ => {}
             }
         }
-        (self.sizes, self.total) = next;
+        if fresh {
+            self.sizes.clear();
+        }
+        self.sizes.extend(self.raised.drain());
+        self.total = total;
         true
     }
 }
