@@ -1,10 +1,36 @@
+<img src="pkg/icon320.png" width="96" align="right" alt="">
+
 # webos-iptv-native
+
+[![CI](https://github.com/mac-lucky/webos-iptv-native/actions/workflows/ci.yml/badge.svg)](https://github.com/mac-lucky/webos-iptv-native/actions/workflows/ci.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/mac-lucky/webos-iptv-native)](https://github.com/mac-lucky/webos-iptv-native/releases/latest)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 A native IPTV player for LG webOS TVs, written in Rust. It draws its interface on the TV's GPU and
 hands video to the TV's hardware decoder, so it starts fast and stays responsive on TVs where web
 apps struggle.
 
 The app ships no channels or playlists. Add an M3U playlist from a provider you are allowed to use.
+
+## What it looks like
+
+<p align="center">
+  <img src="screenshots/1-guide.jpg" alt="The TV guide: a live preview and the current programme's details above a grid of channels and their programmes" width="720">
+</p>
+
+<p align="center">
+  <img src="screenshots/3-player.jpg" alt="Full-screen playback with the channel info bar: channel logo, programme, time, what comes next and stream badges" width="420">
+  <img src="screenshots/2-groups.jpg" alt="The group list opened over the guide: Favorites, All channels, History and the playlist's groups" width="420">
+</p>
+
+<p align="center">
+  <img src="screenshots/4-catchup.jpg" alt="The guide scrolled back in time to a past programme on a channel with catch-up" width="420">
+  <img src="screenshots/5-settings.jpg" alt="The settings panel: General, Playlists, EPG, Appearance, Playback, Remote control, Parental control and About" width="420">
+</p>
+
+<p align="center"><em>TV guide &nbsp;|&nbsp; Player &nbsp;|&nbsp; Groups &nbsp;|&nbsp; Catch-up &nbsp;|&nbsp; Settings</em></p>
+
+The channels and programmes in the screenshots are made up.
 
 ## What it does
 
@@ -25,7 +51,7 @@ It is developed on an LG C1 (webOS 6) and an LG C5 (webOS 25). Older TVs are unt
 Download the `.ipk` from the [latest release](https://github.com/mac-lucky/webos-iptv-native/releases/latest)
 and install it on a TV in Developer Mode or with the
 [Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel), for example with
-`ares-install`.
+[dev-manager-desktop](https://github.com/webosbrew/dev-manager-desktop) or `ares-install`.
 
 ## Building
 
@@ -87,6 +113,12 @@ Thanks to lennylxx as well.
 Details: [NOTICE](NOTICE) and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 Not affiliated with or endorsed by LG Electronics.
+
+## Support
+
+For bugs and feature requests, please use the
+[GitHub issue tracker](https://github.com/mac-lucky/webos-iptv-native/issues). Include your TV
+model and webOS version.
 
 ## License
 
